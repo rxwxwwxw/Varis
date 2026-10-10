@@ -1,86 +1,60 @@
-# Performance checks
+# Benchmarks
 
-`make benchmark` compares ordinary Lua workloads with C Lua, times the
-[regression programs](../tests/regression/README.md) (`regression.py`: identical output and
-checksum required, 30 s dlua budget per program), then checks the Datalog suites against
-`datalog-baseline.json`. `make benchmark-datalog` runs
-only the Datalog check. Compilation is excluded from timings.
+One suite, one driver: `python3 tools/suite bench` (Make: `make bench`, `make bench-check`).
+Design and rationale: [CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md) §4.
 
-The Datalog benchmark executes all 15 acceptance cases, all 54 extension
-regression/stress cases and the 19 [scenario programs](../tests/datalog/README.md)
-(at their large, benchmark scale, with golden output checked) through their
-normal runners, in fresh processes. The scenarios suite also prints one timing
-per program on its first run. It
-includes process startup and runner overhead. Functional failures, incorrect
-negative-case diagnostics, crashes, and timeouts fail the check before recording
-or comparing timing data. The acceptance runner checks each negative case's
-intended diagnostic instead of accepting arbitrary failures.
+## What is measured
 
-Each suite is run three times. Its median must be at most
-`baseline_seconds * (1 + tolerance) + slack_seconds`. The defaults are 25%
-tolerance and 0.1 seconds of slack, allowing for scheduling noise on these short
-suites. Each entire suite has a 300-second deadline. Run on an otherwise idle
-machine with the same compiler/build settings for meaningful comparisons.
+| Group | Kind | Source | Comparators |
+| --- | --- | --- | --- |
+| `core` | in-process (`os.clock`, load once, warm once, 5 timed repeats per sample) | `workloads/core/*.lua` | C Lua, previous versions |
+| `programs` | fresh process, CPU time (rusage) | `workloads/programs/*.lua` | C Lua (output must match) |
+| `regression` | fresh process | `tests/regression/*.lua` (checksum programs reused) | C Lua |
+| `startup` | fresh process | `workloads/startup/*.lua` | C Lua |
+| `datalog` | fresh process, `large` scale | `tests/datalog/NN_*.lua` | previous versions only |
+| `narrative` | fresh process | `sample-game/tools/check.lua` | previous versions only |
 
-```sh
-make benchmark-datalog
-make benchmark-datalog DATALOG_REGRESSION=0.10 DATALOG_SLACK=0.05 BENCHMARK_RUNS=5
-```
+Every sample is interleaved across interpreters (alternating order); ratios are paired per
+sample and the **median of paired ratios** is reported. Peak RSS is recorded. A candidate
+whose samples have CV > 15 % is flagged `noisy`.
 
-The checked-in baseline describes this machine's optimized release interpreter,
-including the join optimization. It is machine-specific, not a portable speed
-requirement. Calibrate a different machine explicitly with a separate file:
+## Comparators
 
-```sh
-make benchmark-datalog-record DATALOG_BASELINE=/tmp/dlua-baseline.json
-make benchmark-datalog DATALOG_BASELINE=/tmp/dlua-baseline.json
-```
+Declared in [manifest.toml](manifest.toml): `clua` (stock Lua 5.4.9, `-O2`),
+`v0-snapshot` (git tag `baseline/v0-snapshot`, the pre-optimization tree) and
+`v1-perf-final` (tag `baseline/v1-perf-final`). A git-ref comparator is built on demand with
+`make dlua` in a worktree under `.cache/src/` and cached by (commit, profile, compiler) in
+`.cache/builds/`. Add a `release-*` tag and a `prev` comparator when releases begin.
 
-A suite that has no baseline entry (or one you want to recalibrate) can be
-recorded alone, leaving the other entries untouched and still compared:
+## Targets
 
-```sh
-make benchmark-datalog DATALOG_BENCH_ARGS="--record-suite scenarios"
-python3 benchmarks/datalog.py --record-suite scenarios
-```
+[targets.toml](targets.toml): per workload,
 
-To deliberately update the repository baseline after a reviewed performance
-change, use `make benchmark-datalog-record`. The command writes a baseline only
-after every measured run succeeds; ordinary benchmark runs never rewrite it.
-Treat threshold failures as bugs to investigate before recalibrating.
+* `goal.<comparator>` – project target (≤ 2.0× C Lua). Reported as "behind goal", never fatal.
+* `gate.<comparator>` – regression ratchet; exceeding it fails `make bench-check`
+  (confirmed by two re-runs before failing).
+* `floor.<comparator>` – minimum speedup over an older version.
 
-`make test-benchmarks` verifies the regression enforcement, median selection,
-explicit recording, functional-failure handling, and timeout cleanup. These
-tests are also part of `make test`. Performance checks remain in `make benchmark`
-so compiling/running debug unit tests does not contaminate performance samples.
+Gates are derived from measurement (`python3 tools/suite targets benchmarks/baselines/*.json`):
+worst observed ratio × 1.10 (core) or × 1.20 (others; 1.60 for workloads under 20 ms) plus
+0.10 absolute slack; floors are 60 % of the measured speedup over `v0-snapshot`.
+Gates only tighten automatically. Loosening one (or a floor) is blocked by the commit-msg
+hook unless the message carries `Perf-Regression-Accepted: <reason>`.
 
-## Application-style workloads
+Known cost centres are visible as goal misses: `core.pcall_error` (D exceptions through the
+platform unwinder) and `core.deep_recursion` (flat-stack executor past ~150 frames).
 
-`make benchmark-workloads` (`workloads.py`) times small whole programs from
-[`workloads/`](workloads) — method calls and object creation, closures, coroutines, sorting,
-`pairs`/`ipairs`, string building, varargs, recursion-heavy and numeric kernels — in fresh
-processes against C Lua (best of five, identical output required). Ratios are informational,
-unlike `bench.py` they include process start-up, and they do not gate `make test`.
-
-## Core execution measurements
-
-`bench.py` now checks every workload's result, loads each body once per process,
-warms it once, and measures repeated execution with `os.clock`. It alternates
-interpreter order and defaults to seven samples of five executions each. Reports
-include all samples, median/min/max, separate load/compile CPU time, whole-process
-wall time, machine identity and binary SHA-256. GC runs naturally during the body;
-there is no forced collection between warmup and measurement. Process wall time
-includes warmup and must not be interpreted as execution time.
+## Commands
 
 ```sh
-make dlua c-lua
-python3 benchmarks/bench.py --json benchmarks/results/current.json
-python3 benchmarks/bench.py --json benchmarks/results/acceptance.json --max-ratio 2
+make bench                          # report only
+make bench-check                    # enforce gates/floors/memory
+python3 tools/suite bench --group core --filter fib --runs 11
+python3 tools/suite bench --list
+make bench-record LABEL=2026-11-01  # store benchmarks/baselines/LABEL.json
 ```
 
-The explicit acceptance gate fails if **any** workload exceeds the specified
-ratio; ordinary runs report the current gap without pretending it passes. Run
-without competing compilation, profiling or test processes. Keep the existing
-six workloads when reporting progress; the broader Phase 8 corpus and calibrated
-core regression baseline remain outstanding. Short workloads should use larger
-`--repeats` to reduce clock resolution effects. The Datalog baseline is unchanged.
+Run on an otherwise idle machine. Ratios are portable between machines; absolute seconds are not
+and are never enforced. `history/2026-10-09-perf/` holds the pre-suite experiment records
+(including the old suite-level Datalog baseline); they are informational only.
+[PERFORMANCE_WORK.md](PERFORMANCE_WORK.md) records the optimization work itself.

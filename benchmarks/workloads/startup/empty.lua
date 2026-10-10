@@ -1,0 +1,1 @@
+-- bench: interpreter start and exit with an empty chunk

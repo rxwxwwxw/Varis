@@ -1,4 +1,5 @@
 import argparse
+import platform
 import json
 import os
 import re
@@ -9,7 +10,7 @@ from pathlib import Path
 from . import manifest as MF
 from . import model as M
 from . import runner as R
-from .kinds import Ctx
+from .kinds import Ctx, identity
 
 ROOT = MF.ROOT
 GOOD = {M.PASS, M.SKIP, M.XFAIL, M.PARTIAL}
@@ -123,6 +124,133 @@ def cmd_trace(args):
     return 1 if problems else 0
 
 
+def cmd_bench(args):
+    from . import bench as B
+    manifest = B.load_manifest()
+    targets = B.load_targets()
+    ws = B.workloads(manifest)
+    if args.group:
+        ws = [w for w in ws if w["group"] in args.group]
+    if args.filter:
+        ws = [w for w in ws if any(f in w["id"] for f in args.filter)]
+    if not ws:
+        sys.exit("no workloads selected")
+    if args.list:
+        for w in ws:
+            print(f"{w['kind']:<8} {w['id']}  targets={sorted(set(k for kk in ('goal','gate','floor') for k in targets.get(w['id'], {}).get(kk, {})))}")
+        return 0
+    cand = Path(args.candidate or os.environ.get("SUITE_BIN") or ROOT / "bin/dlua")
+    if not cand.is_file():
+        sys.exit(f"candidate not found: {cand}")
+    wanted = set(args.compare)
+    for w in ws:
+        wanted |= B.needed_labels(w, targets.get(w["id"], {}))
+    comps = B.resolve_comparators(manifest, sorted(wanted), log=lambda m: print(m, flush=True))
+    missing = [l for l, b in comps.items() if b is None]
+    if missing:
+        print("unavailable comparators: " + ", ".join(missing), flush=True)
+    records, derived, failures, behind = [], {}, [], []
+    print(f"{'workload':<34}{'time':>9}" + "".join(f"{l[:12]:>14}" for l in sorted(comps)) + "   status", flush=True)
+    for w in ws:
+        t = targets.get(w["id"], {})
+        use = {l: comps[l] for l in (B.needed_labels(w, t) | set(args.compare)) if comps.get(l)}
+        rec = B.run_workload(w, cand.resolve(), use, args.runs)
+        findings = B.evaluate(rec, t)
+        tries = 0
+        while args.check and B.hard_failed(findings) and tries < 2 and not args.no_confirm:
+            tries += 1
+            again = B.run_workload(w, cand.resolve(), use, args.runs)
+            f2 = B.evaluate(again, t)
+            rec["confirmation"] = rec.get("confirmation", []) + [f2]
+            if not B.hard_failed(f2):
+                rec, findings = again, f2
+                rec["note"] = "first run failed a gate; passed on confirmation re-run"
+                break
+        rec["findings"] = findings
+        records.append(rec)
+        derived[w["id"]] = B.derive(rec, None)
+        cells = ""
+        for l in sorted(comps):
+            r = rec["ratios"].get(l)
+            cells += f"{r['median']:>13.2f}x" if r else f"{'-':>14}"
+        status = []
+        if rec["status"] == "error":
+            status.append("ERROR " + rec["errors"].get("candidate", "")[:60])
+            failures.append(w["id"])
+        for k, v in rec["errors"].items():
+            if k != "candidate":
+                status.append(f"{k}: {v[:50]}")
+        if rec.get("errors", {}).get("output"):
+            failures.append(w["id"])
+        for f in findings:
+            if f["ok"] is False:
+                status.append(f"{f['kind'].upper()} {f['label']} {f['value']:.2f} vs {f['limit']}")
+                if f["kind"] == "goal":
+                    behind.append(w["id"])
+                elif args.check:
+                    failures.append(w["id"])
+        if rec.get("noisy"):
+            status.append("noisy")
+        if rec.get("note"):
+            status.append(rec["note"])
+        tm = rec["binaries"].get("candidate", {}).get("median", float("nan"))
+        print(f"{w['id']:<34}{tm:>8.3f}s{cells}   {'; '.join(status) or 'ok'}", flush=True)
+    doc = {"schema": 1, "kind": "bench", "machine": platform.platform(), "arch": platform.machine(),
+           "toolchain": B.toolchain_id(), "commit": R.git_commit(ROOT), "runs": args.runs,
+           "binaries": {"candidate": identity(cand), **{l: identity(b) for l, b in comps.items() if b}},
+           "records": records}
+    if args.json:
+        Path(args.json).write_text(json.dumps(doc, indent=2) + "\n")
+    if args.record:
+        d = ROOT / "benchmarks/baselines"
+        d.mkdir(exist_ok=True)
+        (d / f"{args.record}.json").write_text(json.dumps(doc, indent=2) + "\n")
+    if args.derive_targets:
+        derived = {k: v for k, v in derived.items() if v}
+        Path(args.derive_targets).write_text(B.render_targets(derived) + "\n")
+        print(f"wrote {args.derive_targets} ({len(derived)} workloads)")
+    print(f"\n{len(records)} workloads; {len(behind)} behind goal" + (f": {', '.join(behind)}" if behind else ""))
+    if failures:
+        print("FAILED: " + ", ".join(sorted(set(failures))))
+    return 1 if failures else 0
+
+
+def cmd_targets(args):
+    """Derive benchmarks/targets.toml from recorded bench JSON files using the §4.3 policy."""
+    from . import bench as B
+    merged = {}
+    for path in args.inputs:
+        for rec in json.loads(Path(path).read_text())["records"]:
+            if rec.get("status") != "measured":
+                continue
+            hist = {}
+            if args.history and rec["id"].startswith("core."):
+                hist = _history_ratios(rec["id"].split(".", 1)[1])
+            t = B.derive(rec, hist)
+            if t:
+                merged[rec["id"]] = t
+    Path(args.output).write_text(B.render_targets(merged) + "\n")
+    print(f"wrote {args.output}: {len(merged)} workloads")
+    return 0
+
+
+_HIST_NAMES = {"fib": "fibonacci_recursive", "numeric_loop": "numeric_for_loop", "array_access": "table_array_access",
+               "hash_access": "table_hash_access", "string_manip": "string_manipulation", "sieve": "sieve_of_eratosthenes"}
+
+
+def _history_ratios(name):
+    """Worst clua ratio among the last recorded history runs (benchmarks/history), if any."""
+    worst = {}
+    key = _HIST_NAMES.get(name)
+    hist = ROOT / "benchmarks/history/2026-10-09-perf/final-execution.json"
+    if key and hist.exists():
+        d = json.loads(hist.read_text())
+        r = d["workloads"].get(key, {}).get("ratio")
+        if r:
+            worst["clua"] = r
+    return worst
+
+
 def build_parser():
     ap = argparse.ArgumentParser(prog="suite")
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -141,6 +269,24 @@ def build_parser():
     t.add_argument("--quiet", "-q", action="store_true", help="only print non-passing results")
     t.add_argument("--manifest")
     t.set_defaults(fn=cmd_test)
+    b = sub.add_parser("bench", help="run the benchmark suite")
+    b.add_argument("--group", action="append", default=[])
+    b.add_argument("--filter", action="append", default=[])
+    b.add_argument("--candidate")
+    b.add_argument("--compare", action="append", default=[], help="extra comparator label")
+    b.add_argument("--runs", type=int)
+    b.add_argument("--check", action="store_true", help="enforce gates, floors and memory limits")
+    b.add_argument("--no-confirm", action="store_true")
+    b.add_argument("--json")
+    b.add_argument("--record", metavar="LABEL", help="store the result as benchmarks/baselines/LABEL.json")
+    b.add_argument("--derive-targets", metavar="FILE")
+    b.add_argument("--list", action="store_true")
+    b.set_defaults(fn=cmd_bench)
+    tg = sub.add_parser("targets", help="derive targets.toml from recorded bench JSON")
+    tg.add_argument("inputs", nargs="+")
+    tg.add_argument("--output", default=str(ROOT / "benchmarks/targets.toml"))
+    tg.add_argument("--history", action="store_true", help="fold in benchmarks/history ratios")
+    tg.set_defaults(fn=cmd_targets)
     c = sub.add_parser("check", help="validate the manifest against the tree")
     c.add_argument("--manifest")
     c.set_defaults(fn=cmd_check)

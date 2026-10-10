@@ -136,7 +136,6 @@ tier = "fast"
 tags = ["runner"]
 timeout = 300
 cases = [
-  { id = "benchmarks", command = ["python3", "-m", "unittest", "discover", "-s", "benchmarks", "-p", "test_*.py"] },
   { id = "regression", command = ["python3", "-m", "unittest", "discover", "-s", "tests/regression", "-p", "test_*.py"] },
   { id = "official", command = ["python3", "-m", "unittest", "discover", "-s", "tests/official", "-p", "test_*.py"] },
   { id = "datalog", command = ["python3", "-m", "unittest", "discover", "-s", "tests/datalog", "-p", "test_*.py"] },

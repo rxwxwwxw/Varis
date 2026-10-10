@@ -1,0 +1,309 @@
+# Performance targets. Ratios are candidate/comparator CPU time measured in one session.
+# goal: project target, reported only.   gate: regression ratchet (fatal when exceeded).
+# floor: minimum speedup over a named older version (fatal when below).
+# Loosening a gate/floor needs a `Perf-Regression-Accepted:` commit trailer (see commit-msg hook).
+
+[workload."core.array_access"]
+goal.clua = 2.0
+gate.clua = 2.14
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 5.0
+
+[workload."core.closures"]
+goal.clua = 2.0
+gate.clua = 2.26
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 13.5
+
+[workload."core.coroutine_switch"]
+goal.clua = 2.0
+gate.clua = 2.39
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 4.8
+
+[workload."core.deep_recursion"]
+goal.clua = 2.0
+gate.clua = 9.16
+gate.v1-perf-final = 1.21
+floor.v0-snapshot = 4.6
+
+[workload."core.fib"]
+goal.clua = 2.0
+gate.clua = 2.76
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 15.0
+
+[workload."core.gc_churn"]
+goal.clua = 2.0
+gate.clua = 1.2
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 2.2
+
+[workload."core.hash_access"]
+goal.clua = 2.0
+gate.clua = 2.37
+gate.v1-perf-final = 1.7
+floor.v0-snapshot = 3.1
+
+[workload."core.method_dispatch"]
+goal.clua = 2.0
+gate.clua = 2.1
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 6.4
+
+[workload."core.numeric_loop"]
+goal.clua = 2.0
+gate.clua = 1.9
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 6.5
+
+[workload."core.pcall_error"]
+goal.clua = 2.0
+gate.clua = 41.27
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 8.0
+
+[workload."core.sieve"]
+goal.clua = 2.0
+gate.clua = 2.25
+gate.v1-perf-final = 1.7
+floor.v0-snapshot = 7.2
+
+[workload."core.string_manip"]
+goal.clua = 2.0
+gate.clua = 1.05
+gate.v1-perf-final = 1.7
+floor.v0-snapshot = 8.1
+
+[workload."core.string_ops"]
+goal.clua = 2.0
+gate.clua = 2.63
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 2.3
+
+[workload."core.table_insert_remove"]
+goal.clua = 2.0
+gate.clua = 1.29
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 6.5
+
+[workload."core.table_sort"]
+goal.clua = 2.0
+gate.clua = 1.15
+gate.v1-perf-final = 1.2
+floor.v0-snapshot = 24.3
+
+[workload."datalog.01_symbols"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.02_facts_and_relations"]
+gate.v1-perf-final = 1.33
+
+[workload."datalog.03_transitive_closure"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.04_cycles"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.05_rule_unions"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.06_stratified_negation"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.07_comparisons_and_guards"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.08_mutation_and_invalidation"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.09_query_semantics"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.10_worlds"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.11_local_relations"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.12_constants_and_capture"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.13_errors_and_atomicity"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.14_conjunctive_queries"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.15_coroutines"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.16_contextual_syntax"]
+gate.v1-perf-final = 1.32
+
+[workload."datalog.17_same_generation"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.18_triangles"]
+gate.v1-perf-final = 1.3
+
+[workload."datalog.19_grid_reachability"]
+gate.v1-perf-final = 1.3
+
+[workload."narrative.sample_game_check"]
+gate.v1-perf-final = 1.31
+
+[workload."programs.bintrees"]
+goal.clua = 2.0
+gate.clua = 2.33
+gate.v1-perf-final = 1.31
+
+[workload."programs.closures"]
+goal.clua = 2.0
+gate.clua = 2.63
+gate.v1-perf-final = 1.3
+
+[workload."programs.coro"]
+goal.clua = 2.0
+gate.clua = 2.66
+gate.v1-perf-final = 1.3
+
+[workload."programs.mandel"]
+goal.clua = 2.0
+gate.clua = 2.46
+gate.v1-perf-final = 1.3
+
+[workload."programs.matmul"]
+goal.clua = 2.0
+gate.clua = 2.46
+gate.v1-perf-final = 1.72
+
+[workload."programs.oop"]
+goal.clua = 2.0
+gate.clua = 2.24
+gate.v1-perf-final = 1.3
+
+[workload."programs.pairs"]
+goal.clua = 2.0
+gate.clua = 0.84
+gate.v1-perf-final = 1.3
+
+[workload."programs.queens"]
+goal.clua = 2.0
+gate.clua = 2.84
+gate.v1-perf-final = 1.76
+
+[workload."programs.sort"]
+goal.clua = 2.0
+gate.clua = 0.36
+gate.v1-perf-final = 1.3
+
+[workload."programs.strings"]
+goal.clua = 2.0
+gate.clua = 1.51
+gate.v1-perf-final = 1.3
+
+[workload."programs.varargs"]
+goal.clua = 2.0
+gate.clua = 1.92
+gate.v1-perf-final = 1.3
+
+[workload."regression.coroutines"]
+goal.clua = 2.0
+gate.clua = 3.35
+gate.v1-perf-final = 1.75
+
+[workload."regression.deepframes"]
+goal.clua = 2.0
+gate.clua = 2.59
+gate.v1-perf-final = 1.31
+
+[workload."regression.errors"]
+goal.clua = 2.0
+gate.clua = 2.99
+gate.v1-perf-final = 1.7
+
+[workload."regression.fastpaths"]
+goal.clua = 2.0
+gate.clua = 1.97
+gate.v1-perf-final = 1.31
+
+[workload."regression.fuzz_expr"]
+goal.clua = 2.0
+gate.clua = 2.67
+gate.v1-perf-final = 1.31
+
+[workload."regression.fuzz_table"]
+goal.clua = 2.0
+gate.clua = 3.07
+gate.v1-perf-final = 1.73
+
+[workload."regression.int_float"]
+goal.clua = 2.0
+gate.clua = 2.7
+gate.v1-perf-final = 1.7
+
+[workload."regression.io_os"]
+goal.clua = 2.0
+gate.clua = 1.97
+gate.v1-perf-final = 1.7
+
+[workload."regression.limits"]
+goal.clua = 2.0
+gate.clua = 1.74
+gate.v1-perf-final = 1.3
+
+[workload."regression.load_dump"]
+goal.clua = 2.0
+gate.clua = 2.84
+gate.v1-perf-final = 1.77
+
+[workload."regression.metamethods"]
+goal.clua = 2.0
+gate.clua = 2.68
+gate.v1-perf-final = 1.7
+
+[workload."regression.random_math"]
+goal.clua = 2.0
+gate.clua = 2.57
+gate.v1-perf-final = 1.7
+
+[workload."regression.strings"]
+goal.clua = 2.0
+gate.clua = 2.5
+gate.v1-perf-final = 1.74
+
+[workload."regression.tables"]
+goal.clua = 2.0
+gate.clua = 2.51
+gate.v1-perf-final = 1.7
+
+[workload."regression.tbc_goto"]
+goal.clua = 2.0
+gate.clua = 2.71
+gate.v1-perf-final = 1.75
+
+[workload."regression.weak_gc"]
+goal.clua = 2.0
+gate.clua = 2.72
+gate.v1-perf-final = 1.75
+
+[workload."regression.workloads"]
+goal.clua = 2.0
+gate.clua = 2.52
+gate.v1-perf-final = 1.3
+
+[workload."regression.wrapcalls"]
+goal.clua = 2.0
+gate.clua = 2.8
+gate.v1-perf-final = 1.7
+
+[workload."startup.empty"]
+goal.clua = 2.0
+gate.clua = 2.58
+gate.v1-perf-final = 1.74
+
+[workload."startup.stdlibs"]
+goal.clua = 2.0
+gate.clua = 2.47
+gate.v1-perf-final = 1.7

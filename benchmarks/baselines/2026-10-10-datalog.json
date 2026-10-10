@@ -1,0 +1,905 @@
+{
+  "schema": 1,
+  "kind": "bench",
+  "machine": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "arch": "arm64",
+  "toolchain": "LDC - the LLVM D compiler (1.43.0):",
+  "commit": "7a31989",
+  "runs": null,
+  "binaries": {
+    "candidate": {
+      "path": "/Users/alex/repos/dlua/bin/dlua",
+      "sha256": "d88e0a88632bcf0a7a21952e3666700cea80e942db82a067fef330da1634368f"
+    },
+    "v1-perf-final": {
+      "path": "/Users/alex/repos/dlua/.cache/builds/1665cf22-cebb4ae3e0/dlua",
+      "sha256": "6f370a475cde5fb82cff0c454b06c97ec3cfb20c2d406bfadc82e52b4bc98ed3"
+    }
+  },
+  "records": [
+    {
+      "id": "datalog.01_symbols",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.09581599999999998,
+          "min": 0.09529299999999999,
+          "max": 0.09596299999999999,
+          "cv": 0.002274590882524967,
+          "samples": [
+            0.09529299999999999,
+            0.09581599999999998,
+            0.09596299999999999
+          ],
+          "rss_kb": 12000.0
+        },
+        "v1-perf-final": {
+          "median": 0.09604299999999999,
+          "min": 0.09580499999999999,
+          "max": 0.096241,
+          "cv": 0.003056493445644196,
+          "samples": [
+            0.096241,
+            0.09604299999999999,
+            0.09580499999999999
+          ],
+          "rss_kb": 12016.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.997636475328759,
+          "min": 0.9901497282862812,
+          "max": 1.001649183236783,
+          "rss": 0.9986684420772304
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.02_facts_and_relations",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.20977,
+          "min": 0.20386999999999997,
+          "max": 0.21234099999999997,
+          "cv": 0.01817116174858151,
+          "samples": [
+            0.20977,
+            0.21234099999999997,
+            0.20386999999999997
+          ],
+          "rss_kb": 220144.0
+        },
+        "v1-perf-final": {
+          "median": 0.20516299999999998,
+          "min": 0.20460499999999998,
+          "max": 0.205739,
+          "cv": 0.004032358661162122,
+          "samples": [
+            0.20460499999999998,
+            0.205739,
+            0.20516299999999998
+          ],
+          "rss_kb": 220128.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0252437623713988,
+          "min": 0.9936976940286503,
+          "max": 1.0320892003946747,
+          "rss": 1.0000726849832824
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.03_transitive_closure",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 1.424564,
+          "min": 1.4220119999999998,
+          "max": 1.425445,
+          "cv": 0.0009168914839910282,
+          "samples": [
+            1.425445,
+            1.424564,
+            1.4220119999999998
+          ],
+          "rss_kb": 37536.0
+        },
+        "v1-perf-final": {
+          "median": 1.422231,
+          "min": 1.418885,
+          "max": 1.424504,
+          "cv": 0.0023694813289823905,
+          "samples": [
+            1.418885,
+            1.422231,
+            1.424504
+          ],
+          "rss_kb": 37472.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0016403805007765,
+          "min": 0.9982506191628805,
+          "max": 1.004623348615286,
+          "rss": 1.0017079419299744
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.04_cycles",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.740648,
+          "min": 0.737346,
+          "max": 0.743289,
+          "cv": 0.0052866497985547874,
+          "samples": [
+            0.740648,
+            0.743289,
+            0.737346
+          ],
+          "rss_kb": 55024.0
+        },
+        "v1-perf-final": {
+          "median": 0.7396829999999999,
+          "min": 0.739532,
+          "max": 0.766163,
+          "cv": 0.0003026601936232867,
+          "samples": [
+            0.7396829999999999,
+            0.766163,
+            0.739532
+          ],
+          "rss_kb": 55008.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9970440765240719,
+          "min": 0.9701447342145209,
+          "max": 1.0013046129220222,
+          "rss": 1.0002908667830135
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.05_rule_unions",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.37515999999999994,
+          "min": 0.373272,
+          "max": 0.379611,
+          "cv": 0.00746121334897089,
+          "samples": [
+            0.379611,
+            0.37515999999999994,
+            0.373272
+          ],
+          "rss_kb": 23248.0
+        },
+        "v1-perf-final": {
+          "median": 0.375245,
+          "min": 0.37431099999999995,
+          "max": 0.376042,
+          "cv": 0.003148961878239519,
+          "samples": [
+            0.375245,
+            0.37431099999999995,
+            0.376042
+          ],
+          "rss_kb": 23232.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.002268167379532,
+          "min": 0.9926338015434446,
+          "max": 1.0116350650908073,
+          "rss": 1.0006887052341598
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.06_stratified_negation",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 2.158701,
+          "min": 2.155985,
+          "max": 2.163777,
+          "cv": 0.0018653540254072102,
+          "samples": [
+            2.158701,
+            2.155985,
+            2.163777
+          ],
+          "rss_kb": 25488.0
+        },
+        "v1-perf-final": {
+          "median": 2.1551460000000002,
+          "min": 2.153454,
+          "max": 2.1571010000000004,
+          "cv": 0.0011639857346093343,
+          "samples": [
+            2.153454,
+            2.1571010000000004,
+            2.1551460000000002
+          ],
+          "rss_kb": 25504.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0024365507691366,
+          "min": 0.9994826389677625,
+          "max": 1.0040048330832343,
+          "rss": 0.9993726474278545
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.07_comparisons_and_guards",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.143261,
+          "min": 0.141762,
+          "max": 0.14513,
+          "cv": 0.015513066361396337,
+          "samples": [
+            0.141762,
+            0.14513,
+            0.143261
+          ],
+          "rss_kb": 62576.0
+        },
+        "v1-perf-final": {
+          "median": 0.14272999999999997,
+          "min": 0.142096,
+          "max": 0.142834,
+          "cv": 0.0010802942618933005,
+          "samples": [
+            0.142096,
+            0.14272999999999997,
+            0.142834
+          ],
+          "rss_kb": 62560.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0029894842964562,
+          "min": 0.9976494764103141,
+          "max": 1.0168149653191343,
+          "rss": 1.0002557544757034
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.08_mutation_and_invalidation",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 1.095839,
+          "min": 1.094026,
+          "max": 1.0961530000000002,
+          "cv": 0.00042482189445732324,
+          "samples": [
+            1.095839,
+            1.0961530000000002,
+            1.094026
+          ],
+          "rss_kb": 23104.0
+        },
+        "v1-perf-final": {
+          "median": 1.0955050000000002,
+          "min": 1.090354,
+          "max": 1.099815,
+          "cv": 0.00583293184421771,
+          "samples": [
+            1.090354,
+            1.0955050000000002,
+            1.099815
+          ],
+          "rss_kb": 23120.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0005915080259788,
+          "min": 0.9947363874833495,
+          "max": 1.0050304763407114,
+          "rss": 0.9993079584775086
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.09_query_semantics",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.9893759999999999,
+          "min": 0.98908,
+          "max": 0.9946379999999999,
+          "cv": 0.0004435620027168085,
+          "samples": [
+            0.9946379999999999,
+            0.9893759999999999,
+            0.98908
+          ],
+          "rss_kb": 898256.0
+        },
+        "v1-perf-final": {
+          "median": 0.987049,
+          "min": 0.98686,
+          "max": 0.998684,
+          "cv": 0.00028388803392738574,
+          "samples": [
+            0.998684,
+            0.987049,
+            0.98686
+          ],
+          "rss_kb": 898256.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.002249559207993,
+          "min": 0.995948668447677,
+          "max": 1.00235753240214,
+          "rss": 1.0
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.10_worlds",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.5814090000000001,
+          "min": 0.578885,
+          "max": 0.581495,
+          "cv": 0.00021930104281130938,
+          "samples": [
+            0.578885,
+            0.5814090000000001,
+            0.581495
+          ],
+          "rss_kb": 12000.0
+        },
+        "v1-perf-final": {
+          "median": 0.579378,
+          "min": 0.577318,
+          "max": 0.580237,
+          "cv": 0.002198139038762398,
+          "samples": [
+            0.577318,
+            0.579378,
+            0.580237
+          ],
+          "rss_kb": 12000.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0027142753214,
+          "min": 1.002168079595062,
+          "max": 1.0035054834667525,
+          "rss": 1.0
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.11_local_relations",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.41923799999999994,
+          "min": 0.416861,
+          "max": 0.41942599999999997,
+          "cv": 0.0006648462210010349,
+          "samples": [
+            0.41923799999999994,
+            0.416861,
+            0.41942599999999997
+          ],
+          "rss_kb": 12096.0
+        },
+        "v1-perf-final": {
+          "median": 0.41775399999999996,
+          "min": 0.41485,
+          "max": 0.42187899999999995,
+          "cv": 0.010306233812243435,
+          "samples": [
+            0.41485,
+            0.41775399999999996,
+            0.42187899999999995
+          ],
+          "rss_kb": 12112.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9978623783374906,
+          "min": 0.9941855366112085,
+          "max": 1.0105773171025672,
+          "rss": 0.9986789960369881
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.12_constants_and_capture",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.197141,
+          "min": 0.197064,
+          "max": 0.198462,
+          "cv": 0.0005790789333524324,
+          "samples": [
+            0.197141,
+            0.197064,
+            0.198462
+          ],
+          "rss_kb": 14608.0
+        },
+        "v1-perf-final": {
+          "median": 0.196681,
+          "min": 0.195991,
+          "max": 0.19769099999999998,
+          "cv": 0.005201285330052188,
+          "samples": [
+            0.195991,
+            0.196681,
+            0.19769099999999998
+          ],
+          "rss_kb": 14608.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.003900025797836,
+          "min": 1.0019473157041097,
+          "max": 1.0058676163701394,
+          "rss": 1.0
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.13_errors_and_atomicity",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.569048,
+          "min": 0.568692,
+          "max": 0.570456,
+          "cv": 0.0009275238644192301,
+          "samples": [
+            0.568692,
+            0.569048,
+            0.570456
+          ],
+          "rss_kb": 15984.0
+        },
+        "v1-perf-final": {
+          "median": 0.5702609999999999,
+          "min": 0.566392,
+          "max": 0.58139,
+          "cv": 0.01005886672944468,
+          "samples": [
+            0.5702609999999999,
+            0.58139,
+            0.566392
+          ],
+          "rss_kb": 15968.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9972486282596917,
+          "min": 0.9787715646983953,
+          "max": 1.0071752425881721,
+          "rss": 1.001002004008016
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.14_conjunctive_queries",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.231373,
+          "min": 0.23126499999999997,
+          "max": 0.23268399999999997,
+          "cv": 0.000692046176520323,
+          "samples": [
+            0.231373,
+            0.23126499999999997,
+            0.23268399999999997
+          ],
+          "rss_kb": 21120.0
+        },
+        "v1-perf-final": {
+          "median": 0.231211,
+          "min": 0.23035599999999998,
+          "max": 0.23152799999999998,
+          "cv": 0.0020327069213833954,
+          "samples": [
+            0.231211,
+            0.23035599999999998,
+            0.23152799999999998
+          ],
+          "rss_kb": 21136.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.00394606608901,
+          "min": 1.0007006587056844,
+          "max": 1.0049929166234752,
+          "rss": 0.9992429977289932
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.15_coroutines",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.44441200000000003,
+          "min": 0.443455,
+          "max": 0.451339,
+          "cv": 0.0031926415128305735,
+          "samples": [
+            0.443455,
+            0.451339,
+            0.44441200000000003
+          ],
+          "rss_kb": 265472.0
+        },
+        "v1-perf-final": {
+          "median": 0.44471599999999994,
+          "min": 0.44358299999999995,
+          "max": 0.446333,
+          "cv": 0.0037772101745833135,
+          "samples": [
+            0.446333,
+            0.44358299999999995,
+            0.44471599999999994
+          ],
+          "rss_kb": 265424.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9993164176688045,
+          "min": 0.9935518995906644,
+          "max": 1.0174848900882136,
+          "rss": 1.0001808427271084
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.16_contextual_syntax",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.189168,
+          "min": 0.186881,
+          "max": 0.202725,
+          "cv": 0.017924311722913054,
+          "samples": [
+            0.186881,
+            0.202725,
+            0.189168
+          ],
+          "rss_kb": 142832.0
+        },
+        "v1-perf-final": {
+          "median": 0.18614699999999998,
+          "min": 0.18600099999999997,
+          "max": 0.186468,
+          "cv": 0.0011628422698190717,
+          "samples": [
+            0.186468,
+            0.18600099999999997,
+            0.18614699999999998
+          ],
+          "rss_kb": 142816.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0162291092523652,
+          "min": 1.0022148572409206,
+          "max": 1.0899134950887361,
+          "rss": 1.0001120322652923
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.17_same_generation",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.947282,
+          "min": 0.9367679999999999,
+          "max": 0.95488,
+          "cv": 0.011891701520772052,
+          "samples": [
+            0.9367679999999999,
+            0.947282,
+            0.95488
+          ],
+          "rss_kb": 77568.0
+        },
+        "v1-perf-final": {
+          "median": 0.9474849999999999,
+          "min": 0.9464839999999999,
+          "max": 0.955468,
+          "cv": 0.001566338886631497,
+          "samples": [
+            0.955468,
+            0.9464839999999999,
+            0.9474849999999999
+          ],
+          "rss_kb": 77552.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0008431204330976,
+          "min": 0.9804284392569923,
+          "max": 1.0078048729003626,
+          "rss": 1.0002063131834125
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.18_triangles",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 2.141464,
+          "min": 2.094515,
+          "max": 2.150376,
+          "cv": 0.006170045912515945,
+          "samples": [
+            2.141464,
+            2.094515,
+            2.150376
+          ],
+          "rss_kb": 77424.0
+        },
+        "v1-perf-final": {
+          "median": 2.129191,
+          "min": 2.119956,
+          "max": 2.1562740000000002,
+          "cv": 0.006430522672695792,
+          "samples": [
+            2.129191,
+            2.119956,
+            2.1562740000000002
+          ],
+          "rss_kb": 77408.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9972647260969616,
+          "min": 0.9879992792303235,
+          "max": 1.0057641611297437,
+          "rss": 1.000206696982224
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "datalog.19_grid_reachability",
+      "group": "datalog",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 1.156848,
+          "min": 1.152728,
+          "max": 1.160093,
+          "cv": 0.004158746006389702,
+          "samples": [
+            1.156848,
+            1.152728,
+            1.160093
+          ],
+          "rss_kb": 23904.0
+        },
+        "v1-perf-final": {
+          "median": 1.156612,
+          "min": 1.151374,
+          "max": 1.15756,
+          "cv": 0.0012151912655237228,
+          "samples": [
+            1.15756,
+            1.156612,
+            1.151374
+          ],
+          "rss_kb": 23920.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.999384913093058,
+          "min": 0.9966419162173659,
+          "max": 1.0075726914104366,
+          "rss": 0.9993311036789297
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    },
+    {
+      "id": "narrative.sample_game_check",
+      "group": "narrative",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.298039,
+          "min": 0.297206,
+          "max": 0.30334599999999995,
+          "cv": 0.00414377245930888,
+          "samples": [
+            0.30334599999999995,
+            0.297867,
+            0.299632,
+            0.298039,
+            0.297206
+          ],
+          "rss_kb": 321824.0
+        },
+        "v1-perf-final": {
+          "median": 0.29656899999999997,
+          "min": 0.29571,
+          "max": 0.29735599999999995,
+          "cv": 0.0017597092076381152,
+          "samples": [
+            0.296801,
+            0.29735599999999995,
+            0.29656899999999997,
+            0.29621699999999995,
+            0.29571
+          ],
+          "rss_kb": 322224.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0061508961335779,
+          "min": 1.0017184788603561,
+          "max": 1.022051812493893,
+          "rss": 0.9987586275386067
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": []
+    }
+  ]
+}

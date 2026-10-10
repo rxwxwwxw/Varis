@@ -1,0 +1,74 @@
+# Unified benchmark manifest (see CONSOLIDATION_PLAN.md §4). Driven by `python3 tools/suite bench`.
+# Targets (goal/gate/floor) live in benchmarks/targets.toml.
+
+[defaults]
+runs = 7          # interleaved samples per interpreter
+repeats = 5       # in-process repetitions per sample (inproc kind)
+timeout = 180
+
+# Comparators. `path` is a prebuilt binary; `ref` is a git ref built on demand with the same
+# profile as the candidate (identity = commit + flags + compiler, cached under .cache/builds).
+[comparator.clua]
+path = "c-implementation/src/lua"
+note = "stock C Lua 5.4.9, built -O2 by c-implementation/src/Makefile"
+
+[comparator.v0-snapshot]
+ref = "baseline/v0-snapshot"
+note = "2026-10-09 19:19 pre-optimization snapshot"
+
+[comparator.v1-perf-final]
+ref = "baseline/v1-perf-final"
+note = "tree after the 2026-10-09 performance work"
+
+# kind = inproc : load once, warm once, `repeats` timed executions per sample, os.clock CPU seconds
+# kind = process: fresh process per sample, CPU seconds (user+sys) from rusage, peak RSS
+[[group]]
+id = "core"
+kind = "inproc"
+glob = "benchmarks/workloads/core/*.lua"
+comparable = true
+description = "single-kernel micro workloads that stock Lua can run"
+
+[[group]]
+id = "programs"
+kind = "process"
+glob = "benchmarks/workloads/programs/*.lua"
+comparable = true
+runs = 5
+description = "application-style whole programs (output must equal C Lua's)"
+
+[[group]]
+id = "regression"
+kind = "process"
+glob = "tests/regression/*.lua"
+exclude = ["harness.lua"]
+cwd_is_parent = true
+comparable = true
+runs = 3
+description = "checksum-verified differential programs reused as macro workloads"
+
+[[group]]
+id = "startup"
+kind = "process"
+glob = "benchmarks/workloads/startup/*.lua"
+comparable = true
+runs = 15
+description = "interpreter start-up cost"
+
+[[group]]
+id = "datalog"
+kind = "process"
+glob = "tests/datalog/[0-9][0-9]_*.lua"
+args = ["large"]
+cwd_is_parent = true
+comparable = false
+runs = 3
+description = "declarative scenarios at benchmark scale (no stock-Lua comparator)"
+
+[[group]]
+id = "narrative"
+kind = "process"
+comparable = false
+runs = 5
+description = "stateful/narrative session workloads (no stock-Lua comparator)"
+cases = [{ id = "sample_game_check", path = "sample-game/tools/check.lua", cwd = "sample-game" }]

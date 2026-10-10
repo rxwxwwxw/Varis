@@ -53,11 +53,6 @@ TIMEOUT ?= 300
 DATALOG_TIMEOUT ?= 300
 EXTENSIONS_TIMEOUT ?= 300
 SCENARIOS_TIMEOUT ?= 120
-BENCHMARK_RUNS ?= 3
-DATALOG_REGRESSION ?= 0.25
-DATALOG_SLACK ?= 0.1
-DATALOG_BASELINE ?= benchmarks/datalog-baseline.json
-DATALOG_BENCH_ARGS = --runs $(BENCHMARK_RUNS) --baseline $(DATALOG_BASELINE) --tolerance $(DATALOG_REGRESSION) --slack $(DATALOG_SLACK)
 RUN_TEST = python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=$(TIMEOUT)).returncode)"
 
 BIN_DIR = bin
@@ -77,7 +72,7 @@ define unit_test
 	$(RUN_TEST) ./$(BUILD_DIR)/debug/$(1)
 endef
 
-.PHONY: suite-deps test-smoke test-fast test-legacy dlua-checked all check hooks fmt fmt-check check-sources test test-regression test-regression-record test-regression-runner benchmark-regression test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner dlua c-lua benchmark benchmark-workloads benchmark-datalog benchmark-datalog-record test-benchmarks clean
+.PHONY: bench bench-check bench-record release suite-deps test-smoke test-fast test-legacy dlua-checked all check hooks fmt fmt-check check-sources test test-regression test-regression-record test-regression-runner test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner dlua c-lua clean
 
 all: test dlua
 
@@ -145,7 +140,7 @@ test: suite-deps
 	$(SUITE) test --tier full -q
 
 # The previous per-suite targets, retained until the unified driver has been trusted for a release cycle.
-test-legacy: test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-benchmarks test-official-runner test-regression-runner
+test-legacy: test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-official-runner test-regression-runner
 
 # Optimized build with assertions enabled (no -release): the "checked" validation profile.
 dlua-checked: $(SRC_FILES) source/dlua/cli.d
@@ -158,24 +153,6 @@ dlua: bin
 c-lua:
 	$(MAKE) -C c-implementation/src macosx
 
-benchmark: dlua c-lua
-	python3 benchmarks/bench.py
-	python3 benchmarks/regression.py
-	python3 benchmarks/datalog.py $(DATALOG_BENCH_ARGS)
-
-# Whole-process timings of the application-style programs in benchmarks/workloads/ (informational).
-benchmark-workloads: dlua c-lua
-	python3 benchmarks/workloads.py
-
-benchmark-datalog: dlua
-	python3 benchmarks/datalog.py $(DATALOG_BENCH_ARGS)
-
-# Deliberate calibration only; normal benchmark runs never update the baseline.
-benchmark-datalog-record: dlua
-	python3 benchmarks/datalog.py $(DATALOG_BENCH_ARGS) --record
-
-test-benchmarks:
-	python3 -m unittest discover -s benchmarks -p 'test_*.py'
 
 clean:
 	rm -rf $(BIN_DIR) *.o
@@ -192,8 +169,6 @@ test-regression-record: dlua c-lua
 test-regression-runner:
 	python3 -m unittest discover -s tests/regression -p 'test_*.py'
 
-benchmark-regression: dlua c-lua
-	python3 benchmarks/regression.py
 
 # Repository hygiene (see CONSOLIDATION_PLAN.md).
 hooks:
@@ -212,3 +187,18 @@ check-sources:
 
 # Fast gate used by the pre-push hook.
 check: fmt-check check-sources test-fast
+
+# Benchmarks (tools/suite, benchmarks/manifest.toml, benchmarks/targets.toml).
+bench: dlua c-lua
+	$(SUITE) bench
+
+# Enforce gates and floors; comparators (git refs) are built on demand under .cache/builds.
+bench-check: dlua c-lua
+	$(SUITE) bench --check
+
+# Record the current machine's results as a named baseline: make bench-record LABEL=name
+bench-record: dlua c-lua
+	$(SUITE) bench --record $(LABEL)
+
+# Everything a tag must pass: full tests and enforced performance targets.
+release: test bench-check
