@@ -1,0 +1,183 @@
+# Unified test manifest (see CONSOLIDATION_PLAN.md §3.2). Driven by `python3 tools/suite test`.
+# Suites expand globs into cases; `expect_count` guards against a glob silently matching fewer files.
+# Tiers (cumulative): smoke < fast < full < release.
+
+[[suite]]
+id = "unit"
+kind = "d-unit"
+tags = ["unit"]
+timeout = 600
+expect_count = 7
+cases = [
+  { id = "foundation", target = "test-foundation", tier = "smoke" },
+  { id = "parser", target = "test-frontend", tier = "smoke" },
+  { id = "vm", target = "test-vm", tier = "smoke" },
+  { id = "libs", target = "test-libs", tier = "fast" },
+  { id = "logic", target = "test-logic", tier = "fast" },
+  { id = "stateful", target = "test-stateful", tier = "fast" },
+  { id = "narrative", target = "test-narrative", tier = "fast" },
+]
+
+[[suite]]
+id = "acceptance"
+kind = "lua-ok"
+tier = "smoke"
+tags = ["datalog", "acceptance"]
+glob = "lua54_datalog_tests/positive/*.lua"
+expect_count = 12
+
+[[suite]]
+id = "rejection"
+kind = "lua-reject"
+tier = "smoke"
+tags = ["datalog", "acceptance", "negative"]
+glob = "lua54_datalog_tests/negative/*.lua"
+expect_count = 3
+
+[suite.override.13_unsafe_negation]
+expect = "variable '\\?x' in rule head is not bound"
+
+[suite.override.14_negation_cycle]
+expect = "negation cycle"
+
+[suite.override.15_relation_arity_mismatch]
+expect = "relation 'edge' expects arity 2, got 1"
+
+[[suite]]
+id = "scenario"
+kind = "golden"
+tags = ["datalog", "scenario"]
+glob = "tests/datalog/[0-9][0-9]_*.lua"
+expect_count = 38
+scales = { small = "fast", large = "full" }
+timeout = 120
+
+[[suite]]
+id = "gap"
+kind = "known-gap"
+tier = "fast"
+tags = ["datalog", "known-gap"]
+glob = "tests/datalog/known_gaps/*.lua"
+
+[[suite]]
+id = "extensions"
+kind = "extension"
+tier = "fast"
+tags = ["extensions"]
+glob = "tests/extensions/cases/*.lua"
+helpers = "tests/extensions/helpers.lua"
+expect_count = 55
+timeout = 300
+
+[suite.override.negative_unsafe_head]
+expect = "variable '\\?y' in rule head is not bound"
+
+[suite.override.negative_unsafe_negation]
+expect = "variable '\\?y' in negated atom is not bound"
+
+[suite.override.negative_unsafe_guard]
+expect = "variable '\\?y'.*(?:not bound|positive relation atom)"
+
+[suite.override.negative_unsafe_comparison]
+expect = "variable '\\?y' in comparison is not bound"
+
+[suite.override.negative_query_safety]
+expect = "variable '\\?x' in negated atom is not bound"
+
+[suite.override.negative_self_negation]
+expect = "negation cycle"
+
+[suite.override.negative_anonymous_head]
+expect = "anonymous variable.*rule head"
+
+[suite.override.negative_anonymous_guard]
+expect = "anonymous variable.*procedural guard"
+
+[[suite]]
+id = "regression"
+kind = "differential"
+tier = "fast"
+tags = ["core", "differential"]
+glob = "tests/regression/*.lua"
+exclude = ["harness.lua"]
+expected = "tests/regression/expected.json"
+expect_count = 18
+timeout = 60
+
+[suite.override.coroutines]
+tier = "smoke"
+
+[suite.override.errors]
+tier = "smoke"
+
+[suite.override.metamethods]
+tier = "smoke"
+
+[suite.override.strings]
+tier = "smoke"
+
+[suite.override.tables]
+tier = "smoke"
+
+[[suite]]
+id = "core"
+kind = "script"
+tier = "full"
+tags = ["core", "differential"]
+timeout = 60
+cases = [
+  { id = "differential", command = ["python3", "tests/official/differential.py"] },
+]
+
+[[suite]]
+id = "selftest"
+kind = "script"
+tier = "fast"
+tags = ["runner"]
+timeout = 300
+cases = [
+  { id = "benchmarks", command = ["python3", "-m", "unittest", "discover", "-s", "benchmarks", "-p", "test_*.py"] },
+  { id = "regression", command = ["python3", "-m", "unittest", "discover", "-s", "tests/regression", "-p", "test_*.py"] },
+  { id = "official", command = ["python3", "-m", "unittest", "discover", "-s", "tests/official", "-p", "test_*.py"] },
+  { id = "datalog", command = ["python3", "-m", "unittest", "discover", "-s", "tests/datalog", "-p", "test_*.py"] },
+  { id = "extensions", command = ["python3", "-m", "unittest", "discover", "-s", "tests/extensions", "-p", "test_*.py"] },
+  { id = "suite", command = ["python3", "-m", "unittest", "discover", "-s", "tools/suite/tests", "-p", "test_*.py"] },
+  { id = "manifest", command = ["python3", "tools/suite", "check"] },
+  { id = "traceability", command = ["python3", "tools/suite", "trace", "--verify"] },
+]
+
+[[suite]]
+id = "official"
+kind = "official"
+tier = "full"
+tags = ["official"]
+timeout = 1800
+expect_results = 33
+cases = [{ id = "all", file_timeout = 240 }]
+
+# Skips, partials and known gaps. Anything ending in these statuses must be listed here;
+# an entry whose case starts passing is reported as stale.
+[[ledger]]
+id = "official.gc"
+status = "skip"
+reason = "excluded by owner decision: exact reachability conflicts with D-accessible objects"
+
+[[ledger]]
+id = "official.all"
+status = "partial"
+reason = "suite driver runs in a scratch copy with gc.lua stubbed"
+
+[[ledger]]
+id = "gap.anonymous_in_comparison"
+status = "known-gap"
+reason = "documented spec deviation; see tests/datalog/known_gaps/anonymous_in_comparison.lua"
+
+[[ledger]]
+id = "gap.constant_left_comparison"
+status = "known-gap"
+reason = "documented spec deviation; see tests/datalog/known_gaps/constant_left_comparison.lua"
+
+[[ledger]]
+id = "gap.world_block_checks_entry"
+status = "known-gap"
+reason = "documented spec deviation; see tests/datalog/known_gaps/world_block_checks_entry.lua"

@@ -1,0 +1,224 @@
+# Requirement -> evidence map. Single source for tests/TRACEABILITY.md (`python3 tools/suite trace`).
+# Evidence is a suite case id, or `unit:<D test function>` in tests/unit.
+
+[[requirement]]
+id = "V1.1"
+spec = "LANGUAGE_EXTENSIONS.md §19.3 (v0.1 conformance)"
+title = "Grammar"
+evidence = ["extensions.contextual_syntax", "extensions.contextual_labels", "extensions.constant_single_evaluation", "extensions.zero_arity", "extensions.negative_unsafe_head", "extensions.negative_unsafe_negation", "extensions.negative_unsafe_guard", "extensions.negative_unsafe_comparison", "extensions.negative_query_safety", "extensions.negative_self_negation", "extensions.negative_anonymous_head", "extensions.negative_anonymous_guard"]
+
+[[requirement]]
+id = "V1.2"
+spec = "LANGUAGE_EXTENSIONS.md §19.3 (v0.1 conformance)"
+title = "Symbols and relational equality"
+evidence = ["extensions.symbols_binary", "extensions.numeric_boundaries", "extensions.numeric_infinities", "extensions.raw_identity", "extensions.nan_atomicity", "extensions.comparison_nan_constants"]
+
+[[requirement]]
+id = "V1.3"
+spec = "LANGUAGE_EXTENSIONS.md §19.3 (v0.1 conformance)"
+title = "Runtime facts and rules"
+evidence = ["extensions.runtime_registration", "extensions.rule_capture_constants", "extensions.arity_rollback", "extensions.rule_rollback", "extensions.rule_body_rollback", "extensions.base_derived_overlap"]
+
+[[requirement]]
+id = "V1.4"
+spec = "LANGUAGE_EXTENSIONS.md §19.3 (v0.1 conformance)"
+title = "Safety and stratified negation"
+evidence = ["extensions.negative_unsafe_head", "extensions.negative_unsafe_negation", "extensions.negative_unsafe_guard", "extensions.negative_unsafe_comparison", "extensions.negative_query_safety", "extensions.negative_self_negation", "extensions.negative_anonymous_head", "extensions.negative_anonymous_guard", "extensions.ownership", "extensions.negation_cycle_rollback", "extensions.query_safety_order", "extensions.negation_mutation"]
+
+[[requirement]]
+id = "V1.5"
+spec = "LANGUAGE_EXTENSIONS.md §19.3 (v0.1 conformance)"
+title = "Least fixed point"
+evidence = ["extensions.recursive_graph_oracle", "extensions.chain_retraction_stress", "extensions.join_projection_stress", "extensions.negation_mutation", "extensions.unrelated_guard_dependency", "extensions.mutation_snapshot_oracle"]
+
+[[requirement]]
+id = "V1.6"
+spec = "LANGUAGE_EXTENSIONS.md §19.3 (v0.1 conformance)"
+title = "Independent snapshot worlds"
+evidence = ["extensions.world_inheritance_stress", "extensions.worlds_nested_closures", "extensions.ownership", "extensions.unknown_world_errors"]
+
+[[requirement]]
+id = "V1.7"
+spec = "LANGUAGE_EXTENSIONS.md §19.3 (v0.1 conformance)"
+title = "Lexically scoped recursive locals"
+evidence = ["extensions.local_gc_isolation", "extensions.lexical_shadow_resolution"]
+
+[[requirement]]
+id = "V1.8"
+spec = "LANGUAGE_EXTENSIONS.md §19.3 (v0.1 conformance)"
+title = "Snapshot iterators and sets"
+evidence = ["extensions.projection_nil", "extensions.zero_arity", "extensions.coroutine_snapshot", "extensions.chain_retraction_stress", "extensions.mutation_snapshot_oracle", "extensions.guard_errors_lazy"]
+
+[[requirement]]
+id = "V1.9"
+spec = "LANGUAGE_EXTENSIONS.md §19.3 (v0.1 conformance)"
+title = "Lua scoping, calls and errors"
+evidence = ["extensions.constant_single_evaluation", "extensions.guard_capture_truthiness", "extensions.guard_yield_restore", "extensions.guard_errors_lazy", "extensions.contextual_syntax", "extensions.worlds_nested_closures", "extensions.rule_capture_constants"]
+
+[[requirement]]
+id = "C2.2"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Column uniqueness, immutable schemas, raw-equality keys, extensional heads, inheritance \u00a7\u00a72.1\u20132.2"
+evidence = ["unit:testKeyIndexes", "extensions.keyed_relations"]
+
+[[requirement]]
+id = "C2.3"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Atomic set/delete/adjust, key order, arity, constraints, no-ops, snapshots \u00a7\u00a72.3\u20132.5"
+evidence = ["unit:testKeyIndexes", "extensions.keyed_relations", "extensions.qualities"]
+
+[[requirement]]
+id = "C2.4"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Transactions: selected world, rollback, savepoints, errors, non-error exits \u00a7\u00a73.1\u20133.2"
+evidence = ["unit:testCleanup", "extensions.transactions", "extensions.transaction_worlds_and_control"]
+
+[[requirement]]
+id = "C2.5"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Tentative reads, committed coroutine reads, locks, iterator validity, forbidden operations \u00a7\u00a73.3\u20133.5"
+evidence = ["unit:testTentativeSnapshots", "extensions.transaction_coroutines", "extensions.transaction_snapshot_stress", "extensions.narrative_effect_errors"]
+
+[[requirement]]
+id = "C2.6"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Aggregates: count/sum/min/max, local assignments, empty/error semantics, strata \u00a7\u00a74.1\u20134.3"
+evidence = ["extensions.aggregates", "unit:testPersistenceRejections"]
+
+[[requirement]]
+id = "C2.7"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Sealed state registry, kind-scoped ids, independent sessions \u00a75"
+evidence = ["unit:testRegistryFailures", "unit:testCompanionErrors", "unit:testSessions", "unit:testDeterminismAndBudgets", "extensions.narrative_registry", "extensions.narrative_effect_errors"]
+
+[[requirement]]
+id = "C2.8"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Frozen fields, canonical instances, cooldown/repeatability \u00a76"
+evidence = ["unit:testCompanionErrors", "unit:testCompiledContexts", "unit:testDeterminismAndBudgets", "extensions.narrative_policies", "extensions.narrative_registry"]
+
+[[requirement]]
+id = "C2.9"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Immutable lexical parameters, tokens, revalidation, atomic effects \u00a77"
+evidence = ["unit:testCompiledContexts", "unit:testSessions", "unit:testQualities", "extensions.narrative_effect_errors", "extensions.narrative_policies"]
+
+[[requirement]]
+id = "C2.10"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Phases, priority ordering, reevaluation, policies, action budgets \u00a78"
+evidence = ["unit:testActionsAndEvents", "unit:testDeterminismAndBudgets", "unit:testExplanations", "extensions.narrative_scheduler_stress"]
+
+[[requirement]]
+id = "C2.11"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Deck tiers, weights, seeded draws, histories, reset \u00a79"
+evidence = ["unit:testSessions", "unit:testDeterminismAndBudgets", "extensions.narrative_policies", "extensions.narrative_effect_errors", "extensions.narrative_scheduler_stress"]
+
+[[requirement]]
+id = "C2.12"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Templates: placeholders, conditionals, readonly rendering \u00a710"
+evidence = ["unit:testCompiledContexts", "unit:testExplanations", "extensions.narrative_registry"]
+
+[[requirement]]
+id = "C2.13"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Qualities: metadata, initialization, bounds, lexical defaults \u00a711"
+evidence = ["unit:testQualities", "extensions.qualities", "extensions.narrative_scheduler_stress"]
+
+[[requirement]]
+id = "C2.14"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Events: sequencing, due ordering, chains, handler budgets, deferral \u00a712"
+evidence = ["unit:testSessions", "unit:testActionsAndEvents", "unit:testDeterminismAndBudgets", "extensions.narrative_scheduler_stress"]
+
+[[requirement]]
+id = "C2.15"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Persistence: idle saves, portable values, reconstruction, migrations, atomic loads, replay \u00a713"
+evidence = ["unit:testCodec", "unit:testPortableSessions", "unit:testPersistenceRejections", "extensions.narrative_scheduler_stress"]
+
+[[requirement]]
+id = "C2.16"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Subscriptions: committed deltas, dispatch, callback restrictions \u00a714.1"
+evidence = ["unit:testObservers"]
+
+[[requirement]]
+id = "C2.17"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Explanations \u00a714.2"
+evidence = ["unit:testExplanations"]
+
+[[requirement]]
+id = "C2.18"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Bounded choice analysis \u00a714.3"
+evidence = ["unit:testAnalysis"]
+
+[[requirement]]
+id = "C2.19"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Added forms and contextual identifiers \u00a715"
+evidence = ["extensions.keyed_relations", "extensions.narrative_effect_errors", "extensions.contextual_syntax", "extensions.contextual_labels"]
+
+[[requirement]]
+id = "C2.20"
+spec = "LANGUAGE_EXTENSIONS2.md companion requirements"
+title = "Display formatters and weighted text variants"
+evidence = ["unit:testFormattersAndVariants"]
+
+[[requirement]]
+id = "C2.E1"
+spec = "LANGUAGE_EXTENSIONS2.md §16 required rejections"
+title = "Conflicting key declaration, duplicate columns, keyed rule head"
+evidence = ["extensions.keyed_relations", "unit:testKeyIndexes"]
+
+[[requirement]]
+id = "C2.E2"
+spec = "LANGUAGE_EXTENSIONS2.md §16 required rejections"
+title = "Conflicting fact insertion"
+evidence = ["extensions.keyed_relations", "unit:testKeyIndexes"]
+
+[[requirement]]
+id = "C2.E3"
+spec = "LANGUAGE_EXTENSIONS2.md §16 required rejections"
+title = "Invalid update arity/relation/key/value"
+evidence = ["extensions.keyed_relations", "extensions.qualities"]
+
+[[requirement]]
+id = "C2.E4"
+spec = "LANGUAGE_EXTENSIONS2.md §16 required rejections"
+title = "Absent or nonnumeric adjustment"
+evidence = ["extensions.keyed_relations"]
+
+[[requirement]]
+id = "C2.E5"
+spec = "LANGUAGE_EXTENSIONS2.md §16 required rejections"
+title = "Cross-world, nested, registration and yield errors"
+evidence = ["extensions.transaction_worlds_and_control", "extensions.transactions", "extensions.transaction_coroutines", "extensions.guard_yield_restore", "extensions.narrative_effect_errors"]
+
+[[requirement]]
+id = "C2.E6"
+spec = "LANGUAGE_EXTENSIONS2.md §16 required rejections"
+title = "Unbound parameters and nonportable instance keys"
+evidence = ["unit:testRegistryFailures", "unit:testCompanionErrors"]
+
+[[requirement]]
+id = "C2.E7"
+spec = "LANGUAGE_EXTENSIONS2.md §16 required rejections"
+title = "Duplicate content, unknown deck/placeholder, invalid options"
+evidence = ["unit:testRegistryFailures", "unit:testCompanionErrors", "extensions.narrative_registry"]
+
+[[requirement]]
+id = "C2.E8"
+spec = "LANGUAGE_EXTENSIONS2.md §16 required rejections"
+title = "Stale tokens, action limit, invalid effects"
+evidence = ["unit:testSessions", "unit:testDeterminismAndBudgets", "unit:testActionsAndEvents", "extensions.narrative_policies", "extensions.narrative_effect_errors"]
+
+[[requirement]]
+id = "C2.E9"
+spec = "LANGUAGE_EXTENSIONS2.md §16 required rejections"
+title = "Unsupported saves, runtime-rule reconstruction, version/schema mismatch"
+evidence = ["unit:testCodec", "unit:testPortableSessions", "unit:testPersistenceRejections"]

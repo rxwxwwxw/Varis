@@ -77,7 +77,7 @@ define unit_test
 	$(RUN_TEST) ./$(BUILD_DIR)/debug/$(1)
 endef
 
-.PHONY: dlua-checked all check hooks fmt fmt-check check-sources test test-regression test-regression-record test-regression-runner benchmark-regression test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner dlua c-lua benchmark benchmark-workloads benchmark-datalog benchmark-datalog-record test-benchmarks clean
+.PHONY: suite-deps test-smoke test-fast test-legacy dlua-checked all check hooks fmt fmt-check check-sources test test-regression test-regression-record test-regression-runner benchmark-regression test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner dlua c-lua benchmark benchmark-workloads benchmark-datalog benchmark-datalog-record test-benchmarks clean
 
 all: test dlua
 
@@ -131,7 +131,21 @@ test-official-runner: test-runner
 test-conformance-core: dlua c-lua
 	python3 tests/official/differential.py
 
-test: test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-benchmarks test-official-runner test-regression-runner
+# The unified driver (tools/suite, tests/manifest.toml) is the single test entry point.
+SUITE = python3 tools/suite
+suite-deps: dlua c-lua test-runner $(DEBUG_STAMP)
+
+test-smoke: suite-deps
+	$(SUITE) test --tier smoke -q
+
+test-fast: suite-deps
+	$(SUITE) test --tier fast -q
+
+test: suite-deps
+	$(SUITE) test --tier full -q
+
+# The previous per-suite targets, retained until the unified driver has been trusted for a release cycle.
+test-legacy: test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-benchmarks test-official-runner test-regression-runner
 
 # Optimized build with assertions enabled (no -release): the "checked" validation profile.
 dlua-checked: $(SRC_FILES) source/dlua/cli.d
@@ -196,5 +210,5 @@ fmt-check:
 check-sources:
 	python3 tools/check_sources.py
 
-# Fast gate used by the pre-push hook; becomes `suite test --tier fast` in Phase 2.
-check: fmt-check check-sources test
+# Fast gate used by the pre-push hook.
+check: fmt-check check-sources test-fast
