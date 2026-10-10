@@ -48,86 +48,61 @@ SRC_FILES = source/varis/package.d \
             source/varis/lib/narrative.d source/varis/lib/quality.d \
             source/varis/lib/logic.d
 
-# Test runner timeout (in seconds, default 5 minutes)
+# Per-test timeout for a unit executable (seconds).
 TIMEOUT ?= 300
-DATALOG_TIMEOUT ?= 300
-EXTENSIONS_TIMEOUT ?= 300
-SCENARIOS_TIMEOUT ?= 120
 RUN_TEST = python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=$(TIMEOUT)).returncode)"
 
 BIN_DIR = bin
 BUILD_DIR = build
 DEBUG_OBJ_DIR = $(BUILD_DIR)/debug/obj
 DEBUG_STAMP = $(DEBUG_OBJ_DIR)/.built
+SUITE = python3 tools/suite
 
-# Unit tests link one shared, once-compiled object set instead of recompiling every module per test.
-$(DEBUG_STAMP): $(SRC_FILES)
-	mkdir -p $(DEBUG_OBJ_DIR)
-	$(DC) -c -Isource -g -oq -od=$(DEBUG_OBJ_DIR) $(SRC_FILES)
-	touch $@
-
-# $(call unit_test,name)
-define unit_test
-	$(DC) $(DFLAGS) $(DEBUG_OBJ_DIR)/*.o tests/unit/$(1).d -of=$(BUILD_DIR)/debug/$(1)
-	$(RUN_TEST) ./$(BUILD_DIR)/debug/$(1)
-endef
-
-.PHONY: bench bench-check bench-record release suite-deps test-smoke test-fast test-legacy varis-checked all check hooks fmt fmt-check check-sources test test-regression test-regression-record test-regression-runner test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner varis c-lua clean
+.PHONY: all varis varis-checked c-lua clean \
+        test test-smoke test-fast suite-deps unit-test test-runner test-regression-record \
+        bench bench-check bench-record release \
+        hooks fmt fmt-check check-sources check
 
 all: test varis
 
 bin:
 	mkdir -p $(BIN_DIR)
 
-test-foundation: $(DEBUG_STAMP)
-	$(call unit_test,test_foundation)
+# ---- Builds ---------------------------------------------------------------------------------
 
-test-frontend: $(DEBUG_STAMP)
-	$(call unit_test,test_parser)
+# Optimized release CLI.
+varis: bin
+	$(DC) -Isource -O3 -release $(EXPORT_DYNAMIC) $(SRC_FILES) source/varis/cli.d -of=$(BIN_DIR)/varis
 
-test-vm: $(DEBUG_STAMP)
-	$(call unit_test,test_vm)
+# Optimized with assertions enabled (no -release): the "checked" validation profile.
+varis-checked: $(SRC_FILES) source/varis/cli.d
+	mkdir -p $(BUILD_DIR)/checked
+	$(DC) -Isource -O3 $(EXPORT_DYNAMIC) $(SRC_FILES) source/varis/cli.d -of=$(BUILD_DIR)/checked/varis
 
-test-libs: $(DEBUG_STAMP)
-	$(call unit_test,test_libs)
+# Reference interpreter (stock Lua 5.4.9, -O2).
+c-lua:
+	$(MAKE) -C c-implementation/src macosx
 
-test-logic: $(DEBUG_STAMP)
-	$(call unit_test,test_logic)
+# Unit tests link one shared, once-compiled object set instead of recompiling every module.
+$(DEBUG_STAMP): $(SRC_FILES)
+	mkdir -p $(DEBUG_OBJ_DIR)
+	$(DC) -c -Isource -g -oq -od=$(DEBUG_OBJ_DIR) $(SRC_FILES)
+	touch $@
 
-test-stateful: $(DEBUG_STAMP)
-	$(call unit_test,test_stateful)
+# Build and run one D unit group: make unit-test UNIT=test_vm [ARGS=testName]
+unit-test: $(DEBUG_STAMP)
+	$(DC) $(DFLAGS) -I. -unittest $(DEBUG_OBJ_DIR)/*.o tests/unit/$(UNIT).d -of=$(BUILD_DIR)/debug/$(UNIT)
+	$(RUN_TEST) ./$(BUILD_DIR)/debug/$(UNIT) $(ARGS)
 
-test-narrative: $(DEBUG_STAMP)
-	$(call unit_test,test_narrative)
-
-test-datalog: varis
-	TEST_TIMEOUT=$(DATALOG_TIMEOUT) sh lua54_datalog_tests/run-tests.sh ./$(BIN_DIR)/varis
-
-# Self-checking Datalog scenario programs (tests/datalog/README.md): golden
-# output at a hand-checkable and at a benchmark scale, plus visible known gaps.
-test-scenarios: varis
-	python3 -m unittest discover -s tests/datalog -p 'test_*.py'
-	python3 tests/datalog/run.py --binary ./$(BIN_DIR)/varis --timeout $(SCENARIOS_TIMEOUT)
-
-test-extensions: varis
-	$(RUN_TEST) python3 tests/extensions/test_runner.py
-	python3 tests/extensions/run-tests.py ./$(BIN_DIR)/varis --timeout $(EXTENSIONS_TIMEOUT)
-
+# Official-suite runner (D) used by the `official` cases.
 test-runner: bin
 	$(DC) $(DFLAGS) tests/runner.d -of=$(BIN_DIR)/test_runner
 
-test-official: varis test-runner
-	./$(BIN_DIR)/test_runner --strict
+clean:
+	rm -rf $(BIN_DIR) $(BUILD_DIR) *.o
 
-test-official-runner: test-runner
-	python3 -m unittest discover -s tests/official -p 'test_*.py'
+# ---- Tests: tools/suite + tests/manifest.toml is the single entry point ------------------------
 
-.PHONY: test-conformance-core
-test-conformance-core: varis c-lua
-	python3 tests/official/differential.py
-
-# The unified driver (tools/suite, tests/manifest.toml) is the single test entry point.
-SUITE = python3 tools/suite
 suite-deps: varis c-lua test-runner $(DEBUG_STAMP)
 
 test-smoke: suite-deps
@@ -139,38 +114,28 @@ test-fast: suite-deps
 test: suite-deps
 	$(SUITE) test --tier full -q
 
-# The previous per-suite targets, retained until the unified driver has been trusted for a release cycle.
-test-legacy: test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-official-runner test-regression-runner
-
-# Optimized build with assertions enabled (no -release): the "checked" validation profile.
-varis-checked: $(SRC_FILES) source/varis/cli.d
-	mkdir -p $(BUILD_DIR)/checked
-	$(DC) -Isource -O3 $(EXPORT_DYNAMIC) $(SRC_FILES) source/varis/cli.d -of=$(BUILD_DIR)/checked/varis
-
-varis: bin
-	$(DC) -Isource -O3 -release $(EXPORT_DYNAMIC) $(SRC_FILES) source/varis/cli.d -of=$(BIN_DIR)/varis
-
-c-lua:
-	$(MAKE) -C c-implementation/src macosx
-
-
-clean:
-	rm -rf $(BIN_DIR) *.o
-
-# Differential regression programs: byte-identical output and checksums against C Lua.
-test-regression: varis c-lua
-	python3 tests/regression/run.py
-
 # Deliberate: rewrites tests/regression/expected.json from the current outputs.
 test-regression-record: varis c-lua
 	python3 tests/regression/run.py --record
 
-# Unit tests of the regression runner itself (no interpreters needed).
-test-regression-runner:
-	python3 -m unittest discover -s tests/regression -p 'test_*.py'
+# ---- Benchmarks (benchmarks/manifest.toml, benchmarks/targets.toml) ------------------------------
 
+bench: varis c-lua
+	$(SUITE) bench
 
-# Repository hygiene (see CONSOLIDATION_PLAN.md).
+# Enforce gates and floors; comparators (git refs) are built on demand under .cache/builds.
+bench-check: varis c-lua
+	$(SUITE) bench --check
+
+# Record the current machine's results as a named baseline: make bench-record LABEL=name
+bench-record: varis c-lua
+	$(SUITE) bench --record $(LABEL)
+
+# Everything a tag must pass: full tests and enforced performance targets.
+release: test bench-check
+
+# ---- Repository hygiene ------------------------------------------------------------------------
+
 hooks:
 	git config core.hooksPath .githooks
 	git config blame.ignoreRevsFile .git-blame-ignore-revs
@@ -187,18 +152,3 @@ check-sources:
 
 # Fast gate used by the pre-push hook.
 check: fmt-check check-sources test-fast
-
-# Benchmarks (tools/suite, benchmarks/manifest.toml, benchmarks/targets.toml).
-bench: varis c-lua
-	$(SUITE) bench
-
-# Enforce gates and floors; comparators (git refs) are built on demand under .cache/builds.
-bench-check: varis c-lua
-	$(SUITE) bench --check
-
-# Record the current machine's results as a named baseline: make bench-record LABEL=name
-bench-record: varis c-lua
-	$(SUITE) bench --record $(LABEL)
-
-# Everything a tag must pass: full tests and enforced performance targets.
-release: test bench-check

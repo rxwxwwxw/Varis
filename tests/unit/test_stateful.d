@@ -13,6 +13,7 @@ import varis;
 import varis.logic.model;
 import varis.logic.world;
 import varis.logic.query;
+import tests.unit.unit_runner : UnitMain;
 import std.stdio : writeln;
 
 void rejects(void delegate() operation, string diagnostic) {
@@ -28,7 +29,7 @@ void rejects(void delegate() operation, string diagnostic) {
     assert(rejected, "expected rejection: " ~ diagnostic);
 }
 
-void testKeyIndexes() {
+@("testKeyIndexes") unittest {
     auto w = new World();
     auto r = w.declareNamedRelation("score", ["value", "entity", "name"], ["name", "entity"]);
     auto tuple = RelTuple([LuaValue(1L), luaNil(), LuaValue("coins")]);
@@ -62,7 +63,7 @@ void testKeyIndexes() {
     writeln("  [PASS] keyed indexes, versions, schemas and numeric arithmetic");
 }
 
-void testTentativeSnapshots() {
+@("testTentativeSnapshots") unittest {
     auto s = new LuaState();
     auto w = s.globalWorld;
     auto r = w.declareNamedRelation("value", ["entity", "n"], ["entity"]);
@@ -96,7 +97,7 @@ void testTentativeSnapshots() {
     writeln("  [PASS] tentative snapshots, commit versions and rollback invalidation");
 }
 
-void testCleanup() {
+@("testCleanup") unittest {
     auto s = new LuaState();
     openLibs(s);
     s.doString(q"{
@@ -149,10 +150,4 @@ void testCleanup() {
     writeln("  [PASS] VM return/error cleanup and rollback context");
 }
 
-int main() {
-    writeln("Running varis Stateful Extension Unit Tests...");
-    testKeyIndexes();
-    testTentativeSnapshots();
-    testCleanup();
-    return 0;
-}
+mixin UnitMain;

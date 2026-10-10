@@ -18,6 +18,7 @@ import varis.narrative.session;
 import varis.logic.world;
 import varis.logic.model;
 import varis.vm;
+import tests.unit.unit_runner : UnitMain;
 import std.stdio : writeln;
 import std.json;
 
@@ -34,7 +35,7 @@ void rejects(void delegate() operation, string message) {
     assert(rejected, message);
 }
 
-void testCodec() {
+@("testCodec") unittest {
     LuaValue[] values = [
         luaNil(), LuaValue(true), LuaValue(long.max), LuaValue(long.min), LuaValue(1.25),
         LuaValue(1.0), LuaValue(-0.0), LuaValue("binary\0value"), LuaValue(Symbol("binary\0symbol"))
@@ -57,7 +58,7 @@ void testCodec() {
     writeln("  [PASS] canonical scalar identities and portable immutable codec");
 }
 
-void testRegistryFailures() {
+@("testRegistryFailures") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -121,7 +122,7 @@ void testRegistryFailures() {
     writeln("  [PASS] sealing validation and read-only effect parameters");
 }
 
-void testCompanionErrors() {
+@("testCompanionErrors") unittest {
     struct Failure {
         string source;
         string message;
@@ -163,7 +164,7 @@ void testCompanionErrors() {
     writeln("  [PASS] companion content/parameter/option error diagnostics");
 }
 
-void testCompiledContexts() {
+@("testCompiledContexts") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -206,7 +207,7 @@ void testCompiledContexts() {
     writeln("  [PASS] narrative session-world contexts and correlated choice bindings");
 }
 
-void testSessions() {
+@("testSessions") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -273,7 +274,7 @@ void testSessions() {
     writeln("  [PASS] session choices, deck draws, atomic rollback, events and stale tokens");
 }
 
-void testActionsAndEvents() {
+@("testActionsAndEvents") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -345,7 +346,7 @@ void testActionsAndEvents() {
     writeln("  [PASS] action scheduling, nested narrative savepoints, due events and action limits");
 }
 
-void testDeterminismAndBudgets() {
+@("testDeterminismAndBudgets") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -429,7 +430,7 @@ void testDeterminismAndBudgets() {
     writeln("  [PASS] independent deterministic sessions, scheduled-event budgets and post-commit errors");
 }
 
-void testQualities() {
+@("testQualities") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -518,7 +519,7 @@ private string stringValueForTest(JSONValue value) {
     return decodeValue(value).match!((string s) => s, _ => "");
 }
 
-void testPortableSessions() {
+@("testPortableSessions") unittest {
     enum authored = q"{
         quality.define(:coins, {initial = 0, minimum = 0, maximum = 1000})
         narrative.on(:later, function(world, kind, args)
@@ -676,7 +677,7 @@ void testPortableSessions() {
     writeln("  [PASS] portable session roundtrips, authored programs, cross-state replay and atomic load rejection");
 }
 
-void testPersistenceRejections() {
+@("testPersistenceRejections") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -766,7 +767,7 @@ void testPersistenceRejections() {
     writeln("  [PASS] active-save restrictions, unsupported runtime closures, anonymous aggregate reconstruction and explicit migration");
 }
 
-void testObservers() {
+@("testObservers") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -891,7 +892,7 @@ void testObservers() {
     writeln("  [PASS] committed base/derived observer deltas, canonical order, rollback, cancellation, callback isolation and queued budgets");
 }
 
-void testExplanations() {
+@("testExplanations") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -984,7 +985,7 @@ void testExplanations() {
             "  [PASS] structured goal explanations, policy exclusions, explicit nil bindings and logical/session/RNG purity");
 }
 
-void testAnalysis() {
+@("testAnalysis") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -1103,7 +1104,7 @@ void testAnalysis() {
     writeln("  [PASS] bounded choice analysis, deep Lua alias/capture isolation, dead ends, cycle candidates, budgets and blocked external effects");
 }
 
-void testFormattersAndVariants() {
+@("testFormattersAndVariants") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -1186,21 +1187,4 @@ void testFormattersAndVariants() {
     writeln("  [PASS] custom display formatters, template weighted variants and deterministic presentation");
 }
 
-int main() {
-    writeln("Running varis Narrative Extension Tests...");
-    testCodec();
-    testRegistryFailures();
-    testCompanionErrors();
-    testCompiledContexts();
-    testSessions();
-    testActionsAndEvents();
-    testDeterminismAndBudgets();
-    testQualities();
-    testPortableSessions();
-    testPersistenceRejections();
-    testObservers();
-    testExplanations();
-    testAnalysis();
-    testFormattersAndVariants();
-    return 0;
-}
+mixin UnitMain;

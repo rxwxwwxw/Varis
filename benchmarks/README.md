@@ -58,3 +58,19 @@ Run on an otherwise idle machine. Ratios are portable between machines; absolute
 and are never enforced. `history/2026-10-09-perf/` holds the pre-suite experiment records
 (including the old suite-level Datalog baseline); they are informational only.
 [PERFORMANCE_WORK.md](PERFORMANCE_WORK.md) records the optimization work itself.
+
+## Acceptance check: a synthetic slowdown trips exactly the expected gates
+
+Recorded 2026-10-10 (plan Phase 3 done-criterion). A scratch worktree of `main` was built with
+three atomic additions injected into the `ForLoop` handler of the interpreter loop (about 3.7× on
+`for` loops), then run as `python3 tools/suite bench --check --group core --candidate <that build>`:
+
+| Workload | Candidate / C Lua | Candidate / `v1-perf-final` | Result |
+| --- | --- | --- | --- |
+| `core.numeric_loop` | 5.34× | 3.33× | **GATE** clua, **GATE** v1, **FLOOR** v0 |
+| `core.array_access` | 3.58× | 1.96× | **GATE** clua, **GATE** v1, **FLOOR** v0 |
+| `core.sieve` | 3.29× | 2.45× | **GATE** clua, **GATE** v1, **FLOOR** v0 |
+| the other 12 core workloads (no numeric `for` loop on their hot path) | unchanged | 0.99–1.03× | pass |
+
+Exit status was non-zero and named exactly those three workloads. A milder +11 % injection on
+`numeric_loop` stayed inside its 1.20× gate, which is the intended headroom, not a miss.

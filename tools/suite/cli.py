@@ -51,7 +51,8 @@ def cmd_test(args):
     # Suites that expand to many results are verified against their declared counts.
     results = R.apply_ledger(raw, ledger)
     for suite in manifest.get("suite", []):
-        if "expect_results" in suite and (not args.filter) and suite["id"] in {c.suite for c in sel}:
+        whole = sum(1 for c in cases if c.suite == suite["id"]) == sum(1 for c in sel if c.suite == suite["id"])
+        if "expect_results" in suite and whole and suite["id"] in {c.suite for c in sel}:
             got = sum(1 for r in results if r.suite == suite["id"])
             if got != suite["expect_results"]:
                 results.append(M.Result(f"{suite['id']}.count", suite["id"], M.FAIL, 0,
@@ -97,7 +98,7 @@ def cmd_trace(args):
         ev = []
         for e in r.get("evidence", []):
             if e.startswith("unit:"):
-                ok = re.search(r"\b" + re.escape(e[5:]) + r"\s*\(", unit_src) is not None
+                ok = re.search(r'@\("' + re.escape(e[5:]) + r'"\)', unit_src) is not None
             else:
                 ok = e in ids
             ev.append((e, ok))

@@ -8,14 +8,15 @@ kind = "d-unit"
 tags = ["unit"]
 timeout = 600
 expect_count = 7
+expect_results = 53
 cases = [
-  { id = "foundation", target = "test-foundation", tier = "smoke" },
-  { id = "parser", target = "test-frontend", tier = "smoke" },
-  { id = "vm", target = "test-vm", tier = "smoke" },
-  { id = "libs", target = "test-libs", tier = "fast" },
-  { id = "logic", target = "test-logic", tier = "fast" },
-  { id = "stateful", target = "test-stateful", tier = "fast" },
-  { id = "narrative", target = "test-narrative", tier = "fast" },
+  { id = "foundation", unit = "test_foundation", tier = "smoke" },
+  { id = "parser", unit = "test_parser", tier = "smoke" },
+  { id = "vm", unit = "test_vm", tier = "smoke" },
+  { id = "libs", unit = "test_libs", tier = "fast" },
+  { id = "logic", unit = "test_logic", tier = "fast" },
+  { id = "stateful", unit = "test_stateful", tier = "fast" },
+  { id = "narrative", unit = "test_narrative", tier = "fast" },
 ]
 
 [[suite]]
@@ -23,7 +24,7 @@ id = "acceptance"
 kind = "lua-ok"
 tier = "smoke"
 tags = ["datalog", "acceptance"]
-glob = "lua54_datalog_tests/positive/*.lua"
+glob = "tests/datalog/acceptance/positive/*.lua"
 expect_count = 12
 
 [[suite]]
@@ -31,7 +32,7 @@ id = "rejection"
 kind = "lua-reject"
 tier = "smoke"
 tags = ["datalog", "acceptance", "negative"]
-glob = "lua54_datalog_tests/negative/*.lua"
+glob = "tests/datalog/acceptance/negative/*.lua"
 expect_count = 3
 
 [suite.override.13_unsafe_negation]
@@ -152,7 +153,7 @@ tier = "full"
 tags = ["official"]
 timeout = 1800
 expect_results = 33
-cases = [{ id = "all", file_timeout = 240 }]
+cases = [{ id = "all", file_timeout = 100 }]
 
 # Skips, partials and known gaps. Anything ending in these statuses must be listed here;
 # an entry whose case starts passing is reported as stale.

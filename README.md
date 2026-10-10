@@ -84,7 +84,7 @@ varis/
 ├── LANGUAGE_EXTENSIONS2.md      # Redirect to the Varis reference
 ├── LANGUAGE_EXTENSIONS_PLAN.md  # Base and companion milestones and validation criteria
 ├── LICENSE                      # MIT License (Lua 5.4 PUC-Rio + varis)
-├── lua54_datalog_tests/          # Base declarative extension acceptance tests
+├── tests/datalog/acceptance/          # Base declarative extension acceptance tests
 │   ├── README.md                # Coverage and runner limitations
 │   ├── run-tests.sh             # Runs an extended interpreter against the suite
 │   ├── positive/                # 12 programs expected to succeed

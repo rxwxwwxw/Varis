@@ -125,7 +125,7 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 | [`source/varis/logic/query.d`](source/varis/logic/query.d) | ✅ Phase 6 | Snapshot iterators, projection, immutable binding records |
 | [`source/varis/lib/logic.d`](source/varis/lib/logic.d) | ✅ Phase 6 | Required `logic` library and global `symbol` |
 | [`tests/unit/test_logic.d`](tests/unit/test_logic.d) | ✅ Phase 6 | Direct engine and integration tests |
-| `lua54_datalog_tests/` | ✅ Phase 6 | 12 positive programs, 3 negative validation cases, shell runner |
+| `tests/datalog/acceptance/` | ✅ Phase 6 | 12 positive programs, 3 negative validation cases, shell runner |
 | `tests/datalog/` | ✅ Phase 6 | 19 self-checking scenario programs (spec §2–§17) usable as benchmarks, golden output at two scales, `known_gaps/` for documented spec deviations; timed by `make benchmark-datalog` ("scenarios" suite) |
 
 ---
@@ -219,7 +219,7 @@ baselines; do not reset baselines to conceal regressions.
 4. **Strings**: Lua strings can contain arbitrary binary bytes (including `\0`). While D `string` is UTF-8 immutable, treat strings as binary-safe byte slices when implementing standard library operations.
 5. **No `cd` in tool commands**: Always set `Cwd` when running shell commands.
 6. **Compiler**: Target `ldc2` (located at `/opt/homebrew/bin/ldc2` on Apple Silicon). Use `make test` or `make <target>`.
-7. **Extension tests**: Treat `lua54_datalog_tests/` as base-language acceptance examples, not proof of full conformance or companion support. Compare unordered result sets. The shell runner now requires intended negative-case diagnostics and rejects crashes, timeouts and fallback errors; preserve and extend those checks. The examples permit compilation-time rejection, but implementation must still honor runtime registration, capture, and atomicity semantics from the specification.
+7. **Extension tests**: Treat `tests/datalog/acceptance/` as base-language acceptance examples, not proof of full conformance or companion support. Compare unordered result sets. The shell runner now requires intended negative-case diagnostics and rejects crashes, timeouts and fallback errors; preserve and extend those checks. The examples permit compilation-time rejection, but implementation must still honor runtime registration, capture, and atomicity semantics from the specification.
 8. **Conformance coverage**: Supplement the examples with tests for numeric boundaries, NaN, raw reference equality, binary symbol names, contextual syntax, qualified ownership failures, failed-operation rollback, lexical closure capture, guard errors/yields, coroutine snapshots, and invalid iterator reuse. Map all nine v0.1 conformance requirements to executable coverage and report unsupported official Lua harness tests as skips.
 
 9. **Companion coverage**: Map [Varis rejection requirements](docs/compatibility.md#95--error-categories) (historical companion §16; see docs/coverage.md) to tests for key conflicts, transaction/savepoint/control-flow rollback, tentative snapshots, yields, stale choices, parameter binding, deterministic draws, action/event budgets, quality constraints, and save/version failures. Compare unordered relational sets and canonical narrative sequences. Keep optional aggregates/subscriptions/analysis separately identified; proposed tests and targets are not existing support.
@@ -254,6 +254,24 @@ make check           # pre-push gate
 # previous full run (`make test-legacy`) remain available.
 make clean
 ```
+
+### Git workflow
+
+The project is a git repository (`main`). History begins with two reconstructed import commits,
+tagged `baseline/v0-snapshot` (the 2026-10-09 pre-optimization tree) and `baseline/v1-perf-final`;
+benchmark comparators are built from these tags, so never move or delete them.
+
+- Run `make hooks` once per clone. Pre-commit rejects non-dfmt-clean `.d` files, missing license
+  headers, source modules absent from the Makefile list, build outputs and blobs over 1 MiB;
+  commit-msg demands a `Perf-Regression-Accepted:` / `Skip-Accepted:` trailer when targets or the
+  ledger are loosened; pre-push runs `make check` (format, source list, fast tier).
+- Formatting is dfmt (`.editorconfig`); `make fmt` is idempotent. Mechanical sweeps (formatting,
+  renames) go in their own commit and are added to `.git-blame-ignore-revs`.
+- Keep commits focused: behaviour changes with their tests; do not mix them with reformatting.
+- Build outputs live in `bin/`, `build/` and `.cache/` and are ignored. Comparator builds are
+  created by `tools/suite bench` in `.cache/src/<sha>` worktrees; remove them with
+  `git worktree remove` rather than `rm -rf`.
+- Never run the benchmarks alongside other heavy jobs; ratios are only meaningful on an idle machine.
 
 Skips, partial results and known gaps are accounted in the `[[ledger]]` of `tests/manifest.toml`;
 loosening a performance target or adding a ledger entry requires a `Perf-Regression-Accepted:` /

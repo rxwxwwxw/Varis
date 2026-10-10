@@ -15,9 +15,10 @@
 module tests.unit.test_libs;
 
 import varis;
+import tests.unit.unit_runner : UnitMain;
 import std.stdio : writeln, stdout;
 
-void testBaseLibrary() {
+@("testBaseLibrary") unittest {
     auto state = new LuaState();
     openLibs(state);
 
@@ -79,7 +80,7 @@ void testBaseLibrary() {
     writeln("  [PASS] testBaseLibrary");
 }
 
-void testMathLibrary() {
+@("testMathLibrary") unittest {
     auto state = new LuaState();
     openLibs(state);
 
@@ -106,7 +107,7 @@ void testMathLibrary() {
     writeln("  [PASS] testMathLibrary");
 }
 
-void testStringLibrary() {
+@("testStringLibrary") unittest {
     auto state = new LuaState();
     openLibs(state);
 
@@ -175,7 +176,7 @@ void testStringLibrary() {
     writeln("  [PASS] testStringLibrary");
 }
 
-void testTableLibrary() {
+@("testTableLibrary") unittest {
     auto state = new LuaState();
     openLibs(state);
 
@@ -203,7 +204,7 @@ void testTableLibrary() {
     writeln("  [PASS] testTableLibrary");
 }
 
-void testCoroutineLibrary() {
+@("testCoroutineLibrary") unittest {
     auto state = new LuaState();
     openLibs(state);
 
@@ -342,7 +343,7 @@ void testCoroutineLibrary() {
     writeln("  [PASS] testCoroutineLibrary");
 }
 
-void testUtf8Library() {
+@("testUtf8Library") unittest {
     auto state = new LuaState();
     openLibs(state);
 
@@ -385,7 +386,7 @@ void testUtf8Library() {
     writeln("  [PASS] testUtf8Library");
 }
 
-void testLogicLibrary() {
+@("testLogicLibrary") unittest {
     auto state = new LuaState();
     openLibs(state);
 
@@ -415,7 +416,7 @@ void testLogicLibrary() {
     writeln("  [PASS] testLogicLibrary");
 }
 
-void testEnvironmentsAndUpvalues() {
+@("testEnvironmentsAndUpvalues") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -480,7 +481,7 @@ void testEnvironmentsAndUpvalues() {
     writeln("  [PASS] testEnvironmentsAndUpvalues");
 }
 
-void testDebugLocals() {
+@("testDebugLocals") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -555,7 +556,7 @@ void testDebugLocals() {
     writeln("  [PASS] testDebugLocals");
 }
 
-void testDebugHooks() {
+@("testDebugHooks") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -644,18 +645,4 @@ void testDebugHooks() {
     writeln("  [PASS] testDebugHooks");
 }
 
-int main() {
-    writeln("Running varis Standard Libraries (Phase 4) Unit Tests...");
-    testBaseLibrary();
-    testDebugHooks();
-    testDebugLocals();
-    testEnvironmentsAndUpvalues();
-    testMathLibrary();
-    testStringLibrary();
-    testTableLibrary();
-    testCoroutineLibrary();
-    testUtf8Library();
-    testLogicLibrary();
-    writeln("All Standard Libraries Tests Passed Successfully!");
-    return 0;
-}
+mixin UnitMain;

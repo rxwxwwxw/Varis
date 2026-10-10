@@ -15,9 +15,10 @@
 module tests.unit.test_vm;
 
 import varis;
+import tests.unit.unit_runner : UnitMain;
 import std.stdio : writeln;
 
-void testBasicExecution() {
+@("testBasicExecution") unittest {
     auto state = new LuaState();
     auto res = state.doString("local x = 10; local y = 20; return x + y * 2;");
     assert(res.length == 1);
@@ -25,7 +26,7 @@ void testBasicExecution() {
     writeln("  [PASS] testBasicExecution");
 }
 
-void testControlFlow() {
+@("testControlFlow") unittest {
     auto state = new LuaState();
 
     // If-elseif-else
@@ -86,7 +87,7 @@ void testControlFlow() {
     writeln("  [PASS] testControlFlow");
 }
 
-void testRecursionAndClosures() {
+@("testRecursionAndClosures") unittest {
     auto state = new LuaState();
 
     // Factorial recursion
@@ -128,7 +129,7 @@ void testRecursionAndClosures() {
     writeln("  [PASS] testRecursionAndClosures");
 }
 
-void testTablesAndMetamethods() {
+@("testTablesAndMetamethods") unittest {
     auto state = new LuaState();
 
     // Table operations
@@ -174,7 +175,7 @@ void testTablesAndMetamethods() {
     writeln("  [PASS] testTablesAndMetamethods");
 }
 
-void testLogicalOperators() {
+@("testLogicalOperators") unittest {
     auto state = new LuaState();
 
     // Short-circuit and / or
@@ -193,7 +194,7 @@ void testLogicalOperators() {
     writeln("  [PASS] testLogicalOperators");
 }
 
-void testArithmeticFastPaths() {
+@("testArithmeticFastPaths") unittest {
     assert(isNil(LuaValue.init));
     auto state = new LuaState();
     auto values = state.doString(q"{
@@ -213,7 +214,7 @@ void testArithmeticFastPaths() {
     writeln("  [PASS] testArithmeticFastPaths");
 }
 
-void testGotoAndPrecedence() {
+@("testGotoAndPrecedence") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -263,7 +264,7 @@ void testGotoAndPrecedence() {
     writeln("  [PASS] testGotoAndPrecedence");
 }
 
-void testCloseAndConst() {
+@("testCloseAndConst") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -307,7 +308,7 @@ void testCloseAndConst() {
     writeln("  [PASS] testCloseAndConst");
 }
 
-void testTailCalls() {
+@("testTailCalls") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -356,7 +357,7 @@ void testTailCalls() {
     writeln("  [PASS] testTailCalls");
 }
 
-void testForScopeClosing() {
+@("testForScopeClosing") unittest {
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -414,7 +415,7 @@ void testForScopeClosing() {
     writeln("  [PASS] testForScopeClosing");
 }
 
-void testRegisterReuseLifetimes() {
+@("testRegisterReuseLifetimes") unittest {
     import varis.lib : openLibs;
 
     auto state = new LuaState();
@@ -462,7 +463,7 @@ void testRegisterReuseLifetimes() {
     writeln("  [PASS] testRegisterReuseLifetimes");
 }
 
-void testFrameContextAndHooks() {
+@("testFrameContextAndHooks") unittest {
     auto state = new LuaState();
     import varis.lib : openLibs;
 
@@ -503,20 +504,4 @@ void testFrameContextAndHooks() {
     writeln("  [PASS] testFrameContextAndHooks");
 }
 
-int main() {
-    writeln("Running varis Runtime & VM Unit Tests...");
-    testRegisterReuseLifetimes();
-    testFrameContextAndHooks();
-    testBasicExecution();
-    testControlFlow();
-    testGotoAndPrecedence();
-    testCloseAndConst();
-    testForScopeClosing();
-    testTailCalls();
-    testRecursionAndClosures();
-    testTablesAndMetamethods();
-    testLogicalOperators();
-    testArithmeticFastPaths();
-    writeln("All Runtime & VM Tests Passed Successfully!");
-    return 0;
-}
+mixin UnitMain;

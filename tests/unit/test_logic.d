@@ -22,10 +22,11 @@ import varis.logic.evaluate;
 import varis.logic.query;
 import varis.lib.logic;
 
+import tests.unit.unit_runner : UnitMain;
 import std.stdio : writeln;
 import std.math : isNaN;
 
-void testSymbolsAndTuples() {
+@("testSymbolsAndTuples") unittest {
     auto state = new LuaState();
     openLogicLib(state);
 
@@ -59,7 +60,7 @@ void testSymbolsAndTuples() {
     writeln("  [PASS] testSymbolsAndTuples");
 }
 
-void testWorldAndRelations() {
+@("testWorldAndRelations") unittest {
     auto state = new LuaState();
     openLogicLib(state);
 
@@ -91,7 +92,7 @@ void testWorldAndRelations() {
     writeln("  [PASS] testWorldAndRelations");
 }
 
-void testValidation() {
+@("testValidation") unittest {
     auto w = new World();
     w.declareRelation("p", 1);
     w.declareRelation("q", 1);
@@ -127,7 +128,7 @@ void testValidation() {
     writeln("  [PASS] testValidation");
 }
 
-void testEvaluatorAndQuery() {
+@("testEvaluatorAndQuery") unittest {
     auto state = new LuaState();
     openLogicLib(state);
 
@@ -195,7 +196,7 @@ void testEvaluatorAndQuery() {
     writeln("  [PASS] testEvaluatorAndQuery");
 }
 
-void testEndToEndScript() {
+@("testEndToEndScript") unittest {
     auto state = new LuaState();
     openLogicLib(state);
 
@@ -221,7 +222,7 @@ void testEndToEndScript() {
     writeln("  [PASS] testEndToEndScript");
 }
 
-void testJoinBindings() {
+@("testJoinBindings") unittest {
     auto state = new LuaState();
     openLogicLib(state);
     auto res = state.doString(q"{
@@ -243,14 +244,4 @@ void testJoinBindings() {
     writeln("  [PASS] testJoinBindings");
 }
 
-int main() {
-    writeln("Running varis Declarative Logic Unit Tests...");
-    testSymbolsAndTuples();
-    testWorldAndRelations();
-    testValidation();
-    testEvaluatorAndQuery();
-    testEndToEndScript();
-    testJoinBindings();
-    writeln("All Declarative Logic Tests Passed Successfully!");
-    return 0;
-}
+mixin UnitMain;

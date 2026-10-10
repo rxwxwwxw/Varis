@@ -18,9 +18,10 @@ import varis;
 import varis.ast;
 import varis.lexer;
 import varis.parser;
+import tests.unit.unit_runner : UnitMain;
 import std.stdio : writeln;
 
-void testLexer() {
+@("testLexer") unittest {
     string src = q"{
         local x = 123
         local y = 0x1f
@@ -47,7 +48,7 @@ second line]]
     writeln("  [PASS] testLexer");
 }
 
-void testExpressions() {
+@("testExpressions") unittest {
     // Arithmetic precedence: 1 + 2 * 3 should be 1 + (2 * 3)
     string code = "return a + b * c";
     auto parser = new Parser(code);
@@ -81,7 +82,7 @@ void testExpressions() {
     writeln("  [PASS] testExpressions");
 }
 
-void testControlFlow() {
+@("testControlFlow") unittest {
     string code = q"{
         local a = 10
         if a > 5 then
@@ -123,7 +124,7 @@ void testControlFlow() {
     writeln("  [PASS] testControlFlow");
 }
 
-void testTablesAndFunctions() {
+@("testTablesAndFunctions") unittest {
     string code = q"{
         local t = { 10, 20, x = "foo", ["key"] = true }
 
@@ -174,7 +175,7 @@ void testTablesAndFunctions() {
     writeln("  [PASS] testTablesAndFunctions");
 }
 
-void testDeclarativeParser() {
+@("testDeclarativeParser") unittest {
     string code = q"{
         -- Contextual keywords in ordinary Lua
         local fact = 12
@@ -215,13 +216,4 @@ void testDeclarativeParser() {
     writeln("  [PASS] testDeclarativeParser");
 }
 
-int main() {
-    writeln("Running varis Frontend (AST, Lexer, Parser) Unit Tests...");
-    testLexer();
-    testExpressions();
-    testControlFlow();
-    testTablesAndFunctions();
-    testDeclarativeParser();
-    writeln("All Frontend Tests Passed Successfully!");
-    return 0;
-}
+mixin UnitMain;

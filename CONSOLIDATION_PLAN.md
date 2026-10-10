@@ -1,12 +1,24 @@
 # Consolidation Plan: one test suite, one benchmark suite, a real repository
 
-Status: **proposed** (October 10, 2026). Nothing in this document has been implemented.
-It is written against the tree as it exists today; every number below was measured in
-this checkout unless marked *assumed*.
+Status: **implemented** (October 10, 2026). The body below is the plan as originally
+written, before the language was renamed from `dlua` to **Varis**; read `dlua` as the
+previous name (`source/dlua` is now `source/varis`, `bin/dlua` is `bin/varis`).
+The rename was done immediately after Phase 3 rather than as a later stage.
 
-The language is diverging from Lua 5.4 and will be renamed. The plan is therefore
-**name-agnostic by construction** (Section 3.6) so that the rename is one mechanical
-commit rather than a cross-cutting project.
+## Implementation record
+
+| Phase | Result |
+| --- | --- |
+| 0 Git and history | Repository initialized; commit 0 = Oct 9 19:19 snapshot (tag `baseline/v0-snapshot`), commit 1 = tree after the perf work (`baseline/v1-perf-final`). The snapshot builds and passes acceptance (15/15). `dlua.zip` had been overwritten with the current tree before import; the snapshot was recovered from an earlier extraction and archived in `.cache/legacy/` (ignored). The experiment binaries `dlua-{values,registers,callstorage}` had been deleted from `bin/` before they could be archived; their results remain in `benchmarks/history/`. |
+| 1 Formatting, hooks | dfmt 0.15.2 with `.editorconfig` (otbs, 120 columns, `keep_line_breaks`); formatting is one commit listed in `.git-blame-ignore-revs`. Hooks in `.githooks/` (pre-commit, commit-msg, pre-push); `make hooks/fmt/fmt-check/check-sources/check`. |
+| 2 Test suite | `tools/suite` + `tests/manifest.toml`: 145 cases / 221 results, tiers smoke/fast/full, ledger, parity mutation tests (`tools/suite/tests`), traceability (`tests/requirements.toml` → `tests/TRACEABILITY.md`), shared debug object set, per-test D `unittest` results. Full tier about 45 s, fast about 10 s. |
+| 3 Benchmark suite | `tools/suite bench`: 66 workloads in six groups, comparators `clua`/`v0-snapshot`/`v1-perf-final` built from git refs, goals/gates/floors in `benchmarks/targets.toml`, confirmation re-runs, baselines in `benchmarks/baselines/`. Old runners retired. |
+| 4 Docs, cleanup | README/AGENTS updated (commands, git workflow); acceptance programs moved to `tests/datalog/acceptance/`; legacy Makefile targets removed; `make test-legacy` removed. |
+| 5 Rename | Done: module tree, binary, Makefile targets, headers (PUC-Rio notice preserved), docs. `_VERSION` and `lua_*` C API names unchanged. The checkout directory name on disk is outside the repository. |
+
+Deviations from the plan: the unit-test tier names are `smoke`/`fast`/`full` plus `release`
+(benchmarks); `unit:` traceability names are D `@("name") unittest` blocks; the synthetic-slowdown
+acceptance check is recorded in `benchmarks/README.md`; GitHub Actions is deferred until a remote exists.
 
 ---
 
@@ -29,7 +41,7 @@ commit rather than a cross-cutting project.
 | Suite | Where | Runner | Cases | Wall time (release CLI) |
 | --- | --- | --- | --- | --- |
 | D unit tests | `tests/unit/*.d` | 7 binaries, each recompiling all 54 modules at `-g`; bare `assert` in `main`-called functions (53 test functions, no `unittest` blocks) | 7 executables | compile-dominated (not yet measured) |
-| Datalog acceptance | `lua54_datalog_tests/` | `run-tests.sh` | 12 positive + 3 negative | 0.5 s |
+| Datalog acceptance | `tests/datalog/acceptance/` | `run-tests.sh` | 12 positive + 3 negative | 0.5 s |
 | Datalog scenarios | `tests/datalog/` | `run.py` + `known_gaps/` | 19 programs × 2 scales, golden output | 14.2 s |
 | Extension/stress | `tests/extensions/` | `run-tests.py` | 54 cases | 0.9 s |
 | Narrative | `tests/unit/test_narrative.d`, `tests/narrative/README.md` | D binary; README holds a hand-maintained requirement matrix | 14 functions | n/a |
@@ -371,7 +383,7 @@ fast path in a scratch build) trips exactly the expected gates; fib's goal short
 
 * Collapse duplicate build/test instructions between README.md and AGENTS.md; generated `docs/STATUS.md`
   for counts and ratios. Add the git/hook/suite commands to AGENTS.md §6 (existing invariants stay).
-* Move `lua54_datalog_tests/` and `tests/datalog/` under a single `tests/datalog/` (git mv, no edits).
+* Move `lua54_datalog_tests/` under `tests/datalog/` (done: `tests/datalog/acceptance/`).
 * Remove `Makefile` wrapper targets nobody uses after two weeks of the new driver.
 * Optional: GitHub Actions for `fast` tier (macOS arm64 *and* a Linux job that exercises the
   non-Darwin `--export-dynamic` path, which is currently untested) — enabled when the remote exists (Section 7).

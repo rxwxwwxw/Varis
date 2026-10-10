@@ -15,10 +15,11 @@
 module tests.unit.test_foundation;
 
 import varis;
+import tests.unit.unit_runner : UnitMain;
 import std.stdio : writeln, writefln;
 import std.math : floatTraits, isNaN;
 
-void testTypes() {
+@("testTypes") unittest {
     // Nil
     auto vNil = luaNil();
     assert(isNil(vNil));
@@ -121,7 +122,7 @@ void testTypes() {
     writeln("  [PASS] testTypes");
 }
 
-void testTable() {
+@("testTable") unittest {
     auto t = new LuaTable();
 
     // 1-based array indexing
@@ -186,7 +187,7 @@ void testTable() {
     writeln("  [PASS] testTable");
 }
 
-void testStateAndPCall() {
+@("testStateAndPCall") unittest {
     auto state = new LuaState();
 
     // Check default globals
@@ -226,11 +227,4 @@ void testStateAndPCall() {
     writeln("  [PASS] testStateAndPCall");
 }
 
-int main() {
-    writeln("Running varis Foundation Unit Tests...");
-    testTypes();
-    testTable();
-    testStateAndPCall();
-    writeln("All Foundation Tests Passed Successfully!");
-    return 0;
-}
+mixin UnitMain;
