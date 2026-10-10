@@ -1,6 +1,14 @@
 # Implementation plan: language extensions, performance, and conformance
 
-This plan covers the base reference [LANGUAGE_EXTENSIONS.md](LANGUAGE_EXTENSIONS.md) and the proposed companion [LANGUAGE_EXTENSIONS2.md](LANGUAGE_EXTENSIONS2.md). Milestones 0–8 describe the existing Phase 6 implementation sequence; milestones 9–18 below track Phase 7. Milestones 9–18 are fully implemented, including aggregates, sessions/scheduling, portable persistence/replay, explanations, subscriptions, bounded analysis, custom display formatters, and deterministic weighted text variants in templates. The final requirement/error matrix and support limits are in [tests/narrative/README.md](tests/narrative/README.md).
+> **Reference authority:** [The Varis Reference Manual](docs/README.md) now defines
+> current language semantics and supersedes the two former extension references.
+> This file preserves implementation history, milestones, and performance plans.
+> Completed-phase wording and historical baselines below are not independent
+> language requirements. See [the migration map](docs/coverage.md) for former
+> section numbers and decisions incorporated into the manual.
+
+
+This plan records implementation of the relational and narrative facilities now defined in the [Varis reference](docs/README.md). Milestones 0–8 describe the existing Phase 6 implementation sequence; milestones 9–18 below track Phase 7. Milestones 9–18 are fully implemented, including aggregates, sessions/scheduling, portable persistence/replay, explanations, subscriptions, bounded analysis, custom display formatters, and deterministic weighted text variants in templates. The final requirement/error matrix and support limits are in [tests/narrative/README.md](tests/narrative/README.md).
 
 [Phase 8](#phase-8--performance-and-remaining-lua-conformance), milestones 19–25, covers remaining Lua conformance work, benchmark hardening and measured optimization toward ≤2× C Lua. Milestone 20's conformance gate is met (31 pass / 1 partial / 1 skipped / 0 fail); remaining skips and partial exclusions are documented in [the official audit](tests/official/README.md), so performance optimization may now be targeted.
 
@@ -160,7 +168,7 @@ Land milestones as reviewable changes with their tests. The recommended sequence
 
 ## Phase 7 — Stateful relations and narrative extensions
 
-[LANGUAGE_EXTENSIONS2.md](LANGUAGE_EXTENSIONS2.md) is the companion reference. Its amendments apply only to the added features; the base Datalog semantics remain in force elsewhere. Core schema/update/transaction/aggregate work is implemented. Narrative definitions, sealing, templates, sessions, deterministic presentations, choices, automatic actions, and transactional events/deferred callbacks are implemented. Quality metadata/API and direct-write constraints are also implemented. Portable session saves/restoration and replay input logging are implemented. Explanations, committed-set subscriptions and bounded state-space analysis are implemented. The final requirement-by-requirement audit is recorded in [tests/narrative/README.md](tests/narrative/README.md). Core stateful conformance and narrative conformance are separate delivery gates. Aggregates are optional; subscriptions and state-space analysis are optional authoring facilities. Do not advertise them as required core features or as available before their tests pass.
+[The Varis narrative chapter](docs/narrative.md) is the current reference for these facilities; the companion terminology below is historical. Its amendments apply only to the added features; the base Datalog semantics remain in force elsewhere. Core schema/update/transaction/aggregate work is implemented. Narrative definitions, sealing, templates, sessions, deterministic presentations, choices, automatic actions, and transactional events/deferred callbacks are implemented. Quality metadata/API and direct-write constraints are also implemented. Portable session saves/restoration and replay input logging are implemented. Explanations, committed-set subscriptions and bounded state-space analysis are implemented. The final requirement-by-requirement audit is recorded in [tests/narrative/README.md](tests/narrative/README.md). Core stateful conformance and narrative conformance are separate delivery gates. Aggregates are optional; subscriptions and state-space analysis are optional authoring facilities. Do not advertise them as required core features or as available before their tests pass.
 
 ### Implementation status and core decisions
 

@@ -4,7 +4,15 @@ A modern, idiomatic D (Dlang) port and translation of the Lua 5.4 interpreter an
 
 `dlua` translates Lua from C into modern D, aiming to preserve observable Lua 5.4 behavior and provide a foundation for finite Datalog-style declarative programming.
 
-The base declarative extension is defined in [LANGUAGE_EXTENSIONS.md](LANGUAGE_EXTENSIONS.md). Phase 7 implements the stateful/narrative companion in [LANGUAGE_EXTENSIONS2.md](LANGUAGE_EXTENSIONS2.md): keyed relations and transactions, aggregates, storylets/choices, automatic actions, decks, templates, qualities, events, portable saves and replay. Explanations, committed-change subscriptions and isolated bounded choice analysis are also implemented. [The conformance evidence and limits](tests/narrative/README.md) map the specification to executable tests; [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md) records the implementation and semantic decisions.
+The language is being named **Varis** as it grows beyond Lua 5.4. The
+[Varis Reference Manual](docs/README.md) is the single source of truth for the
+current language: procedural programming, symbols, finite relations, keyed state,
+transactions, aggregates, and the narrative runtime and authoring libraries.
+The executable and D modules retain their `dlua` names during this transition.
+The manual replaces the former language-extension specifications.
+[Conformance evidence and limits](tests/narrative/README.md) remain separately
+recorded; [the implementation plan](LANGUAGE_EXTENSIONS_PLAN.md) is engineering
+history and a roadmap, not another language reference.
 
 ---
 
@@ -71,8 +79,9 @@ dlua/
 ├── Makefile                     # Build and test orchestration using ldc2
 ├── README.md                    # Project overview and quick start
 ├── AGENTS.md                    # Architecture guide and instructions for AI agents
-├── LANGUAGE_EXTENSIONS.md       # Proposed declarative language reference v0.1
-├── LANGUAGE_EXTENSIONS2.md      # Proposed stateful/narrative companion reference
+├── docs/                        # Varis language reference, libraries, grammar, examples
+├── LANGUAGE_EXTENSIONS.md       # Redirect to the Varis reference
+├── LANGUAGE_EXTENSIONS2.md      # Redirect to the Varis reference
 ├── LANGUAGE_EXTENSIONS_PLAN.md  # Base and companion milestones and validation criteria
 ├── LICENSE                      # MIT License (Lua 5.4 PUC-Rio + dlua)
 ├── lua54_datalog_tests/          # Base declarative extension acceptance tests
@@ -279,7 +288,7 @@ Compound terms, Prolog cuts/backtracking, aggregation, non-stratified negation, 
 
 ### Companion implementation status
 
-[LANGUAGE_EXTENSIONS2.md](LANGUAGE_EXTENSIONS2.md) extends the base semantics without making narrative effects part of Datalog inference. Milestones 9–18 in the [implementation plan](LANGUAGE_EXTENSIONS_PLAN.md#phase-7--stateful-relations-and-narrative-extensions) cover:
+[The narrative chapter](docs/narrative.md) defines effects separately from Datalog inference. Milestones 9–18 in the [implementation plan](LANGUAGE_EXTENSIONS_PLAN.md#phase-7--stateful-relations-and-narrative-extensions) cover:
 
 | Milestone | Deliverable/status |
 | --- | --- |

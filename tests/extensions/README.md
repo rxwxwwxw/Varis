@@ -1,7 +1,7 @@
 # Extension regression and stress suite
 
-This additional suite tests the v0.1 semantics in `LANGUAGE_EXTENSIONS.md`
-and the implemented stateful/narrative companion in `LANGUAGE_EXTENSIONS2.md`
+This additional suite tests the [Varis Reference Manual](../../docs/README.md),
+including relational, stateful, aggregate and narrative semantics
 through the real lexer, parser, compiler, VM, and declarative engine. It runs
 separately from the existing engine unit tests and 15 acceptance examples, and
 is included in `make test`.

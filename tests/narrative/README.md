@@ -1,10 +1,12 @@
 # Phase 7 conformance evidence
 
-The companion reference is [LANGUAGE_EXTENSIONS2.md](../../LANGUAGE_EXTENSIONS2.md).
-Milestones 9–18 are implemented, including optional aggregates, subscriptions and
-bounded analysis. The requirement audit covers the companion paragraphs and
-added grammar, with semantic decisions recorded in
-[LANGUAGE_EXTENSIONS_PLAN.md](../../LANGUAGE_EXTENSIONS_PLAN.md).
+The current definition is the [Varis Reference Manual](../../docs/README.md),
+particularly [state/transactions](../../docs/relations.md#5--state-and-transactions)
+and [narrative facilities](../../docs/narrative.md). Milestones 9–18 are
+implemented, including aggregates, subscriptions and bounded analysis. The audit
+below retains historical companion section numbers; [the migration map](../../docs/coverage.md)
+connects them to current reference sections. The implementation plan records
+engineering history; language semantics are maintained in `docs/`.
 
 Run `make test DC=/opt/homebrew/bin/ldc2`. Stateful and narrative unit executables,
 54 Lua extension cases, the 15 base Datalog cases and existing base unit suites

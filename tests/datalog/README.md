@@ -1,8 +1,9 @@
 # Datalog scenario programs
 
 Nineteen small, self-checking Lua programs that cover the base declarative
-extension ([LANGUAGE_EXTENSIONS.md](../../LANGUAGE_EXTENSIONS.md)) section by
-section, and double as benchmarks.
+facilities in the [Varis reference](../../docs/relations.md), and double as
+benchmarks. The coverage table and source comments retain former specification
+section numbers, resolved by the [migration map](../../docs/coverage.md).
 
 ```sh
 make test-scenarios                              # unit tests + both scales + known gaps

@@ -2,7 +2,7 @@
 
 A short storylet game for dlua. You're the apprentice of an old lighthouse keeper. Get the key to the lamp room, keep the lamp fuelled through the night, and hope you're ready when the storm comes.
 
-The game is written against the **current** specs (`../LANGUAGE_EXTENSIONS.md`, `../LANGUAGE_EXTENSIONS2.md`). Where the spec forces a workaround, the code links to [`needed_extensions.md`](needed_extensions.md). [`extensions/proposed.lua`](extensions/proposed.lua) shows proposed syntax and is **not** loaded.
+The game is written against the current [Varis Reference Manual](../docs/README.md). Where the spec forces a workaround, the code links to [`needed_extensions.md`](needed_extensions.md). [`extensions/proposed.lua`](extensions/proposed.lua) shows proposed syntax and is **not** loaded.
 
 ```sh
 cd sample-game
