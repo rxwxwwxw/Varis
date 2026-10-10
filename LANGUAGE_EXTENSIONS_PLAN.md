@@ -33,18 +33,18 @@ Suggested module boundaries, subject to normal implementation refinement:
 
 | Module | Responsibility |
 | --- | --- |
-| `source/dlua/logic/model.d` | Relation identity, tuples, term/goal/rule IR, immutable program snapshots |
-| `source/dlua/logic/world.d` | World registries, local relations, versions, atomic mutations, inheritance |
-| `source/dlua/logic/validate.d` | Arity, variable safety, ownership, dependency graph, SCCs and strata |
-| `source/dlua/logic/evaluate.d` | Matching, joins, constraints, guards, fixed points, dependency materialization |
-| `source/dlua/logic/query.d` | Snapshot iterator state, projection, deduplication, immutable binding records |
-| `source/dlua/lib/logic.d` | Required public library functions and symbol helpers |
+| `source/varis/logic/model.d` | Relation identity, tuples, term/goal/rule IR, immutable program snapshots |
+| `source/varis/logic/world.d` | World registries, local relations, versions, atomic mutations, inheritance |
+| `source/varis/logic/validate.d` | Arity, variable safety, ownership, dependency graph, SCCs and strata |
+| `source/varis/logic/evaluate.d` | Matching, joins, constraints, guards, fixed points, dependency materialization |
+| `source/varis/logic/query.d` | Snapshot iterator state, projection, deduplication, immutable binding records |
+| `source/varis/lib/logic.d` | Required public library functions and symbol helpers |
 
 Keep engine modules independent of compiler internals. Pass a guard invocation interface into evaluation instead of embedding VM dispatch into the relation model. Preserve the prescribed Lua license header on every new D file.
 
 ## Milestone 0 — Establish compatibility and settle semantic edges
 
-1. Run `make test` and build `make dlua` with the configured LDC compiler. Record existing failures before changing the language.
+1. Run `make test` and build `make varis` with the configured LDC compiler. Record existing failures before changing the language.
 2. Create a requirements-to-tests checklist covering specification sections 2–16 and all examples in section 18.
 3. Document parser recognition rules for contextual keywords. Keep `fact`, `rule`, `query`, `relation`, `retract`, `where`, and `logic` as identifiers in the lexer. Ordinary assignments, calls, fields, method calls, and labels must retain their meanings.
 4. Resolve or explicitly document underspecified edges before freezing tests:
@@ -204,7 +204,7 @@ The decisions below settle handler, token, event-turn, lexical-quality, authored
 
 **Depends on:** the base implementation in milestones 0–8. **Reference:** companion §§1–16.
 
-1. Run `make test` and `make dlua`; record failures and map each companion requirement to an executable acceptance case. Preserve the existing extension suites and official Lua skip policy.
+1. Run `make test` and `make varis`; record failures and map each companion requirement to an executable acceptance case. Preserve the existing extension suites and official Lua skip policy.
 2. Define relation-schema metadata, transaction overlays/savepoints, transaction-aware session participants, immutable content definitions, and session ownership interfaces before adding syntax. Reuse raw relational equality, snapshots, validation, and nonyieldable execution contexts.
 3. Resolve ambiguities explicitly before freezing APIs: named/local/zero-column declarations and schema upgrades after implicit establishment; key-column argument order when key order differs from column order; transaction control transfers (`goto`, protected errors, return, break) and escaped closures; which rolled-back savepoints invalidate descendant iterators; local-relation writes in world transactions; and aggregate ordering versus the base rule body's order-independent safety.
 4. Specify canonical scalar encoding (binary strings/symbol names, `nil`, numeric equality, signed zero, finite floats), schema/content version identifiers, choice-token lifetime/session ownership, cooldown turn boundaries, and seed validation. Identify the missing handler-registration, formatter/template-call, and migration interfaces rather than silently inventing public APIs.
@@ -355,7 +355,7 @@ The transaction coordinator lives in `logic/world.d`; deck/scheduler behavior li
 
 ### Portable saves, authored reconstruction and replay
 
-- `session:save()` returns canonical tagged JSON text (`dlua-session-1`), available only at an idle boundary. It stores all base tuples and relation/world versions, persistent world identity, named column/key schemas and their fingerprint, content/program/runtime identities, turn, deck entries/draw history, completion/action histories, periods, schedules, event history, PRNG state/seed, execution limits, consumed-token IDs and replay inputs. Derived tuples and executable tokens/iterators are reconstructed or discarded. Restored worlds have fresh runtime identity and retain the saved persistent identity.
+- `session:save()` returns canonical tagged JSON text (`varis-session-1`), available only at an idle boundary. It stores all base tuples and relation/world versions, persistent world identity, named column/key schemas and their fingerprint, content/program/runtime identities, turn, deck entries/draw history, completion/action histories, periods, schedules, event history, PRNG state/seed, execution limits, consumed-token IDs and replay inputs. Derived tuples and executable tokens/iterators are reconstructed or discarded. Restored worlds have fresh runtime identity and retain the saved persistent identity.
 - `narrative.load(saved, world_factory [, migration])` calls the factory to rebuild an idle unowned authored world, stages a fresh snapshot, and validates every schema, key, tuple constraint, history/counter and content/program fingerprint before returning a session. The factory world remains unchanged on success and failure. The factory has the same external-side-effect obligations as authored code. Unsupported values fail with their saved relation/capture path; arbitrary Lua objects and local rule dependencies are not serialized.
 - Pure rules with portable constants can be reconstructed structurally. Rule guards and aggregate-expression callbacks require `narrative.program(world, nonempty_version)` during authored initialization. This records the rule fingerprint; later rule/capture changes make a save non-reconstructible. The host must reproduce native callbacks/mutable captured environments under that explicit version. `narrative.seal(authored_version)` makes the corresponding explicit reconstruction assertion for content captures. Without an authored version, unsupported captured objects fail portable-save validation. Reinstalled globals and external impure code remain outside replay guarantees.
 - Code/capture fingerprints supplement authored content versions. They include prototypes, query/rule templates, captured portable values and handler code; generated anonymous names and unordered aggregate-local sets are normalized. Schema checks compare column/key order and the complete relation set. The runtime identity versions PRNG/sampling behavior. Mismatches fail descriptively; an optional explicit migration callback receives saved text and immutable target runtime/content identities, returns one replacement saved-text string, and undergoes the same full validation. There is no silent migration.
@@ -417,7 +417,7 @@ capability or a guarantee for every possible program.
   startup and parsing. Several programs lack result assertions, and slow ratios
   do not fail the command. Its hash workload also mixes formatting/concatenation
   with writes, so it does not isolate lookup cost.
-- `make dlua` already uses `-O3 -release`; unit targets default to `-g`, and the
+- `make varis` already uses `-O3 -release`; unit targets default to `-g`, and the
   C Makefile defaults to `-O2`. Record actual compiler versions/build flags.
 - The Datalog runner already checks functional success and machine-specific
   median suite regressions (default 25% plus 0.1 seconds), but includes startup

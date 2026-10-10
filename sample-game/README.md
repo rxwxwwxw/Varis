@@ -1,13 +1,13 @@
 # Saltmarsh Light — sample game
 
-A short storylet game for dlua. You're the apprentice of an old lighthouse keeper. Get the key to the lamp room, keep the lamp fuelled through the night, and hope you're ready when the storm comes.
+A short storylet game for varis. You're the apprentice of an old lighthouse keeper. Get the key to the lamp room, keep the lamp fuelled through the night, and hope you're ready when the storm comes.
 
 The game is written against the current [Varis Reference Manual](../docs/README.md). Where the spec forces a workaround, the code links to [`needed_extensions.md`](needed_extensions.md). [`extensions/proposed.lua`](extensions/proposed.lua) shows proposed syntax and is **not** loaded.
 
 ```sh
 cd sample-game
-../bin/dlua main.lua 7        # play with seed 7
-../bin/dlua tools/check.lua   # scripted walkthrough + explain/analyze/save/replay checks
+../bin/varis main.lua 7        # play with seed 7
+../bin/varis tools/check.lua   # scripted walkthrough + explain/analyze/save/replay checks
 ```
 
 ## Files
@@ -54,7 +54,7 @@ cd sample-game
 
 ## Status
 
-Playable in the terminal with `../bin/dlua main.lua [seed]` (build with `make dlua` from the repo root). `tools/check.lua` passes, and a random-choice bot reached an ending on 40 of 40 seeds without errors or stranded menus.
+Playable in the terminal with `../bin/varis main.lua [seed]` (build with `make varis` from the repo root). `tools/check.lua` passes, and a random-choice bot reached an ending on 40 of 40 seeds without errors or stranded menus.
 
 Changes made when the game was first executed:
 

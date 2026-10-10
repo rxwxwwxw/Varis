@@ -66,13 +66,19 @@ def execute(cases, ctx, jobs=4, on_result=None):
 
     heavy = [c for c in cases if c.kind in ("official",)]
     light = [c for c in cases if c.kind not in ("official",)]
-    with cf.ThreadPoolExecutor(max_workers=max(1, jobs)) as pool:
-        futs = {pool.submit(one, c): c for c in light + heavy}
-        for f in cf.as_completed(futs):
-            for r in f.result():
-                results.append(r)
-                if on_result:
-                    on_result(r)
+
+    # Heavy, timing-sensitive groups (the official suite) run alone after everything else: a
+    # one-off 240 s timeout of all.lua was observed when it shared the machine with other cases.
+    for batch, width in ((light, jobs), (heavy, 1)):
+        if not batch:
+            continue
+        with cf.ThreadPoolExecutor(max_workers=max(1, width)) as pool:
+            futs = {pool.submit(one, c): c for c in batch}
+            for f in cf.as_completed(futs):
+                for r in f.result():
+                    results.append(r)
+                    if on_result:
+                        on_result(r)
     return results
 
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Differential regression suite: every program must produce byte-identical output
-(including its CHECKSUM line) under the C Lua reference and dlua, and must match the
+(including its CHECKSUM line) under the C Lua reference and varis, and must match the
 checksum recorded in expected.json when present."""
 import argparse
 import json
@@ -12,7 +12,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 HERE = Path(__file__).resolve().parent
 C_LUA = ROOT / "c-implementation/src/lua"
-D_LUA = ROOT / "bin/dlua"
+D_LUA = ROOT / "bin/varis"
 
 
 def programs(selection=None):
@@ -41,7 +41,7 @@ def main(argv=None):
     ap.add_argument("programs", nargs="*", help="program names without .lua (default: all)")
     ap.add_argument("--timeout", type=float, default=60.0, help="seconds per program and interpreter")
     ap.add_argument("--record", action="store_true", help="write expected.json from the reference run")
-    ap.add_argument("--no-reference", action="store_true", help="compare dlua with expected.json only")
+    ap.add_argument("--no-reference", action="store_true", help="compare varis with expected.json only")
     args = ap.parse_args(argv)
 
     expected_path = HERE / "expected.json"
@@ -53,7 +53,7 @@ def main(argv=None):
         d_proc, d_time = run(D_LUA, program, args.timeout)
         line = checksum_of(d_proc.stdout)
         if d_proc.returncode != 0 or line is None:
-            problems.append(f"dlua exit {d_proc.returncode}: {d_proc.stderr.decode(errors='replace')[-300:]}")
+            problems.append(f"varis exit {d_proc.returncode}: {d_proc.stderr.decode(errors='replace')[-300:]}")
         c_time = None
         if not args.no_reference:
             c_proc, c_time = run(C_LUA, program, args.timeout)
@@ -64,7 +64,7 @@ def main(argv=None):
                 d_lines = d_proc.stdout.decode(errors="replace").splitlines()
                 for i, (a, b) in enumerate(zip(c_lines, d_lines)):
                     if a != b:
-                        problems.append(f"line {i + 1} differs:\n    C Lua: {a}\n    dlua : {b}")
+                        problems.append(f"line {i + 1} differs:\n    C Lua: {a}\n    varis : {b}")
                         break
                 else:
                     problems.append(f"output length differs ({len(c_lines)} vs {len(d_lines)} lines)")
@@ -76,7 +76,7 @@ def main(argv=None):
                 problems.append(f"checksum {line} != expected {expected[name]}")
         status = "FAIL" if problems else "PASS"
         failures += bool(problems)
-        timing = f"dlua {d_time:6.2f}s" + (f"  C {c_time:6.2f}s" if c_time is not None else "")
+        timing = f"varis {d_time:6.2f}s" + (f"  C {c_time:6.2f}s" if c_time is not None else "")
         print(f"[{status}] {name:<22} {timing}  {line or ''}")
         for p in problems:
             print("    " + p)

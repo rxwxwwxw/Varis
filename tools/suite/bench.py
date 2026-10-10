@@ -79,7 +79,7 @@ def build_ref(ref, log=print):
     sha = _git("rev-parse", "--verify", ref + "^{commit}")
     key = hashlib.sha256(f"{sha}|release|{toolchain_id()}".encode()).hexdigest()[:10]
     out_dir = ROOT / ".cache/builds" / f"{sha[:8]}-{key}"
-    out = out_dir / "dlua"
+    out = out_dir / "interpreter"
     if out.exists():
         return out
     src = ROOT / ".cache/src" / sha[:8]
@@ -87,11 +87,13 @@ def build_ref(ref, log=print):
         src.parent.mkdir(parents=True, exist_ok=True)
         _git("worktree", "add", "--detach", str(src), sha)
     log(f"building {ref} ({sha[:8]}) ...")
-    p = subprocess.run(["make", "dlua"], cwd=src, capture_output=True, text=True)
-    if p.returncode or not (src / "bin/dlua").exists():
+    # Trees before the rename build `dlua`; later ones build `varis`.
+    name = "varis" if (src / "source/varis").is_dir() else "dlua"
+    p = subprocess.run(["make", name], cwd=src, capture_output=True, text=True)
+    if p.returncode or not (src / "bin" / name).exists():
         raise RuntimeError(f"build of {ref} failed:\n{p.stderr[-800:]}")
     out_dir.mkdir(parents=True, exist_ok=True)
-    (src / "bin/dlua").replace(out)
+    (src / "bin" / name).replace(out)
     (out_dir / "identity.json").write_text(json.dumps(
         {"ref": ref, "commit": sha, "profile": "release", "toolchain": toolchain_id()}, indent=2))
     return out

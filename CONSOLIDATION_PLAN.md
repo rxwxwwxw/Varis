@@ -18,11 +18,11 @@ commit rather than a cross-cutting project.
 | --- | --- |
 | Not a git repository. 159 MB on disk, of which `bin/` is 152 MB of build output. | No history, no review diffs, no way to build "the previous version" except by hand. |
 | No `.gitignore`; `.DS_Store`, `__pycache__/`, `*.o`, three experimental binaries in `bin/`. | Must be ignored before the first `git add`. |
-| One earlier snapshot exists: `~/repos/dlua.zip` (Oct 9 19:19, pre-optimization). Its `source/` differs from the current tree in 22 files and lacks `lib/fastcall.d`; it also lacks `benchmarks/workloads*`, and the regression programs `deepframes`, `fastpaths`, `wrapcalls` and extension case `narrative_sticky_order`. | It is the only buildable "previous version". It becomes commit 0. |
-| `bin/dlua-values`, `-registers`, `-callstorage` are experiment builds with no source (only `benchmarks/results/runtime-changes.patch`, 133 lines). | Record their SHA-256 in history metadata; never treat them as release baselines. |
+| One earlier snapshot exists: `~/repos/varis.zip` (Oct 9 19:19, pre-optimization). Its `source/` differs from the current tree in 22 files and lacks `lib/fastcall.d`; it also lacks `benchmarks/workloads*`, and the regression programs `deepframes`, `fastpaths`, `wrapcalls` and extension case `narrative_sticky_order`. | It is the only buildable "previous version". It becomes commit 0. |
+| `bin/varis-values`, `-registers`, `-callstorage` are experiment builds with no source (only `benchmarks/results/runtime-changes.patch`, 133 lines). | Record their SHA-256 in history metadata; never treat them as release baselines. |
 | No formatter. Style is 4-space indent, same-line braces (`dfmt` defaults to Allman). | Needs an explicit dfmt config chosen by experiment, then one isolated reformat commit. |
 | `dfmt` 0.15.2 is available via `brew` (not installed); `dub` is at `/usr/local/bin/dub`; `ldc2` at `/opt/homebrew/bin`. | No new toolchain dependencies beyond dfmt. |
-| `"dlua"` appears 5,402 times in 291 files; `module dlua.*` / `import dlua.*` in 55 source/test files. | The rename is mechanical but wide. Do not smear it across other work. |
+| `"varis"` appears 5,402 times in 291 files; `module varis.*` / `import varis.*` in 55 source/test files. | The rename is mechanical but wide. Do not smear it across other work. |
 
 ### 1.2 Tests: seven mechanisms, four reporting formats
 
@@ -33,7 +33,7 @@ commit rather than a cross-cutting project.
 | Datalog scenarios | `tests/datalog/` | `run.py` + `known_gaps/` | 19 programs × 2 scales, golden output | 14.2 s |
 | Extension/stress | `tests/extensions/` | `run-tests.py` | 54 cases | 0.9 s |
 | Narrative | `tests/unit/test_narrative.d`, `tests/narrative/README.md` | D binary; README holds a hand-maintained requirement matrix | 14 functions | n/a |
-| Differential regression | `tests/regression/` | `run.py` (vs C Lua, checksums in `expected.json`) | 15 programs | 0.6 s (dlua only) |
+| Differential regression | `tests/regression/` | `run.py` (vs C Lua, checksums in `expected.json`) | 15 programs | 0.6 s (Varis only) |
 | Official Lua suite | `tests/runner.d`, `tests/official/` | D runner + `baseline.json`, `differential.py` | 33 files: 31 pass / 1 partial / 1 skip | minutes (`errors.lua` ~25 s, `all.lua` ~70 s) |
 | Runner self-tests | `benchmarks/test_*.py`, `tests/*/test_*.py` | `unittest` | — | seconds |
 
@@ -171,9 +171,9 @@ Result schema (one JSON-lines record per case, one summary document per run):
   modules seven times; a single `tests/unit` binary with group selection replaces seven.
 * The explicit `SRC_FILES` list stays in the Makefile (AGENTS.md says to keep it explicit);
   `tools/check_sources.py` fails the hook if a module on disk is missing from it.
-* Comparator builds: `git worktree add .cache/src/<sha> <ref>` → `make dlua` with the same
-  profile → `.cache/builds/<sha>-<profileHash>/dlua`. The C Lua reference is built once into
-  `.cache/builds/clua-5.4.9-O2/` with its flags recorded (it is `-O2`; dlua is `-O3`).
+* Comparator builds: `git worktree add .cache/src/<sha> <ref>` → `make varis` with the same
+  profile → `.cache/builds/<sha>-<profileHash>/varis`. The C Lua reference is built once into
+  `.cache/builds/clua-5.4.9-O2/` with its flags recorded (it is `-O2`; Varis is `-O3`).
 
 ### 3.5 Repository hygiene
 
@@ -251,7 +251,7 @@ Comparators are named in `benchmarks/targets.toml`:
 | Label | What | Notes |
 | --- | --- | --- |
 | `clua` | stock C Lua 5.4.9 built `-O2` from `c-implementation/` | Only for workloads using no extension syntax. |
-| `v0-snapshot` | commit 0: the Oct 9 19:19 `dlua.zip` source | Built with the same flags as the candidate for fairness; the as-shipped `bin/dlua` (2.61 s fib) is recorded as history only. |
+| `v0-snapshot` | commit 0: the Oct 9 19:19 `varis.zip` source | Built with the same flags as the candidate for fairness; the as-shipped `bin/varis` (2.61 s fib) is recorded as history only. |
 | `v1-perf-final` | tag of the tree on Oct 9 after the interpreter/table work | The "current good" anchor for ratchets until the next release tag. |
 | `prev` | the most recent `release-*` tag | Moves with releases. |
 
@@ -294,18 +294,18 @@ Each phase ends in a state where `main` is green and the previous phase's guaran
 1. Create a scratch export of the current tree **before** touching it (`cp -c`/tar into the
    scratchpad); `git init` in place with `main`.
 2. Write `.gitignore` / `.gitattributes` first; verify `git status` shows no `bin/`, `*.o`, `.DS_Store`, `__pycache__`.
-3. **Commit 0** = source tree from `dlua.zip` (strip `__MACOSX`, `.DS_Store`, `bin/`, `*.o`; keep
+3. **Commit 0** = source tree from `varis.zip` (strip `__MACOSX`, `.DS_Store`, `bin/`, `*.o`; keep
    `c-implementation` once, unchanged). **Commit 1** = current tree on top. Use the files' mtimes
    for `GIT_AUTHOR_DATE`; message states these were reconstructed from snapshots.
    Tag `baseline/v0-snapshot` and `baseline/v1-perf-final`.
 4. Verify commit 0 builds with today's `ldc2` in a worktree and passes at least `make test-datalog`.
    If it does not build, record why and fall back to the as-shipped binary as a `history-only` comparator.
-5. Move `bin/dlua-{values,registers,callstorage}` out to `.cache/legacy/` with a manifest of SHA-256s;
+5. Move `bin/varis-{values,registers,callstorage}` out to `.cache/legacy/` with a manifest of SHA-256s;
    convert `benchmarks/results/*` into `benchmarks/history/2026-10-09-perf/` (index README, originals unchanged).
 6. Update `AGENTS.md` (§5 item 5 mentions no VCS; add the git workflow) and the
    auto-memory note "no git here".
 
-**Done when:** `git log` shows 2 commits; `git clean -ndx` lists only build outputs; a fresh clone + `make dlua` works.
+**Done when:** `git log` shows 2 commits; `git clean -ndx` lists only build outputs; a fresh clone + `make varis` works.
 
 ### Phase 1 — Formatting and hooks (S)
 

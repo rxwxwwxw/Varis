@@ -6,7 +6,7 @@
 
 ### 8.1 — Standalone execution
 
-Build with `make dlua` and run `bin/dlua [options] [script [args]]`. Varis is the
+Build with `make varis` and run `bin/varis [options] [script [args]]`. Varis is the
 language name used in this manual; executable, module paths, version strings,
 source suffixes, and save-format identifiers retain their existing names until
 an explicit implementation migration.
@@ -31,15 +31,15 @@ and continuation of incomplete chunks. Initialization uses `LUA_INIT_5_4`, then
 path environment variables. SIGINT requests an interrupt error in active execution.
 
 ```sh
-make dlua
-bin/dlua docs/examples/relations.lua
-bin/dlua docs/examples/narrative.lua
-bin/dlua -e 'print(type(:room), logic.symbolname(:room))'
+make varis
+bin/varis docs/examples/relations.lua
+bin/varis docs/examples/narrative.lua
+bin/varis -e 'print(type(:room), logic.symbolname(:room))'
 ```
 
 ### 8.2 — Embedding and native modules
 
-The D API is exported through `source/dlua/package.d` and the `dlua` modules.
+The D API is exported through `source/varis/package.d` and the `varis` modules.
 Hosts construct a `LuaState`, open desired libraries with `openLibs`, and execute
 source with `doString` (or compile/load through the frontend and VM APIs). `LuaValue` holds primitive and reference values;
 `LuaException` carries language errors. Embedded hosts remain responsible for
@@ -47,7 +47,7 @@ native callbacks, external side effects, and any authored reconstruction protoco
 
 The executable also exports a **subset** of the Lua C API for loading simple
 native modules with `package.loadlib`/C searchers. `lua_api.exports` and
-`source/dlua/capi.d` describe the actual exported symbols. This is not a complete
+`source/varis/capi.d` describe the actual exported symbols. This is not a complete
 Lua ABI: native error/yield continuations, arbitrary callbacks into the VM, and
 internal Lua structures must not be assumed compatible. No new Varis native ABI
 or public programmatic Lua rule/query builder is defined by this manual.

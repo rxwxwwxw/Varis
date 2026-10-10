@@ -52,7 +52,7 @@ emit(d.year, d.month, d.day, d.hour, d.min, d.sec, d.wday, d.yday, d.isdst)
 emit(os.time(os.date("*t", 1700000000)))
 try(os.date, "%Ez")
 try(os.date, "%Q")
-emit(os.getenv("DLUA_SURELY_UNSET_VARIABLE"), type(os.clock()), type(os.tmpname()))
+emit(os.getenv("VARIS_SURELY_UNSET_VARIABLE"), type(os.clock()), type(os.tmpname()))
 emit(os.difftime(10, 4), math.type(os.difftime(10, 4)))
 emit(os.time{year = 2000, month = 14, day = 35, hour = 0} == os.time{year = 2001, month = 3, day = 7, hour = 0})
 local norm = {year = 2021, month = 14, day = 35, hour = 25}

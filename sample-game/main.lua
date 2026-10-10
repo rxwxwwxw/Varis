@@ -1,6 +1,6 @@
 -- Saltmarsh Light — a minimal text host.
 --
---   dlua main.lua [seed]
+--   varis main.lua [seed]
 --
 -- Presentation is deliberately bare: the engine returns presentations as
 -- immutable records and the host prints them. See needed_extensions.md §5

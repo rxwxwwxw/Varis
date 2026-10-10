@@ -63,7 +63,7 @@ class RunnerTests(unittest.TestCase):
     def test_failing_interpreter_is_a_failure(self):
         code, text = self.go("exit 0\n", "echo boom >&2\nexit 3\n")
         self.assertEqual(code, 1)
-        self.assertIn("dlua exit 3", text)
+        self.assertIn("varis exit 3", text)
 
     def test_record_writes_expected_file(self):
         body = "echo 'CHECKSUM 00000000000000cc lines 0'\n"

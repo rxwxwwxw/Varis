@@ -1,7 +1,7 @@
 -- Authoring checks for Saltmarsh Light: a scripted walkthrough with
 -- assertions, plus explain / analyze / save-load / replay.
 --
---   cd sample-game && dlua tools/check.lua
+--   cd sample-game && varis tools/check.lua
 
 package.path = "./?.lua;" .. package.path
 local G = require("game")

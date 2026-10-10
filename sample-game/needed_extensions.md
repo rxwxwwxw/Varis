@@ -86,7 +86,7 @@ Each `present()` evaluates every storylet, choice, action and template condition
 
 Twine is passage-and-link based: one "current passage", inline links, `$variables`, macros, visit counts, and back/undo.
 
-| Twine feature | Current dlua | Needed |
+| Twine feature | Current Varis | Needed |
 | --- | --- | --- |
 | Passages addressed by name, `goto` | Storylets are selected, not addressed | **`passage` content kind** (or `narrative.goto(:id)`) with a *focus* mode: the presentation is exactly that passage, with no deck draw (P1) |
 | Inline links in prose `[[text->Target]]` | Choices are separate from text | Template link syntax that compiles to choices, keeping position information so the host can render the links inline (P1) |

@@ -8,8 +8,8 @@ Its procedural foundation comes from Lua 5.4. This manual defines the language
 implemented in this repository, including the facilities previously described as
 Lua extensions.
 
-The language name is **Varis**. The implementation is still built as `bin/dlua`,
-uses `.lua` source files and `dlua` D modules, and reports a Lua compatibility
+The language name is **Varis**. The implementation is still built as `bin/varis`,
+uses `.lua` source files and `varis` D modules, and reports a Lua compatibility
 version. Those implementation names have not yet been migrated. This manual does
 not introduce a `varis` command, a new extension for source files, or new syntax
 for existing features.

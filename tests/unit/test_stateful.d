@@ -2,17 +2,17 @@
 ** Lua - A Scripting Language
 ** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
 **
-** dlua - D port of Lua 5.4
+** Varis - a Lua 5.4 derivative, written in D
 ** Copyright (C) 1994-2026 Lua.org, PUC-Rio.
-** Copyright (C) 2026 dlua contributors.
+** Copyright (C) 2026 Varis contributors.
 ** See LICENSE for license details.
 */
 module tests.unit.test_stateful;
 
-import dlua;
-import dlua.logic.model;
-import dlua.logic.world;
-import dlua.logic.query;
+import varis;
+import varis.logic.model;
+import varis.logic.world;
+import varis.logic.query;
 import std.stdio : writeln;
 
 void rejects(void delegate() operation, string diagnostic) {
@@ -150,7 +150,7 @@ void testCleanup() {
 }
 
 int main() {
-    writeln("Running dlua Stateful Extension Unit Tests...");
+    writeln("Running varis Stateful Extension Unit Tests...");
     testKeyIndexes();
     testTentativeSnapshots();
     testCleanup();

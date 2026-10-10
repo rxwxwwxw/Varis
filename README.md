@@ -1,14 +1,14 @@
-# dlua
+# Varis
 
 A modern, idiomatic D (Dlang) port and translation of the Lua 5.4 interpreter and runtime.
 
-`dlua` translates Lua from C into modern D, aiming to preserve observable Lua 5.4 behavior and provide a foundation for finite Datalog-style declarative programming.
+`varis` translates Lua from C into modern D, aiming to preserve observable Lua 5.4 behavior and provide a foundation for finite Datalog-style declarative programming.
 
 The language is being named **Varis** as it grows beyond Lua 5.4. The
 [Varis Reference Manual](docs/README.md) is the single source of truth for the
 current language: procedural programming, symbols, finite relations, keyed state,
 transactions, aggregates, and the narrative runtime and authoring libraries.
-The executable and D modules retain their `dlua` names during this transition.
+The executable and D modules retain their `varis` names during this transition.
 The manual replaces the former language-extension specifications.
 [Conformance evidence and limits](tests/narrative/README.md) remain separately
 recorded; [the implementation plan](LANGUAGE_EXTENSIONS_PLAN.md) is engineering
@@ -38,34 +38,34 @@ history and a roadmap, not another language reference.
                                 |
                                 v
                       +-------------------+
-                      |    dlua.lexer     | Tokenizer
+                      |    varis.lexer     | Tokenizer
                       +---------+---------+
                                 |
                                 v
                       +-------------------+
-                      |    dlua.parser    |
+                      |    varis.parser    |
                       +---------+---------+
                                 |
                                 v
                       +-------------------+
-                      |     dlua.ast      | Typed AST (Extensibility Hook)
+                      |     varis.ast      | Typed AST (Extensibility Hook)
                       +---------+---------+
                                 |
                                 v
                       +-------------------+
-                      |   dlua.compiler   | AST -> Bytecode
+                      |   varis.compiler   | AST -> Bytecode
                       +---------+---------+
                                 |
                                 v
                       +-------------------+
-                      |      dlua.vm      | VM Dispatcher
+                      |      varis.vm      | VM Dispatcher
                       +---------+---------+
                                 |
       +-------------------------+-------------------------+
       |                         |                         |
       v                         v                         v
 +-----------+            +-------------+           +--------------+
-| dlua.types|            | dlua.table  |           |  dlua.fiber  |
+| varis.types|            | varis.table  |           |  varis.fiber  |
 |  SumType  |            | Dual-Storage|           | D Lang Fiber |
 +-----------+            +-------------+           +--------------+
 ```
@@ -75,7 +75,7 @@ history and a roadmap, not another language reference.
 ## Directory Structure
 
 ```
-dlua/
+varis/
 ├── Makefile                     # Build and test orchestration using ldc2
 ├── README.md                    # Project overview and quick start
 ├── AGENTS.md                    # Architecture guide and instructions for AI agents
@@ -83,7 +83,7 @@ dlua/
 ├── LANGUAGE_EXTENSIONS.md       # Redirect to the Varis reference
 ├── LANGUAGE_EXTENSIONS2.md      # Redirect to the Varis reference
 ├── LANGUAGE_EXTENSIONS_PLAN.md  # Base and companion milestones and validation criteria
-├── LICENSE                      # MIT License (Lua 5.4 PUC-Rio + dlua)
+├── LICENSE                      # MIT License (Lua 5.4 PUC-Rio + varis)
 ├── lua54_datalog_tests/          # Base declarative extension acceptance tests
 │   ├── README.md                # Coverage and runner limitations
 │   ├── run-tests.sh             # Runs an extended interpreter against the suite
@@ -93,7 +93,7 @@ dlua/
 │   ├── src/                     # Lua 5.4.9 C source code
 │   └── lua-5.4.9-tests/         # Official Lua 5.4.9 test suite
 ├── source/
-│   └── dlua/
+│   └── varis/
 │       ├── package.d            # Public API exports
 │       ├── types.d              # LuaValue sumtype, value helpers, raw equality
 │       ├── exception.d          # LuaException, error reporting
@@ -109,7 +109,7 @@ dlua/
 │       ├── pattern.d            # Ported Lua pattern matching engine (Phase 4)
 │       ├── logic/               # Datalog model, worlds, validation, evaluation, queries
 │       ├── lib/                 # Standard libraries, including logic
-│       └── cli.d                # Standalone dlua CLI / REPL (Phase 5)
+│       └── cli.d                # Standalone varis CLI / REPL (Phase 5)
 └── tests/
     ├── unit/                    # D unit tests
     │   ├── test_foundation.d    # Value, table, state, and pcall tests
@@ -128,23 +128,33 @@ dlua/
 
 - **LDC**: LLVM D Compiler (`ldc2`), targeting LDC 1.43+ / D 2.100+.
 - **Make**: Standard GNU Make.
-- **Python 3**: Used by the unit-test timeout wrapper and benchmark runner.
+- **Python 3.11+**: Runs the test/benchmark driver in `tools/suite`.
+- **dfmt** 0.15.2 (`brew install dfmt`): formatting and the pre-commit hook.
 
 ### Running Tests
 
-To build and run the unit test suite:
+One driver (`python3 tools/suite`) runs every suite from one manifest, [tests/manifest.toml](tests/manifest.toml).
+Tiers are cumulative:
+
+| Command | Tier | Contents | Time |
+| --- | --- | --- | --- |
+| `make test-smoke` | smoke | parser/VM/foundation unit groups, Datalog acceptance, five regression programs | seconds |
+| `make test-fast` | fast | + all unit groups, extension cases, regression programs, small-scale scenarios | ~10 s |
+| `make test` | full | + official Lua 5.4.9 suite, large-scale scenarios, core differential, runner self-tests | ~45 s |
+| `make release` | release | `make test` + enforced benchmark gates (`make bench-check`) | minutes |
 
 ```bash
-make test
+make test                                         # full tier
+python3 tools/suite test --tier fast --filter keyed   # subset by case-id substring
+python3 tools/suite test --list                   # enumerate cases
+python3 tools/suite trace --verify                # requirement -> evidence map
 ```
 
-Or target the foundation tests directly:
-
-```bash
-make test-foundation
-```
-
-Other existing targets are `make test-frontend`, `make test-vm`, `make test-libs`, `make test-logic`, `make test-stateful`, `make test-datalog`, and `make test-extensions`. `make test` includes all of these plus benchmark-runner tests. `make test-regression` runs the [differential regression programs](tests/regression/README.md) (15 deterministic Lua programs, including csmith-style expression fuzzing, whose output and FNV-1a checksum must be byte-identical to C Lua); `make benchmark` also times them with a per-program budget. The official Lua conformance suite is not included in `make test`; run it separately via `make test-official` (`tests/runner.d`), which classifies all 33 official Lua 5.4.9 test files, executes the non-skipped files, and reports individual pass/fail/skip results with strict failure exits. `make test-stateful` runs the core companion unit tests and is included in `make test`. `make test-narrative` runs 13 narrative test groups. Companion acceptance/stress fixtures run through `make test-extensions`; see [the conformance audit](tests/narrative/README.md).
+Every skip, partial and known gap must be listed in the manifest's ledger (and a ledger entry
+whose case starts passing is a failure). Results are also written as JSON with `--json`.
+The earlier per-suite targets (`make test-foundation`, `test-datalog`, ...) still exist, and
+`make test-legacy` runs them. [tests/TRACEABILITY.md](tests/TRACEABILITY.md) maps the spec
+requirements to cases.
 
 ### Declarative Extension Acceptance Tests
 
@@ -160,40 +170,34 @@ The suite covers symbols, facts, recursion, stratified negation, retraction, con
 
 Negative cases require the intended validation diagnostic and reject crashes, timeouts, and the `UNEXPECTED SUCCESS` fallback marker. Preserve those checks when adding or changing rejection cases. These examples complement the existing engine unit tests and broader conformance coverage; they do not establish full v0.1 conformance on their own.
 
-### Building the dlua CLI Executable
+### Building the Varis CLI Executable
 
 ```bash
 # Build optimized release binary
-make dlua
+make varis
 
 # Run the CLI / REPL
-./bin/dlua -v
-./bin/dlua -e 'print("Hello from dlua!")'
+./bin/varis -v
+./bin/varis -e 'print("Hello from varis!")'
 ```
 
 ### Running Benchmarks
 
-Compare `dlua` performance against the original C Lua 5.4 implementation. The current Makefiles build dlua with `-O3 -release` and C Lua with `-O2`; record the actual compiler versions and flags for comparisons:
-
 ```bash
-make benchmark
+make bench          # report ratios against C Lua and earlier versions
+make bench-check    # enforce gates and floors from benchmarks/targets.toml
 ```
 
-This also runs the Datalog performance regression check. To run it alone:
+Targets are ratios measured in the same session against named comparators: stock C Lua 5.4.9
+(`-O2`) and earlier Varis versions built from git tags. See [benchmarks/README.md](benchmarks/README.md).
+
+### Repository Workflow
 
 ```bash
-make benchmark-datalog
+make hooks      # once: enable .githooks (dfmt check, header check, source list, size guard)
+make fmt        # format all D sources with dfmt (settings in .editorconfig)
+make check      # what pre-push runs: format + source checks + fast tier
 ```
-
-It measures the complete acceptance suite and the extension regression/stress
-suite separately, excluding compilation. Three runs produce a median for each
-suite. A runtime above its saved baseline by **25% plus 0.1 seconds** fails the
-command and is treated as a performance bug. `BENCHMARK_RUNS`,
-`DATALOG_REGRESSION`, and `DATALOG_SLACK` override these defaults.
-The checked-in baseline was measured on Apple Silicon; for a different machine,
-use `make benchmark-datalog-record DATALOG_BASELINE=/tmp/dlua-baseline.json`
-and pass that same `DATALOG_BASELINE` to subsequent checks. Normal checks never
-update the baseline. See [benchmark details](benchmarks/README.md).
 
 ### Cleaning Artifacts
 
@@ -214,7 +218,7 @@ Measured on October 9, 2026 with `python3 benchmarks/bench.py` (release CLI buil
 with `-O3 -release`, C Lua with `-O2`; execution only, one warmup, median of seven
 runs of five repetitions; assertion-checked workloads):
 
-| Workload | dlua / C Lua |
+| Workload | Varis / C Lua |
 | --- | ---: |
 | Recursive Fibonacci | 2.0–2.3× |
 | Numeric loop | 1.6× |
@@ -240,8 +244,8 @@ gates.
 
 ### Remaining conformance work
 
-- Conformance scope (owner decision): the official suite as a stock Lua 5.4 binary runs it (no internal `T` library), with `gc.lua` excluded; an ltests-style `T` for `api.lua`/`code.lua` is out of scope. The official Lua 5.4.9 suite runs clean: the October 9, 2026 release-build run reports **31 pass, 1 partial, 1 skipped, 0 fail, 0 timeout** across 33 files (240 seconds per file, C Lua as reference). `gc.lua` is the one skip, excluded by decision because exact collector reachability conflicts with keeping dlua objects directly accessible from D. The one partial is the suite driver `all.lua`, which the runner executes with `gc.lua` stubbed (it ends with `final OK !!!` and also pushes each file through `string.dump`/`load`). The suite's C test modules are compiled and loaded through the exported C API subset (`source/dlua/capi.d`), and `files.lua` runs against an `sh` wrapper because macOS `sh` reports a signal for the nested-shell check where the suite expects an exit status. `api` and `code` pass because, as with stock C Lua, they return immediately when the internal `T` library is absent. See the [recorded results and remaining issues](tests/official/README.md); a file pass means the process exited successfully.
-- `make test-official` fails on interpreter failures or timeouts. The runner captures both output streams without pipe deadlocks and retains exit codes and diagnostics. Weak tables and `__gc`/`__close` finalizers are emulated on D's conservative GC (`source/dlua/gc.d`), so `collectgarbage` modes/step are bookkeeping-level rather than a Lua collector. Native stack use (~5 KB per Lua call frame) and slow deep-recursion unwinding (D exceptions through the platform unwinder) remain known performance issues.
+- Conformance scope (owner decision): the official suite as a stock Lua 5.4 binary runs it (no internal `T` library), with `gc.lua` excluded; an ltests-style `T` for `api.lua`/`code.lua` is out of scope. The official Lua 5.4.9 suite runs clean: the October 9, 2026 release-build run reports **31 pass, 1 partial, 1 skipped, 0 fail, 0 timeout** across 33 files (240 seconds per file, C Lua as reference). `gc.lua` is the one skip, excluded by decision because exact collector reachability conflicts with keeping Varis objects directly accessible from D. The one partial is the suite driver `all.lua`, which the runner executes with `gc.lua` stubbed (it ends with `final OK !!!` and also pushes each file through `string.dump`/`load`). The suite's C test modules are compiled and loaded through the exported C API subset (`source/varis/capi.d`), and `files.lua` runs against an `sh` wrapper because macOS `sh` reports a signal for the nested-shell check where the suite expects an exit status. `api` and `code` pass because, as with stock C Lua, they return immediately when the internal `T` library is absent. See the [recorded results and remaining issues](tests/official/README.md); a file pass means the process exited successfully.
+- `make test-official` fails on interpreter failures or timeouts. The runner captures both output streams without pipe deadlocks and retains exit codes and diagnostics. Weak tables and `__gc`/`__close` finalizers are emulated on D's conservative GC (`source/varis/gc.d`), so `collectgarbage` modes/step are bookkeeping-level rather than a Lua collector. Native stack use (~5 KB per Lua call frame) and slow deep-recursion unwinding (D exceptions through the platform unwinder) remain known performance issues.
 - Implemented conformance work includes luac-style compiler output (RK operands, condition jumps, line attribution, strip semantics), lvm.c-style loops and error messages with variable info, ports of lstrlib/ltablib/lmathlib/loslib/liolib/loadlib/lcorolib/lua.c, binary chunks (`string.dump`/`load`, private body behind a standard header), debug hooks/getinfo/locals/upvalues, coroutine close/wrap semantics, tracebacks and C-call depth limits. Remaining work before performance optimization is only the explicit skips and partial exclusions above.
 - `make test-conformance-core` compares a deterministic core fixture against bundled C Lua. `make test` includes runner regression tests, while the official suite and differential target remain separate gates.
 - Add differential coverage against C Lua for supported numeric behavior,
@@ -327,7 +331,7 @@ Core updates and transactions come first; narrative facilities build on that com
 
 ## License
 
-`dlua` is a derived work of Lua 5.4. It is licensed under the MIT License, preserving all original copyright notices from Lua.org, PUC-Rio. See [LICENSE](LICENSE) for the full text.
+`varis` is a derived work of Lua 5.4. It is licensed under the MIT License, preserving all original copyright notices from Lua.org, PUC-Rio. See [LICENSE](LICENSE) for the full text.
 
 Portable narrative checkpoints use a versioned authored world factory:
 

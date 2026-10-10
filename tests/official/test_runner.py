@@ -34,12 +34,12 @@ class RunnerTests(unittest.TestCase):
 
     def test_stderr_failure_is_preserved(self):
         result, report = self.run_fixture(
-            "import sys\nprint('dlua: intended failure', file=sys.stderr)\nsys.exit(3)\n"
+            "import sys\nprint('varis: intended failure', file=sys.stderr)\nsys.exit(3)\n"
         )
         self.assertEqual(result.returncode, 1)
         self.assertEqual(report["failed"], 1)
         self.assertEqual(report["results"][0]["exit_code"], 3)
-        self.assertEqual(report["results"][0]["diagnostic"], "dlua: intended failure")
+        self.assertEqual(report["results"][0]["diagnostic"], "varis: intended failure")
 
     def test_timeout_is_failure(self):
         result, report = self.run_fixture("import time\ntime.sleep(30)\n")

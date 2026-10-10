@@ -1,6 +1,6 @@
 -- KNOWN-GAP: anonymous variable
 -- Spec §3.4: anonymous variables cannot appear in rule heads, procedural
--- guards, or relational constraints (comparisons).  dlua rejects them in heads
+-- guards, or relational constraints (comparisons).  varis rejects them in heads
 -- and guards (see tests/extensions) but accepts them silently in a comparison.
 fact num(1)
 local ok, err = pcall(function()

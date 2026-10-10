@@ -2,9 +2,9 @@
 ** Lua - A Scripting Language
 ** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
 **
-** dlua - D port of Lua 5.4
+** Varis - a Lua 5.4 derivative, written in D
 ** Copyright (C) 1994-2026 Lua.org, PUC-Rio.
-** Copyright (C) 2026 dlua contributors.
+** Copyright (C) 2026 Varis contributors.
 ** See LICENSE for license details.
 */
 
@@ -101,7 +101,7 @@ private bool buildCModules(string testDir, string luaSrcDir) {
 /// A directory with an `sh` that, like dash, runs `sh -c '...'` as a child instead of replacing
 /// itself, so that the suite's nested-shell exit status checks see an exit code on every platform.
 private string shellShimDirectory() {
-    auto dir = buildPath(tempDir(), "dlua_sh_shim");
+    auto dir = buildPath(tempDir(), "varis_sh_shim");
     mkdirRecurse(dir);
     auto script = buildPath(dir, "sh");
     std.file.write(script, "#!/bin/sh\n/bin/sh \"$@\"\nexit $?\n");
@@ -121,7 +121,7 @@ private RunPlan planFor(string testDir, string filename) {
         // The suite's own driver, run in a scratch copy of the suite whose gc.lua is replaced by a
         // stub (exact collector reachability is excluded). It also runs every file through
         // string.dump/load, as the official run does.
-        auto copyDir = buildPath(tempDir(), "dlua_all_suite");
+        auto copyDir = buildPath(tempDir(), "varis_all_suite");
         if (exists(copyDir))
             rmdirRecurse(copyDir);
         mkdirRecurse(copyDir);
@@ -147,7 +147,7 @@ private RunPlan planFor(string testDir, string filename) {
     }
     if (filename == "big.lua") {
         // all.lua runs big.lua inside a coroutine: it yields 'b' and then returns 'a'.
-        auto driver = buildPath(tempDir(), "dlua_big_driver.lua");
+        auto driver = buildPath(tempDir(), "varis_big_driver.lua");
         std.file.write(driver,
                 "local f = coroutine.wrap(assert(loadfile(arg[1])))\n" ~
                 "assert(f() == 'b')\nassert(f() == 'a')\n");
@@ -171,7 +171,7 @@ private RunPlan planFor(string testDir, string filename) {
             kept ~= lines[i++];
         }
         if (removed) {
-            auto patched = buildPath(testDir, "_dlua_main_without_c_modules.lua");
+            auto patched = buildPath(testDir, "_varis_main_without_c_modules.lua");
             std.file.write(patched, kept.join("\n") ~ "\n");
             plan.arguments = [baseName(patched)];
             plan.temporaryFile = patched;
@@ -257,7 +257,7 @@ private void execute(string luaBin, string testDir, RunPlan plan, uint timeoutSe
 }
 
 int main(string[] args) {
-    string luaBin = "./bin/dlua";
+    string luaBin = "./bin/varis";
     string referenceBin = "";
     string testDir = "c-implementation/lua-5.4.9-tests";
     uint timeoutSecs = 120;
@@ -268,7 +268,7 @@ int main(string[] args) {
 
     auto helpInfo = getopt(
             args,
-            "lua", "Path to Lua executable (default: ./bin/dlua)", &luaBin,
+            "lua", "Path to Lua executable (default: ./bin/varis)", &luaBin,
             "reference", "Reference interpreter run on failing files (e.g. c-implementation/src/lua)", &referenceBin,
             "dir", "Path to official tests directory (default: c-implementation/lua-5.4.9-tests)", &testDir,
             "timeout", "Timeout per test in seconds (default: 120)", &timeoutSecs,
@@ -279,11 +279,11 @@ int main(string[] args) {
     );
 
     if (helpInfo.helpWanted) {
-        defaultGetoptPrinter("dlua Official Lua 5.4.9 Conformance Runner", helpInfo.options);
+        defaultGetoptPrinter("varis Official Lua 5.4.9 Conformance Runner", helpInfo.options);
         return 0;
     }
 
-    if (args.length > 1 && luaBin == "./bin/dlua")
+    if (args.length > 1 && luaBin == "./bin/varis")
         luaBin = args[1];
 
     if (timeoutSecs == 0) {
@@ -306,7 +306,7 @@ int main(string[] args) {
     }
 
     writeln("================================================================================");
-    writeln("dlua Official Lua 5.4.9 Conformance Runner");
+    writeln("varis Official Lua 5.4.9 Conformance Runner");
     writefln("Interpreter: %s", luaBin);
     if (referenceBin.length)
         writefln("Reference:   %s", referenceBin);
@@ -318,7 +318,7 @@ int main(string[] args) {
 
     string[] testFiles;
     foreach (entry; dirEntries(testDir, SpanMode.shallow)) {
-        if (entry.isFile && entry.name.endsWith(".lua") && !baseName(entry.name).startsWith("_dlua_")) {
+        if (entry.isFile && entry.name.endsWith(".lua") && !baseName(entry.name).startsWith("_varis_")) {
             testFiles ~= baseName(entry.name);
         }
     }

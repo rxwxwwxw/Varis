@@ -316,7 +316,7 @@ Foreign-world mutations still fail the effect transaction's world check.
 
 Save only at an idle boundary, with no active transaction, effect, scheduler, or
 presentation. `session:save()` returns canonical tagged JSON text. The current
-wire format still has the legacy identifier `dlua-session-1`; the language rename
+wire format still has the legacy identifier `varis-session-1`; the language rename
 does not silently change persisted identities.
 
 Saves include base tuples, ordered schemas/keys and versions, persistent world

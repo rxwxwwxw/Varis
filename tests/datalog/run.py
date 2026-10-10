@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the Datalog scenario programs and compare their output with the golden files.
 
-Every program NN_name.lua is run as `dlua NN_name.lua <scale>` for scale `small`
+Every program NN_name.lua is run as `varis NN_name.lua <scale>` for scale `small`
 (hand-checkable sizes) and `large` (benchmark sizes), in a fresh process.  Its
 stdout must equal expected/NN_name.<scale>.txt exactly and the exit status must
 be zero.  Programs in known_gaps/ document spec features the interpreter does
@@ -109,7 +109,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("filters", nargs="*", help="substrings of program names")
-    parser.add_argument("--binary", type=Path, default=REPO / "bin/dlua")
+    parser.add_argument("--binary", type=Path, default=REPO / "bin/varis")
     parser.add_argument("--scale", choices=SCALES + ("all",), default="all")
     parser.add_argument("--timeout", type=float, default=120)
     parser.add_argument("--record", action="store_true",

@@ -5,10 +5,10 @@
 Each file is a complete self-checking program for the current interpreter:
 
 ```sh
-make dlua
-bin/dlua docs/examples/relations.lua
-bin/dlua docs/examples/state.lua
-bin/dlua docs/examples/narrative.lua
+make varis
+bin/varis docs/examples/relations.lua
+bin/varis docs/examples/state.lua
+bin/varis docs/examples/narrative.lua
 ```
 
 - [relations.lua](relations.lua): recursive rules, construction-time snapshots,
@@ -20,6 +20,6 @@ bin/dlua docs/examples/narrative.lua
   turns, consumed tokens, canonical save/load.
 
 Each prints its filename category followed by `: ok` only after its assertions
-pass. All examples use the current `bin/dlua` command and `.lua` suffix; their
+pass. All examples use the current `bin/varis` command and `.lua` suffix; their
 language is Varis. Smaller fragments in the manual can depend on the surrounding
 schema/context and are not advertised as standalone programs.

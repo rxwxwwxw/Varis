@@ -17,10 +17,10 @@ GOOD = {M.PASS, M.SKIP, M.XFAIL, M.PARTIAL}
 
 
 def _ctx(args):
-    cand = Path(args.candidate or os.environ.get("SUITE_BIN") or ROOT / "bin/dlua")
+    cand = Path(args.candidate or os.environ.get("SUITE_BIN") or ROOT / "bin/varis")
     ref = Path(args.reference) if args.reference else ROOT / "c-implementation/src/lua"
     if not cand.is_file():
-        sys.exit(f"candidate interpreter not found: {cand} (run `make dlua`)")
+        sys.exit(f"candidate interpreter not found: {cand} (run `make varis`)")
     return Ctx(ROOT, cand.resolve(), ref.resolve() if ref.is_file() and not args.no_reference else None,
                args.timeout_scale)
 
@@ -139,7 +139,7 @@ def cmd_bench(args):
         for w in ws:
             print(f"{w['kind']:<8} {w['id']}  targets={sorted(set(k for kk in ('goal','gate','floor') for k in targets.get(w['id'], {}).get(kk, {})))}")
         return 0
-    cand = Path(args.candidate or os.environ.get("SUITE_BIN") or ROOT / "bin/dlua")
+    cand = Path(args.candidate or os.environ.get("SUITE_BIN") or ROOT / "bin/varis")
     if not cand.is_file():
         sys.exit(f"candidate not found: {cand}")
     wanted = set(args.compare)

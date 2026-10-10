@@ -1,6 +1,6 @@
-# AGENTS.md — Contributor & AI Agent Guide for dlua
+# AGENTS.md — Contributor & AI Agent Guide for Varis
 
-Welcome to **dlua**! This document serves as the architectural guide and contributor operating manual for AI agents and human contributors implementing and maintaining the codebase. Language semantics are defined by the Varis Reference Manual linked below.
+Welcome to **Varis**! This document serves as the architectural guide and contributor operating manual for AI agents and human contributors implementing and maintaining the codebase. Language semantics are defined by the Varis Reference Manual linked below.
 
 The [Varis Reference Manual](docs/README.md) is the single source of truth for current language semantics, including procedural behavior, relations, state and narrative facilities. It replaces `LANGUAGE_EXTENSIONS.md` and `LANGUAGE_EXTENSIONS2.md`, which are now redirects. Phase 6 milestones 0–8 and Phase 7 milestones 9–18 are implemented; [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md) records engineering history and future work, not a competing language specification. [The reference migration map](docs/coverage.md) preserves historical section and requirement identifiers. [The companion conformance audit](tests/narrative/README.md) maps requirements and errors to executable evidence and reports support limits. Preserve separate coverage for core stateful behavior, aggregates, narrative behavior and optional authoring tools. The official Lua harness remains a separate Phase 5 gate. Phase 8 milestone 20's conformance gate is met (31 pass / 1 partial / 1 skipped / 0 fail on the official suite; see [tests/official/README.md](tests/official/README.md) for the remaining issues). Performance work is targeted and measured: the core-Lua benchmark workloads run at roughly 0.6–2.3× C Lua (see [benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md)); documented known costs remain (slow `error` unwinding through D exceptions, `errors.lua` ~25 s; recursion deeper than 150 Lua frames runs in `executeDeepFrame`, which must stay behaviourally identical to `executeFrame`).
 
@@ -18,7 +18,7 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 
 ## 2. Architectural Blueprint & Invariants
 
-### 2.1 Value Representation (`source/dlua/types.d`)
+### 2.1 Value Representation (`source/varis/types.d`)
 - `LuaValue` is a `struct` wrapping `std.sumtype.SumType!(Nil, bool, long, double, string, Symbol, LuaTable, LuaFunction, LuaUserData, LightUserData, LuaThread)`.
 - **Primitives are stored inline**: Nil, bool, long, double, string, and raw pointers require no separate heap allocations.
 - **Reference objects are D GC classes**: `LuaTable`, `LuaFunction`, `LuaUserData`, and `LuaThread` are managed by D's garbage collector.
@@ -34,7 +34,7 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 - No manual tri-color mark-and-sweep tracking or grey lists.
 - `collectgarbage()` is mapped to D runtime GC equivalents (`GC.collect()`, `GC.stats()`, `GC.enable()`, `GC.disable()`).
 
-### 2.3 Tables (`source/dlua/table.d`)
+### 2.3 Tables (`source/varis/table.d`)
 - **Dual-Storage**:
   - `arrayPart` (`LuaValue[]`): Fast path for 1-based positive integer indices `1 .. N`.
   - `hashPart` (`LuaValue[LuaValue]`): Storage for non-integer keys, strings, objects, negative/zero numbers, and sparse integer keys.
@@ -43,11 +43,11 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 - **Length Operator (`#t`)**: Border search finding $n$ where $t[n] \neq \text{nil} \land t[n+1] = \text{nil}$.
 - **Metatables**: `__index`, `__newindex`, `__len`, `__eq`, `__lt`, `__le`, etc.
 
-### 2.4 Control Flow & Errors (`source/dlua/exception.d` & `state.d`)
+### 2.4 Control Flow & Errors (`source/varis/exception.d` & `state.d`)
 - Lua runtime errors and `error()` throw `LuaException : Exception`.
 - `pcall` and `xpcall` catch `LuaException` (and generic `Exception`), preserving native D stack unwinding and RAII cleanup (`scope(exit)` / `scope(failure)`).
 
-### 2.5 Coroutines (`dlua.fiber`)
+### 2.5 Coroutines (`varis.fiber`)
 - Backed by D's `core.thread.Fiber`.
 - Allows yielding across arbitrary native D boundaries without requiring continuation-passing boilerplate (`lua_yieldk`).
 - Ordinary coroutines may mutate worlds and consume iterators between calls; each iterator retains its construction-time snapshot.
@@ -57,7 +57,7 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 ### 2.6 Frontend: Typed AST Intermediate Representation
 - Replaces Lua's intertwined single-pass parser/compiler with:
   `Source -> Lexer -> Parser -> Typed AST -> Compiler -> Bytecode -> VM`
-- An explicit typed AST (`source/dlua/ast.d`) allows inserting AST transforms, syntax macros, and declarative rule definitions without disturbing bytecode generation.
+- An explicit typed AST (`source/varis/ast.d`) allows inserting AST transforms, syntax macros, and declarative rule definitions without disturbing bytecode generation.
 
 ### 2.7 Instructions & VM
 - Strongly typed instruction representations (`struct Instruction`) rather than packed 32-bit bitfield macros.
@@ -65,7 +65,7 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 
 ### 2.8 Standard Libraries & Pattern Matching
 - Implemented using Phobos (`std.math`, `std.stdio`, `std.datetime`, `std.utf`, `std.process`).
-- **Pattern Matching (`source/dlua/pattern.d`)**: Directly ports Lua's pattern matching engine from `lstrlib.c` to guarantee 100% fidelity for `%a`, `%b`, frontier `%f[]`, and numbered captures `%1`.
+- **Pattern Matching (`source/varis/pattern.d`)**: Directly ports Lua's pattern matching engine from `lstrlib.c` to guarantee 100% fidelity for `%a`, `%b`, frontier `%f[]`, and numbered captures `%1`.
 
 ### 2.9 Declarative Engine (Phase 6)
 - **Finite relations**: Fixed-arity tuple sets use raw Lua equality without `__eq`; `nil` is valid and NaN is prohibited. Preserve separate base and derived membership, including zero-arity tuples.
@@ -96,34 +96,34 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 
 | Module | Status | Role & Responsibilities |
 |---|---|---|
-| [`source/dlua/types.d`](source/dlua/types.d) | ✅ Phase 1 | `LuaValue` sumtype, value helpers, truthiness, equality, hashing |
-| [`source/dlua/table.d`](source/dlua/table.d) | ✅ Phase 1 | `LuaTable` dual-storage, length border, rawget/rawset, iteration |
-| [`source/dlua/exception.d`](source/dlua/exception.d) | ✅ Phase 1 | `LuaException`, error reporting, stack info |
-| [`source/dlua/state.d`](source/dlua/state.d) | ✅ Phase 1 | `LuaState`, globals table (`_G`), registry, stack, `pcall` |
-| [`source/dlua/package.d`](source/dlua/package.d) | ✅ Phase 1 | Public API re-exports |
-| `source/dlua/ast.d` | ✅ Phase 2 | Typed AST node classes/structs (Statements, Expressions) |
-| `source/dlua/lexer.d` | ✅ Phase 2 | Tokenizer, keywords, numbers, long brackets `[[...]]`, escapes |
-| `source/dlua/parser.d` | ✅ Phase 2 | Recursive descent parser producing AST |
-| `source/dlua/opcode.d` | ✅ Phase 3 | OpCode enums and `Instruction` struct definitions |
-| `source/dlua/compiler.d` | ✅ Phase 3 | AST-to-bytecode compiler, scope analysis, register allocation |
-| `source/dlua/vm.d` | ✅ Phase 3 | Bytecode execution loop, upvalues, closures |
-| `source/dlua/fiber.d` | ✅ Phase 3 | Coroutine execution runner wrapping D `Fiber` |
-| `source/dlua/pattern.d` | ✅ Phase 4 | Lua pattern matching engine ported from `lstrlib.c` |
-| `source/dlua/lib/*.d` | ✅ Phase 4 | Standard libraries (`base`, `math`, `string`, `table`, etc.); `fastcall.d` holds allocation-free fast entry points for hot built-ins |
-| `lua_api.exports` | ✅ Phase 5 | Symbols the dlua executable exports to `dlopen`ed C modules (replaces `-export_dynamic`, which cost ~8 ms startup) |
-| `source/dlua/cli.d` | ✅ Phase 5 | Standalone `dlua` executable runner & REPL |
+| [`source/varis/types.d`](source/varis/types.d) | ✅ Phase 1 | `LuaValue` sumtype, value helpers, truthiness, equality, hashing |
+| [`source/varis/table.d`](source/varis/table.d) | ✅ Phase 1 | `LuaTable` dual-storage, length border, rawget/rawset, iteration |
+| [`source/varis/exception.d`](source/varis/exception.d) | ✅ Phase 1 | `LuaException`, error reporting, stack info |
+| [`source/varis/state.d`](source/varis/state.d) | ✅ Phase 1 | `LuaState`, globals table (`_G`), registry, stack, `pcall` |
+| [`source/varis/package.d`](source/varis/package.d) | ✅ Phase 1 | Public API re-exports |
+| `source/varis/ast.d` | ✅ Phase 2 | Typed AST node classes/structs (Statements, Expressions) |
+| `source/varis/lexer.d` | ✅ Phase 2 | Tokenizer, keywords, numbers, long brackets `[[...]]`, escapes |
+| `source/varis/parser.d` | ✅ Phase 2 | Recursive descent parser producing AST |
+| `source/varis/opcode.d` | ✅ Phase 3 | OpCode enums and `Instruction` struct definitions |
+| `source/varis/compiler.d` | ✅ Phase 3 | AST-to-bytecode compiler, scope analysis, register allocation |
+| `source/varis/vm.d` | ✅ Phase 3 | Bytecode execution loop, upvalues, closures |
+| `source/varis/fiber.d` | ✅ Phase 3 | Coroutine execution runner wrapping D `Fiber` |
+| `source/varis/pattern.d` | ✅ Phase 4 | Lua pattern matching engine ported from `lstrlib.c` |
+| `source/varis/lib/*.d` | ✅ Phase 4 | Standard libraries (`base`, `math`, `string`, `table`, etc.); `fastcall.d` holds allocation-free fast entry points for hot built-ins |
+| `lua_api.exports` | ✅ Phase 5 | Symbols the Varis executable exports to `dlopen`ed C modules (replaces `-export_dynamic`, which cost ~8 ms startup) |
+| `source/varis/cli.d` | ✅ Phase 5 | Standalone `varis` executable runner & REPL |
 | `tests/unit/*.d` | ✅ Completed | Comprehensive unit tests (foundation, frontend, vm, libs) |
 | `tests/runner.d` | ✅ Phase 5 | Automated runner for `c-implementation/lua-5.4.9-tests/` (`make test-official`) |
 | `docs/` | Current reference | Single Varis language definition, libraries, grammar, compatibility and runnable examples |
 | `LANGUAGE_EXTENSIONS.md` | Redirect | Links to the Varis reference; historical section map in docs/coverage.md |
 | `LANGUAGE_EXTENSIONS2.md` | Redirect | Links to the unified Varis reference and conformance evidence |
 | `LANGUAGE_EXTENSIONS_PLAN.md` | Plan | Base milestones 0–8 and companion milestones 9–18 (core and narrative runtime/persistence, formatters/variants, authoring implemented; conformance evidence in tests/narrative/README.md; runner baseline established) |
-| [`source/dlua/logic/model.d`](source/dlua/logic/model.d) | ✅ Phase 6 | Tuple/term/goal/rule IR, identities, immutable snapshots |
-| [`source/dlua/logic/world.d`](source/dlua/logic/world.d) | ✅ Phase 6 | Worlds, local relations, versions, atomic mutation, inheritance |
-| [`source/dlua/logic/validate.d`](source/dlua/logic/validate.d) | ✅ Phase 6 | Safety, ownership, arity, signed dependencies, SCCs/strata |
-| [`source/dlua/logic/evaluate.d`](source/dlua/logic/evaluate.d) | ✅ Phase 6 | Joins, constraints, guards, fixed-point evaluation |
-| [`source/dlua/logic/query.d`](source/dlua/logic/query.d) | ✅ Phase 6 | Snapshot iterators, projection, immutable binding records |
-| [`source/dlua/lib/logic.d`](source/dlua/lib/logic.d) | ✅ Phase 6 | Required `logic` library and global `symbol` |
+| [`source/varis/logic/model.d`](source/varis/logic/model.d) | ✅ Phase 6 | Tuple/term/goal/rule IR, identities, immutable snapshots |
+| [`source/varis/logic/world.d`](source/varis/logic/world.d) | ✅ Phase 6 | Worlds, local relations, versions, atomic mutation, inheritance |
+| [`source/varis/logic/validate.d`](source/varis/logic/validate.d) | ✅ Phase 6 | Safety, ownership, arity, signed dependencies, SCCs/strata |
+| [`source/varis/logic/evaluate.d`](source/varis/logic/evaluate.d) | ✅ Phase 6 | Joins, constraints, guards, fixed-point evaluation |
+| [`source/varis/logic/query.d`](source/varis/logic/query.d) | ✅ Phase 6 | Snapshot iterators, projection, immutable binding records |
+| [`source/varis/lib/logic.d`](source/varis/lib/logic.d) | ✅ Phase 6 | Required `logic` library and global `symbol` |
 | [`tests/unit/test_logic.d`](tests/unit/test_logic.d) | ✅ Phase 6 | Direct engine and integration tests |
 | `lua54_datalog_tests/` | ✅ Phase 6 | 12 positive programs, 3 negative validation cases, shell runner |
 | `tests/datalog/` | ✅ Phase 6 | 19 self-checking scenario programs (spec §2–§17) usable as benchmarks, golden output at two scales, `known_gaps/` for documented spec deviations; timed by `make benchmark-datalog` ("scenarios" suite) |
@@ -136,18 +136,18 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 - Core types, table dual storage, error handling, state, and foundation unit tests.
 
 ### Phase 2: Frontend (Completed ✅)
-- Typed AST (`dlua.ast`), Tokenizer (`dlua.lexer`), and Recursive Descent Parser (`dlua.parser`). Unit tests in `tests/unit/test_parser.d`.
+- Typed AST (`varis.ast`), Tokenizer (`varis.lexer`), and Recursive Descent Parser (`varis.parser`). Unit tests in `tests/unit/test_parser.d`.
 
 ### Phase 3: Runtime & VM (Completed ✅)
-- Opcode definitions (`dlua.opcode`), AST-to-bytecode compiler (`dlua.compiler`), VM execution loop (`dlua.vm`), and Fiber coroutines (`dlua.fiber`). Unit tests in `tests/unit/test_vm.d`.
+- Opcode definitions (`varis.opcode`), AST-to-bytecode compiler (`varis.compiler`), VM execution loop (`varis.vm`), and Fiber coroutines (`varis.fiber`). Unit tests in `tests/unit/test_vm.d`.
 
 ### Phase 4: Standard Libraries (Completed ✅)
-- Pattern matching engine (`dlua.pattern`) and standard libraries (`base`, `math`, `string`, `table`, `coroutine`, `os`, `io`, `utf8`, `package_lib`, `debug_lib`). Unit tests in `tests/unit/test_libs.d`.
+- Pattern matching engine (`varis.pattern`) and standard libraries (`base`, `math`, `string`, `table`, `coroutine`, `os`, `io`, `utf8`, `package_lib`, `debug_lib`). Unit tests in `tests/unit/test_libs.d`.
 
 ### Phase 5: CLI, REPL & Conformance (Completed ✅; documented skips remain)
-1. `source/dlua/cli.d`: Standalone executable supporting `-e`, `-v`, and script files. (Working).
-2. `tests/runner.d` (conformance scope per the project owner: the suite as a stock binary runs it, `T == nil`, with `gc.lua` excluded; an ltests-style `T` is out of scope): Official Lua 5.4.9 runner via `make test-official`, with strict failure exits, combined output capture, process exit codes, PASS/PARTIAL/SKIP/FAIL statuses, `--reference` C Lua comparison and JSON reporting (default 120 s per file; use 240 s for the `all.lua` driver). It builds the suite's C test modules, provides a closed-pipe stdin and an `sh` wrapper for the nested-shell check, and runs `all.lua` in a scratch copy with `gc.lua` stubbed. Current October 9, 2026 release baseline: **31 passed, 1 partial (`all.lua` with `gc.lua` stubbed), 1 skipped (`gc.lua`, excluded by decision because exact reachability conflicts with D-accessible objects), 0 failed, 0 timed out.** [Recorded evidence and remaining issues](tests/official/README.md) supersede earlier baselines. A file PASS means the process exited successfully; `api`/`code` self-skip without the `T` library as under stock C Lua. Weak tables, ephemerons and finalizers are emulated on D's collector (`source/dlua/gc.d`, forked reachability probes); library ports live in `lib/*.d` with shared argument checking in `lib/auxlib.d`; C modules load through `dlopen` and the exported C API subset in `capi.d`; binary chunks are in `dump.d` (private body behind a standard header); the interpreter runs on a large-stack Fiber (`cli.d`).
-3. Benchmarking against C Lua 5.4 exists (`make benchmark`), but the core-Lua runner reports minimum-of-three process timings without enforcing ratios. Phase 8 owns benchmark hardening and optimization.
+1. `source/varis/cli.d`: Standalone executable supporting `-e`, `-v`, and script files. (Working).
+2. `tests/runner.d` (conformance scope per the project owner: the suite as a stock binary runs it, `T == nil`, with `gc.lua` excluded; an ltests-style `T` is out of scope): Official Lua 5.4.9 runner via `make test-official`, with strict failure exits, combined output capture, process exit codes, PASS/PARTIAL/SKIP/FAIL statuses, `--reference` C Lua comparison and JSON reporting (default 120 s per file; use 240 s for the `all.lua` driver). It builds the suite's C test modules, provides a closed-pipe stdin and an `sh` wrapper for the nested-shell check, and runs `all.lua` in a scratch copy with `gc.lua` stubbed. Current October 9, 2026 release baseline: **31 passed, 1 partial (`all.lua` with `gc.lua` stubbed), 1 skipped (`gc.lua`, excluded by decision because exact reachability conflicts with D-accessible objects), 0 failed, 0 timed out.** [Recorded evidence and remaining issues](tests/official/README.md) supersede earlier baselines. A file PASS means the process exited successfully; `api`/`code` self-skip without the `T` library as under stock C Lua. Weak tables, ephemerons and finalizers are emulated on D's collector (`source/varis/gc.d`, forked reachability probes); library ports live in `lib/*.d` with shared argument checking in `lib/auxlib.d`; C modules load through `dlopen` and the exported C API subset in `capi.d`; binary chunks are in `dump.d` (private body behind a standard header); the interpreter runs on a large-stack Fiber (`cli.d`).
+3. Benchmarking is unified in `tools/suite bench` (`make bench`, `make bench-check`) with goals, gates and floors in `benchmarks/targets.toml`; see [CONSOLIDATION_PLAN.md](CONSOLIDATION_PLAN.md).
 4. Correctness takes priority over performance optimization. Goto execution/scope validation, precedence, floor arithmetic, shifts, lexical `_ENV`, debug upvalue APIs, const attributes and basic close cleanup are implemented with targeted tests. Proper tail calls, callable-table chains, reader loading, numeric-string parsing, function debug metadata, UTF-8 APIs and pattern-library fixes are implemented. Generic for loops retain the fourth closing value and evaluate all iterator expressions; each loop iteration closes its scoped values/upvalues. Register growth preserves captured-local aliases.  Debug fidelity, binary chunks, coroutine/library/CLI gaps and large-program failures remain. `make test-conformance-core` compares deterministic core behavior with C Lua. `make test` includes runner regression tests but excludes the official suite and differential target. Skipped files and unsupported D-GC semantics remain explicit barriers to full conformance claims.
 
 ### Phase 6: Declarative Datalog Extensions v0.1 (Completed ✅)
@@ -208,9 +208,9 @@ baselines; do not reset baselines to conceal regressions.
    ** Lua - A Scripting Language
    ** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
    **
-   ** dlua - D port of Lua 5.4
+   ** Varis - a Lua 5.4 derivative, written in D
    ** Copyright (C) 1994-2026 Lua.org, PUC-Rio.
-   ** Copyright (C) 2026 dlua contributors.
+   ** Copyright (C) 2026 Varis contributors.
    ** See LICENSE for license details.
    */
    ```
@@ -232,40 +232,30 @@ baselines; do not reset baselines to conceal regressions.
 ## 6. Common Build Commands
 
 ```bash
-# Run Foundation unit tests
-make test-foundation
+# Build the CLI (release, -O3 -release); `make varis-checked` builds optimized with assertions
+make varis
 
-# Run Declarative Logic unit tests
-make test-logic
+# Tests: one driver, one manifest (tests/manifest.toml); tiers smoke < fast < full
+make test-smoke
+make test-fast
+make test            # full tier incl. official Lua suite (~45 s)
+python3 tools/suite test --filter <case-id substring>
 
-# Run core stateful companion unit tests
-make test-stateful
+# Performance: ratios vs C Lua and earlier versions (benchmarks/targets.toml)
+make bench
+make bench-check     # fails on gate/floor regressions
 
-# Run Declarative Datalog acceptance suite with timeout
-make test-datalog
+# Repository hygiene
+make hooks           # enable .githooks once per clone
+make fmt             # dfmt; `make fmt-check` verifies
+make check           # pre-push gate
 
-# Run the 19 Datalog scenario programs (small + large scale, golden output, known gaps)
-make test-scenarios
-
-# Run additional extension corner cases and bounded stress tests (5 minutes per case)
-make test-extensions
-
-# Run the differential regression programs (output + checksum identical to C Lua)
-make test-regression
-
-# Run all test suites (foundation, frontend, VM, libraries, logic, stateful, datalog, extensions, benchmark runner)
-make test
-
-# Build CLI
-make dlua
-
-# Clean artifacts
+# Legacy per-suite targets (test-foundation, test-logic, test-datalog, ...) and the
+# previous full run (`make test-legacy`) remain available.
 make clean
 ```
 
-The Datalog acceptance suite (`make test-datalog`) and unit tests (`make test-logic`) are integrated into `make test`, with per-test timeouts configured via `DATALOG_TIMEOUT` and runner timeouts via `TIMEOUT`.
-
-The additional [extension regression and stress suite](tests/extensions/README.md)
-(`make test-extensions`) is also included in `make test`. Each case has a hard
-300-second maximum; `EXTENSIONS_TIMEOUT` may reduce it. Specification failures
-remain visible as failures, with strict diagnostics for expected rejections.
+Skips, partial results and known gaps are accounted in the `[[ledger]]` of `tests/manifest.toml`;
+loosening a performance target or adding a ledger entry requires a `Perf-Regression-Accepted:` /
+`Skip-Accepted:` commit trailer (enforced by the commit-msg hook). Do not reset baselines to conceal
+regressions. Keep all source modules listed explicitly in the Makefile (`make check-sources`).

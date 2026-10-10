@@ -2,19 +2,19 @@
 ** Lua - A Scripting Language
 ** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
 **
-** dlua - D port of Lua 5.4
+** Varis - a Lua 5.4 derivative, written in D
 ** Copyright (C) 1994-2026 Lua.org, PUC-Rio.
-** Copyright (C) 2026 dlua contributors.
+** Copyright (C) 2026 Varis contributors.
 ** See LICENSE for license details.
 */
 
 /*
-** dlua - Unit tests for Runtime & VM (Phase 3)
+** varis - Unit tests for Runtime & VM (Phase 3)
 */
 
 module tests.unit.test_vm;
 
-import dlua;
+import varis;
 import std.stdio : writeln;
 
 void testBasicExecution() {
@@ -415,7 +415,7 @@ void testForScopeClosing() {
 }
 
 void testRegisterReuseLifetimes() {
-    import dlua.lib : openLibs;
+    import varis.lib : openLibs;
 
     auto state = new LuaState();
     openLibs(state);
@@ -464,7 +464,7 @@ void testRegisterReuseLifetimes() {
 
 void testFrameContextAndHooks() {
     auto state = new LuaState();
-    import dlua.lib : openLibs;
+    import varis.lib : openLibs;
 
     openLibs(state);
     state.doString(q"{
@@ -504,7 +504,7 @@ void testFrameContextAndHooks() {
 }
 
 int main() {
-    writeln("Running dlua Runtime & VM Unit Tests...");
+    writeln("Running varis Runtime & VM Unit Tests...");
     testRegisterReuseLifetimes();
     testFrameContextAndHooks();
     testBasicExecution();

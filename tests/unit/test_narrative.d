@@ -2,22 +2,22 @@
 ** Lua - A Scripting Language
 ** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
 **
-** dlua - D port of Lua 5.4
+** Varis - a Lua 5.4 derivative, written in D
 ** Copyright (C) 1994-2026 Lua.org, PUC-Rio.
-** Copyright (C) 2026 dlua contributors.
+** Copyright (C) 2026 Varis contributors.
 ** See LICENSE for license details.
 */
 
 module tests.unit.test_narrative;
-import dlua;
-import dlua.narrative.codec;
-import dlua.narrative.registry;
-import dlua.narrative.templates;
-import dlua.narrative.persistence;
-import dlua.narrative.session;
-import dlua.logic.world;
-import dlua.logic.model;
-import dlua.vm;
+import varis;
+import varis.narrative.codec;
+import varis.narrative.registry;
+import varis.narrative.templates;
+import varis.narrative.persistence;
+import varis.narrative.session;
+import varis.logic.world;
+import varis.logic.model;
+import varis.vm;
 import std.stdio : writeln;
 import std.json;
 
@@ -1187,7 +1187,7 @@ void testFormattersAndVariants() {
 }
 
 int main() {
-    writeln("Running dlua Narrative Extension Tests...");
+    writeln("Running varis Narrative Extension Tests...");
     testCodec();
     testRegistryFailures();
     testCompanionErrors();

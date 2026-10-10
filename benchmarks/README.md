@@ -23,7 +23,7 @@ whose samples have CV > 15 % is flagged `noisy`.
 Declared in [manifest.toml](manifest.toml): `clua` (stock Lua 5.4.9, `-O2`),
 `v0-snapshot` (git tag `baseline/v0-snapshot`, the pre-optimization tree) and
 `v1-perf-final` (tag `baseline/v1-perf-final`). A git-ref comparator is built on demand with
-`make dlua` in a worktree under `.cache/src/` and cached by (commit, profile, compiler) in
+`make varis` in a worktree under `.cache/src/` and cached by (commit, profile, compiler) in
 `.cache/builds/`. Add a `release-*` tag and a `prev` comparator when releases begin.
 
 ## Targets

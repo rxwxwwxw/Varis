@@ -1,3 +1,7 @@
+> **Historical note (2026-10-10):** `bench.py`, `workloads.py`, `regression.py` and `datalog.py`
+> referenced below were replaced by `tools/suite bench`; see [README.md](README.md). Raw results
+> are in `history/2026-10-09-perf/`.
+
 # Performance work — October 9, 2026
 
 ## Stage 2 (target ≈ 2× C Lua)

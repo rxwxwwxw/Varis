@@ -4,7 +4,7 @@
 
 ## 1. Conformance target
 
-The immediate target is to run `sample-game/main.lua` interactively and `sample-game/tools/check.lua` as an author test. **No scenes, passage system, multimedia renderer, text input, or general type system is necessary for that target.** The game is source-only; no compatible `dlua` executable was included in the archive, so these findings are from static review, not a successful playthrough.
+The immediate target is to run `sample-game/main.lua` interactively and `sample-game/tools/check.lua` as an author test. **No scenes, passage system, multimedia renderer, text input, or general type system is necessary for that target.** The game is source-only; no compatible `varis` executable was included in the archive, so these findings are from static review, not a successful playthrough.
 
 The existing spec already provides most important concepts: world snapshots, transactions, keyed relations, query-driven storylets, choices, automatic actions, decks, template conditions, events, and save/load. The amendments below clarify or add missing observable behavior.
 

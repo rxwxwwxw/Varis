@@ -31,7 +31,7 @@ def run_case(binary, case, timeout):
     else:
         source += '\nerror("UNEXPECTED SUCCESS")\n'
     started = time.monotonic()
-    with tempfile.TemporaryDirectory(prefix="dlua-extensions-") as directory:
+    with tempfile.TemporaryDirectory(prefix="varis-extensions-") as directory:
         script = Path(directory) / case.name
         script.write_text(source)
         # A process group also allows killing descendants of a hung guard.

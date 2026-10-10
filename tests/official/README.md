@@ -10,17 +10,17 @@ bundled C Lua as reference (`--reference`). [baseline.json](baseline.json) recor
 status, diagnostics, exit codes and timings.
 
 The single skip is `gc.lua`, **excluded by decision**: exact collector reachability and
-memory-accounting assertions conflict with keeping dlua objects directly accessible from D, so
+memory-accounting assertions conflict with keeping Varis objects directly accessible from D, so
 the conservative D collector is kept. The single partial is the suite driver `all.lua`, which the
 runner executes in a scratch copy of the suite with `gc.lua` replaced by a stub; that run
 (`final OK !!!`) additionally pushes every file through `string.dump`/`load` and exercises
 `main.lua` and `files.lua` in the combined configuration. No assertion of any other file is
-removed or altered: the C test modules are built and loaded through the dlua C API subset, and
+removed or altered: the C test modules are built and loaded through the Varis C API subset, and
 the nested-shell status check runs against an `sh` shim (see below).
 
 Run `make test-official` (strict exit codes; 120 s default timeout, use `--timeout 240` for the
 slow all.lua driver) or, for a JSON report,
-`./bin/test_runner --strict --timeout 240 --reference c-implementation/src/lua --json /tmp/dlua-official.json`.
+`./bin/test_runner --strict --timeout 240 --reference c-implementation/src/lua --json /tmp/varis-official.json`.
 `make test-conformance-core` compares the deterministic core fixture with C Lua. `make test`
 includes the runner's regression tests but not the official suite itself (`errors.lua` alone
 takes ~30 s, `all.lua` ~70 s).
@@ -54,7 +54,7 @@ takes ~30 s, `all.lua` ~70 s).
 
 `api.lua` and `code.lua` pass in the way they do under a stock C Lua built without the internal
 `T` library: they detect `T == nil`, print a notice and return, so their C-API and opcode-listing
-assertions are not exercised (dlua's C API is a small subset and its instruction set differs).
+assertions are not exercised (Varis's C API is a small subset and its instruction set differs).
 `heavy.lua` is not run by `all.lua`; it passes here because array growth is bounded at 2^27
 slots and reports `not enough memory` (C Lua reports the same when the machine is exhausted).
 
@@ -66,18 +66,18 @@ bytecode (`T.listcode`, `T.listk`), allocator and collector state (`T.totalmem`,
 drives the C API through a mini-language (`T.testC`). A normal Lua 5.4 binary does not define
 `T`, and the suite is written for that case: both files test `T == nil` and return. The bundled
 reference binary (`c-implementation/src/lua`) is such a build, and the runner shows identical
-behaviour for it and for dlua:
+behaviour for it and for Varis:
 
 ```
 $ c-implementation/src/lua api.lua    >>> testC not active: skipping API tests <<<
-$ bin/dlua                 api.lua    >>> testC not active: skipping API tests <<<
+$ bin/varis                 api.lua    >>> testC not active: skipping API tests <<<
 $ c-implementation/src/lua code.lua   >>> testC not active: skipping opcode tests <<<
-$ bin/dlua                 code.lua   >>> testC not active: skipping opcode tests <<<
+$ bin/varis                 code.lua   >>> testC not active: skipping opcode tests <<<
 ```
 
 Running them *with* `T` would not test Lua 5.4 language or library behaviour; it would test that
-dlua reproduces C Lua's bytecode listings (dlua uses its own typed instruction set by design,
-AGENTS.md section 2.7) and a complete C API with its yield/error continuation semantics (dlua
+Varis reproduces C Lua's bytecode listings (Varis uses its own typed instruction set by design,
+AGENTS.md section 2.7) and a complete C API with its yield/error continuation semantics (Varis
 exposes a D API instead; the C API subset in `capi.d` exists to load simple C modules). That
 would be a different project (an ltests-compatible C Lua clone), so it is documented as out of
 scope rather than as a conformance failure.
@@ -94,12 +94,12 @@ scope rather than as a conformance failure.
   (quicksort), lmathlib (xoshiro256**), loslib, liolib (on `FILE*`), loadlib/package searchers
   (C modules via `dlopen`) and lcorolib; real binary chunk header and `string.dump`/`load` of
   binary chunks (private body, `dump.d`).
-- **C API subset** (`source/dlua/capi.d`, exported from the executable): stack manipulation,
+- **C API subset** (`source/varis/capi.d`, exported from the executable): stack manipulation,
   pushing/reading scalars and strings, `lua_pushfstring`, globals, table fields, `luaL_setfuncs`
   and `luaL_checkversion_`; enough for `lua_CFunction` modules that do not call back into Lua or
   raise errors.
 - **CLI**: port of `lua.c` (options, REPL, `LUA_INIT`, SIGINT, traceback handler).
-- **GC emulation** (`dlua/gc.d`): weak tables (keys/values/ephemerons) and `__gc`/`__close`
+- **GC emulation** (`varis/gc.d`): weak tables (keys/values/ephemerons) and `__gc`/`__close`
   finalizers on top of D's collector by hiding references; ephemerons resolve through forked
   reachability probes; removed-entry keys are released at cycles; explicit collections settle
   bookkeeping garbage; a precise heap collector is selected (`rt_options`); stack scrubbing is
@@ -123,7 +123,7 @@ scope rather than as a conformance failure.
   milestone 21.
 - **Differential regression programs** (`tests/regression`, 15 programs, identical output and
   checksum under C Lua): all pass. Known remaining difference: rare variable-info suffixes for
-  `(x or K) and K2`-shaped operands (dlua's code shape differs from luac's degenerate jump);
+  `(x or K) and K2`-shaped operands (Varis's code shape differs from luac's degenerate jump);
   the stack-overflow unwind in `limits.lua` takes about 7 s versus 0.05 s (Phase 8).
 - The differential fixture (`core.lua`) is focused coverage, not a replacement for the official
   suite.

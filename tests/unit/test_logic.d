@@ -2,25 +2,25 @@
 ** Lua - A Scripting Language
 ** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
 **
-** dlua - D port of Lua 5.4
+** Varis - a Lua 5.4 derivative, written in D
 ** Copyright (C) 1994-2026 Lua.org, PUC-Rio.
-** Copyright (C) 2026 dlua contributors.
+** Copyright (C) 2026 Varis contributors.
 ** See LICENSE for license details.
 */
 
 /*
-** dlua - Unit tests for Declarative Engine & Logic Extensions (Milestones 0-8)
+** varis - Unit tests for Declarative Engine & Logic Extensions (Milestones 0-8)
 */
 
 module tests.unit.test_logic;
 
-import dlua;
-import dlua.logic.model;
-import dlua.logic.world;
-import dlua.logic.validate;
-import dlua.logic.evaluate;
-import dlua.logic.query;
-import dlua.lib.logic;
+import varis;
+import varis.logic.model;
+import varis.logic.world;
+import varis.logic.validate;
+import varis.logic.evaluate;
+import varis.logic.query;
+import varis.lib.logic;
 
 import std.stdio : writeln;
 import std.math : isNaN;
@@ -244,7 +244,7 @@ void testJoinBindings() {
 }
 
 int main() {
-    writeln("Running dlua Declarative Logic Unit Tests...");
+    writeln("Running varis Declarative Logic Unit Tests...");
     testSymbolsAndTuples();
     testWorldAndRelations();
     testValidation();

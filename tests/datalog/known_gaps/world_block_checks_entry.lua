@@ -1,5 +1,5 @@
 -- KNOWN-GAP: was accepted by a world block
--- Spec §11.7: the world expression "must produce a world".  dlua only
+-- Spec §11.7: the world expression "must produce a world".  varis only
 -- checks this lazily, when the block contains a declarative statement that
 -- needs the world, so `logic (5) do end` is silently accepted.
 local ok, err = pcall(function()

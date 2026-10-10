@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-STANDALONE = {"source/dlua/cli.d"}
+STANDALONE = {"source/varis/cli.d"}
 
 
 def tracked_d_files():
@@ -22,7 +22,7 @@ def tracked_d_files():
 def check(files=None):
     errors = []
     makefile = (ROOT / "Makefile").read_text()
-    listed = set(re.findall(r"source/dlua/[\w/]+\.d", makefile))
+    listed = set(re.findall(r"source/varis/[\w/]+\.d", makefile))
     for f in sorted(Path(ROOT / "source").rglob("*.d")):
         rel = str(f.relative_to(ROOT))
         if rel not in listed and rel not in STANDALONE:

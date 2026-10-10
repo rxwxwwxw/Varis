@@ -1,7 +1,7 @@
 -- KNOWN-GAP: unexpected symbol
 -- Spec §17.6: comparison ::= term compareop term, and a term may be an exp,
 -- so a Lua constant may stand on the LEFT of a comparison in a query body.
--- dlua only accepts a logic variable as the first operand and reports a
+-- varis only accepts a logic variable as the first operand and reports a
 -- syntax error; load() lets the program capture that diagnostic.
 -- This program prints "GAP CLOSED" once the construct is accepted.
 fact num(1) fact num(5)

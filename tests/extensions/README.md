@@ -6,15 +6,15 @@ through the real lexer, parser, compiler, VM, and declarative engine. It runs
 separately from the existing engine unit tests and 15 acceptance examples, and
 is included in `make test`.
 
-The suite contains 54 Lua cases and four runner checks. All language cases and
+The suite contains 55 Lua cases and four runner checks. All language cases and
 runner checks pass after fixing the seven failures found during initial validation.
 
 ```sh
 make test-extensions DC=/opt/homebrew/bin/ldc2
 # Run a subset using an already built interpreter:
-python3 tests/extensions/run-tests.py ./bin/dlua --filter rollback
+python3 tests/extensions/run-tests.py ./bin/varis --filter rollback
 # A shorter timeout is useful when investigating a hang:
-python3 tests/extensions/run-tests.py ./bin/dlua --timeout 10 --filter stress
+python3 tests/extensions/run-tests.py ./bin/varis --timeout 10 --filter stress
 ```
 
 Each Lua case gets a fresh interpreter process and a **300-second timeout**.

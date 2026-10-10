@@ -2,19 +2,19 @@
 ** Lua - A Scripting Language
 ** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
 **
-** dlua - D port of Lua 5.4
+** Varis - a Lua 5.4 derivative, written in D
 ** Copyright (C) 1994-2026 Lua.org, PUC-Rio.
-** Copyright (C) 2026 dlua contributors.
+** Copyright (C) 2026 Varis contributors.
 ** See LICENSE for license details.
 */
 
 /*
-** dlua - Unit tests for Foundation (types, table, state, exception)
+** varis - Unit tests for Foundation (types, table, state, exception)
 */
 
 module tests.unit.test_foundation;
 
-import dlua;
+import varis;
 import std.stdio : writeln, writefln;
 import std.math : floatTraits, isNaN;
 
@@ -97,7 +97,7 @@ void testTypes() {
     assert(!floatToInteger(-9223372036854775808.0 - 2048.0, outInt)); // below long.min
 
     // RelTuple (Milestone 1)
-    import dlua.logic.model : RelTuple;
+    import varis.logic.model : RelTuple;
 
     auto tZero = RelTuple([]);
     assert(tZero.length == 0);
@@ -227,7 +227,7 @@ void testStateAndPCall() {
 }
 
 int main() {
-    writeln("Running dlua Foundation Unit Tests...");
+    writeln("Running varis Foundation Unit Tests...");
     testTypes();
     testTable();
     testStateAndPCall();
