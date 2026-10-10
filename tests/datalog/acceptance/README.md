@@ -20,10 +20,9 @@ strategy is prescribed. All `negative/` files include a fallback error tagged
 `UNEXPECTED SUCCESS`, which the runner detects so that arbitrary errors cannot
 conceal a wrongly accepted invalid rule.
 
-The runner checks only successful/unsuccessful execution and the fallback marker;
-it **does not** distinguish the precise compiler/runtime diagnostic or fully
-identify every possible spurious error in a negative test. Inspect diagnostics
-when debugging.
+Both runners (`run-tests.sh` and the unified driver's `rejection` suite, whose expected
+diagnostics live in `tests/manifest.toml`) require the intended diagnostic and reject crashes,
+timeouts and the fallback marker, so an unrelated error cannot pass as a rejection.
 
 ## Programs
 
@@ -71,7 +70,9 @@ not an existing implementation. In particular:
 
 ## Non-goals
 
-These are functional examples, not microbenchmarks or fuzz tests. Their total
-runtime is tracked by `python3 tools/suite bench --group datalog`; see
-[benchmark details](../benchmarks/README.md). They do not test typed extensions, aggregates, cross-world
+These are functional examples, not microbenchmarks or fuzz tests; they run in the `acceptance`
+and `rejection` suites of the unified driver (`python3 tools/suite test --suite acceptance --suite rejection`).
+Datalog performance is measured on the larger scenario programs in the parent directory
+(`python3 tools/suite bench --group datalog`; see [benchmark details](../../../benchmarks/README.md)).
+They do not test typed extensions, aggregates, cross-world
 rule dependencies, full purity certification, transactions, or rule removal.

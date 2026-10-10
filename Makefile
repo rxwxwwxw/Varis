@@ -134,6 +134,13 @@ bench-record: varis c-lua
 # Everything a tag must pass: full tests and enforced performance targets.
 release: test bench-check
 
+# Regenerate docs/STATUS.md from a fresh full test run and a fresh benchmark run (idle machine).
+status: suite-deps
+	mkdir -p build
+	$(SUITE) test --tier full -q --json build/test-full.json
+	$(SUITE) bench --json build/bench-all.json
+	$(SUITE) report --tests build/test-full.json --bench build/bench-all.json --out docs/STATUS.md
+
 # ---- Repository hygiene ------------------------------------------------------------------------
 
 hooks:

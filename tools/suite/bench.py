@@ -16,6 +16,16 @@ from .manifest import ROOT
 
 HARNESS = """
 local path = ...
+local report = print
+if os.getenv("BENCH_SILENT") == "1" then
+  print = function() end
+  io.write = function() end
+end
+local argline = os.getenv("BENCH_ARGS")
+if argline and argline ~= "" then
+  arg = {[0] = path}
+  for a in argline:gmatch("%S+") do arg[#arg + 1] = a end
+end
 local t0 = os.clock()
 local body = assert(loadfile(path))
 local compile = os.clock() - t0
@@ -23,7 +33,7 @@ body()
 local reps = tonumber(os.getenv("BENCH_REPEATS")) or 5
 t0 = os.clock()
 for _ = 1, reps do body() end
-io.write(string.format("%.9f %.9f\\n", (os.clock() - t0) / reps, compile))
+report(string.format("%.9f %.9f", (os.clock() - t0) / reps, compile))
 """
 
 
@@ -53,12 +63,12 @@ def workloads(manifest):
                 if p.name in g.get("exclude", []):
                     continue
                 entries.append({"id": p.stem, "path": str(p.relative_to(ROOT)),
-                                "cwd": str(p.parent.relative_to(ROOT)) if g.get("cwd_is_parent") else "."})
+                                "cwd": str(p.parent.relative_to(ROOT)) if g.get("cwd_is_parent") else g.get("cwd", ".")})
         for c in g.get("cases", []):
             entries.append({"id": c["id"], "path": c["path"], "cwd": c.get("cwd", ".")})
         for e in entries:
             out.append({"id": f"{g['id']}.{e['id']}", "group": g["id"], "kind": g["kind"], "path": e["path"],
-                        "cwd": e["cwd"], "args": g.get("args", []), "comparable": g.get("comparable", False),
+                        "cwd": e["cwd"], "args": g.get("args", []), "comparable": g.get("comparable", False), "silent": g.get("silent", False),
                         "runs": g.get("runs", d.get("runs", 7)), "repeats": g.get("repeats", d.get("repeats", 5)),
                         "timeout": g.get("timeout", d.get("timeout", 180))})
     return out
@@ -170,8 +180,10 @@ def measure(w, binary):
         with tempfile.NamedTemporaryFile("w", suffix=".lua", delete=False) as f:
             f.write(HARNESS)
         try:
-            env = dict(os.environ, BENCH_REPEATS=str(w["repeats"]))
-            cpu, wall, rss, out = spawn([binary, f.name, str(ROOT / w["path"])], ROOT, w["timeout"] * w["repeats"], env)
+            env = dict(os.environ, BENCH_REPEATS=str(w["repeats"]), BENCH_ARGS=" ".join(w["args"]),
+                       BENCH_SILENT="1" if w.get("silent") else "0")
+            cpu, wall, rss, out = spawn([binary, f.name, str(ROOT / w["path"])], ROOT / w["cwd"],
+                                        w["timeout"] * w["repeats"], env)
         finally:
             os.unlink(f.name)
         exec_s, compile_s = map(float, out.split())

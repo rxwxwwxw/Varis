@@ -55,20 +55,41 @@ comparable = true
 runs = 15
 description = "interpreter start-up cost"
 
+# In-process kernels for the declarative engine: fresh world per run, silent, no stock-Lua comparator.
 [[group]]
 id = "datalog"
+kind = "inproc"
+glob = "benchmarks/workloads/datalog/*.lua"
+silent = true
+comparable = false
+description = "declarative kernels timed in-process (closure, joins, negation, incremental updates)"
+
+# The 19 end-to-end scenario programs at benchmark scale, one fresh process each.
+[[group]]
+id = "scenarios"
 kind = "process"
 glob = "tests/datalog/[0-9][0-9]_*.lua"
 args = ["large"]
 cwd_is_parent = true
 comparable = false
 runs = 3
-description = "declarative scenarios at benchmark scale (no stock-Lua comparator)"
+description = "declarative scenario programs end to end (no stock-Lua comparator)"
 
+# In-process narrative kernels on the sample game (cwd = sample-game so its modules resolve).
 [[group]]
 id = "narrative"
+kind = "inproc"
+glob = "benchmarks/workloads/narrative/*.lua"
+cwd = "sample-game"
+silent = true
+comparable = false
+repeats = 3
+description = "session play, save/load/replay and analysis timed in-process"
+
+[[group]]
+id = "narrative_e2e"
 kind = "process"
 comparable = false
 runs = 5
-description = "stateful/narrative session workloads (no stock-Lua comparator)"
+description = "scripted sample-game walkthrough end to end"
 cases = [{ id = "sample_game_check", path = "sample-game/tools/check.lua", cwd = "sample-game" }]

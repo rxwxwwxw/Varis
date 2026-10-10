@@ -51,13 +51,16 @@ class LStream {
     }
 }
 
-private LuaTable fileMeta;
+/// The FILE* metatable of `L` (kept in its registry: several states may coexist in one thread).
+private LuaTable fileMetaOf(LuaState L) {
+    return L.registry.rawget(LuaValue("FILE*")).match!((LuaTable t) => t, _ => null);
+}
 
 private LStream testStream(LuaState L, LuaValue v) {
     if (v.typeOf() != LuaType.UserData)
         return null;
     auto u = v.match!((LuaUserData u) => u, _ => null);
-    if (u is null || u.metatable !is fileMeta)
+    if (u is null || u.metatable !is fileMetaOf(L))
         return null;
     return cast(LStream) u.payload;
 }
@@ -77,11 +80,11 @@ private FILE* toFile(LuaState L, LuaValue[] a, int n = 1) {
     return p.f;
 }
 
-private LuaValue newStream(FILE* f, CloseKind kind) {
+private LuaValue newStream(LuaState L, FILE* f, CloseKind kind) {
     auto stream = new LStream();
     stream.f = f;
     stream.kind = kind;
-    return LuaValue(new LuaUserData(stream, fileMeta));
+    return LuaValue(new LuaUserData(stream, fileMetaOf(L)));
 }
 
 /// luaL_fileresult
@@ -372,7 +375,7 @@ private LuaValue openOrFail(LuaState L, string fname, string mode) {
         string message = (cast(string) strerror(errno).fromStringz).idup;
         throw new LuaException("cannot open file '" ~ fname ~ "' (" ~ message ~ ")");
     }
-    return newStream(f, CloseKind.file);
+    return newStream(L, f, CloseKind.file);
 }
 
 private LuaValue[] gIoFile(LuaState L, LuaValue[] a, string key, string mode) {
@@ -390,7 +393,7 @@ private LuaValue[] gIoFile(LuaState L, LuaValue[] a, string key, string mode) {
 void openIoLib(LuaState state) {
     auto ioTable = new LuaTable();
     auto methods = new LuaTable();
-    fileMeta = new LuaTable();
+    auto fileMeta = new LuaTable();
     state.registry.rawset(LuaValue("FILE*"), LuaValue(fileMeta));
 
     // --- methods -------------------------------------------------------------
@@ -469,7 +472,7 @@ void openIoLib(LuaState state) {
         FILE* f = fopen(filename.toStringz, mode.toStringz);
         if (f is null)
             return fileResult(false, filename);
-        return [newStream(f, CloseKind.file)];
+        return [newStream(L, f, CloseKind.file)];
     });
     ioTable.register("popen", (LuaState L, LuaValue[] a) {
         import core.sys.posix.stdio : popen;
@@ -483,14 +486,14 @@ void openIoLib(LuaState state) {
         FILE* f = popen(command.toStringz, mode.toStringz);
         if (f is null)
             return fileResult(false, command);
-        return [newStream(f, CloseKind.popen)];
+        return [newStream(L, f, CloseKind.popen)];
     });
     ioTable.register("tmpfile", (LuaState L, LuaValue[] a) {
         errno = 0;
         FILE* f = tmpfile();
         if (f is null)
             return fileResult(false);
-        return [newStream(f, CloseKind.file)];
+        return [newStream(L, f, CloseKind.file)];
     });
     ioTable.register("type", (LuaState L, LuaValue[] a) {
         checkAny(a, 1);
@@ -523,9 +526,9 @@ void openIoLib(LuaState state) {
     });
 
     // --- standard files ------------------------------------------------------
-    auto stdinValue = newStream(stdin, CloseKind.standard);
-    auto stdoutValue = newStream(stdout, CloseKind.standard);
-    auto stderrValue = newStream(stderr, CloseKind.standard);
+    auto stdinValue = newStream(state, stdin, CloseKind.standard);
+    auto stdoutValue = newStream(state, stdout, CloseKind.standard);
+    auto stderrValue = newStream(state, stderr, CloseKind.standard);
     ioTable.rawset(LuaValue("stdin"), stdinValue);
     ioTable.rawset(LuaValue("stdout"), stdoutValue);
     ioTable.rawset(LuaValue("stderr"), stderrValue);

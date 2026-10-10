@@ -64,5 +64,28 @@ class Trailer(unittest.TestCase):
         self.assertTrue(T.targets_loosened(old, {"workload": {"a": {"gate": {}, "floor": {"v0": 10.0}}}}))
 
 
+class Report(unittest.TestCase):
+    def test_report_renders_counts_ledger_and_status(self):
+        import json
+        from suite import cli
+        with tempfile.TemporaryDirectory() as d:
+            tests = Path(d) / "t.json"
+            tests.write_text(json.dumps({"tier": "full", "commit": "abc", "machine": "m", "wall_seconds": 1,
+                                         "counts": {"pass": 1, "skip": 1},
+                                         "results": [{"id": "unit.a", "status": "pass", "detail": ""},
+                                                     {"id": "official.gc", "status": "skip", "detail": "excluded"}]}))
+            bench = Path(d) / "b.json"
+            bench.write_text(json.dumps({"commit": "abc", "machine": "m", "toolchain": "ldc", "records": [
+                {"id": "core.fib", "group": "core", "binaries": {"candidate": {"median": 0.1}},
+                 "ratios": {"clua": {"median": 2.5, "rss": 1.0}}}]}))
+            out = Path(d) / "S.md"
+            rc = cli.main(["report", "--tests", str(tests), "--bench", str(bench), "--out", str(out)])
+            text = out.read_text()
+        self.assertEqual(rc, 0)
+        self.assertIn("official.gc", text)
+        self.assertIn("`core.fib`", text)
+        self.assertIn("2.50×", text)
+
+
 if __name__ == "__main__":
     unittest.main()
