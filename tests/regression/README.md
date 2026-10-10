@@ -43,6 +43,8 @@ program terminates in a reasonable time. `make test` runs the unit tests of the 
 | `limits` | parser limits (locals, parameters, nesting, registers), long literals, escapes, recursion depth, huge `rep`/`unpack` |
 | `fuzz_expr` | csmith-style: 1500 random expressions (arith, bitwise, comparison, concat, `and`/`or`, coercions) compiled with `load`, run under `pcall`, every result or message hashed. `FUZZ_SEED`, `FUZZ_COUNT`, `FUZZ_DEPTH` explore other seeds; the committed run is deterministic |
 | `fuzz_table` | random sequences of table-library operations with a hash of every outcome |
+| `fastpaths` | allocation-free built-ins (`type`/`select`/`rawget`/`setmetatable`/`math.*`/`string.sub`/`table.insert`...) incl. their fallback error cases, inline array and field access, `pairs`/`ipairs` loops, nil-padded array borders, tail-call buffers, mid-function hooks, upvalue closing at scale |
+| `deepframes` | calls nested far past the native recursion threshold: results, varargs, tail calls, `<close>` ordering, error positions, tracebacks, hooks, coroutines, native boundaries and stack overflow recovery |
 | `workloads` | n-body, fannkuch, binary trees, sieve, collatz, gcd, string building, matrix multiply: results and checksums |
 
 ## Writing a program

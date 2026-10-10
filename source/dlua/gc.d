@@ -37,6 +37,10 @@ __gshared bool stackHygiene;
 /// Zeroes the dead part of the native stack below the caller.
 pragma(inline, false) @trusted
 void scrubDeadStack() {
+    // Clearing 16 KB costs far more than a typical Lua call, so only every 32nd call pays it;
+    // frames created in between rarely add stale words that survive to the next explicit collection.
+    static __gshared uint calls;
+    if ((++calls & 31) != 0) return;
     ubyte[16384] junk = void;
     scrubMemset(junk.ptr, 0, junk.length);
 }
@@ -126,9 +130,9 @@ private extern (C) void* scrubFill(void* p, int c, size_t n) nothrow @nogc {
 }
 
 private void clearDeadRegisters(LuaState state) {
-    foreach (ref frame; state.callStack) if (frame.clearDead !is null) frame.clearDead();
+    foreach (ref frame; state.callStack) frame.clearDead();
     auto main = state.mainStack();
-    foreach (ref frame; main) if (frame.clearDead !is null) frame.clearDead();
+    foreach (ref frame; main) frame.clearDead();
 }
 
 /// Runs a full collection cycle with weak-table clearing and finalization.

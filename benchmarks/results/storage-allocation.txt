@@ -1,0 +1,1 @@
+PROFILE allocated_bytes=2671174416 used_bytes=570752 collections=2900 collection_time=183 ms, 857 μs, and 2 hnsecs

@@ -156,6 +156,7 @@ struct Instruction {
     bool aIsK = false;
     bool bIsK = false;
     bool cIsK = false;
+    private ubyte[4] padding;   // keeps instructions at 32 bytes so indexing is a shift
 
     string toString() const {
         return format("Instruction(%s, a=%d, b=%d%s, c=%d%s, sBx=%d, line=%d)",
@@ -208,10 +209,56 @@ class Prototype {
     ContentTemplate[] contentTemplates;
     Instruction[] code;
     int[] liveTop;  // per instruction: registers >= liveTop[pc] hold no live values (int.max = unknown)
+    private Instruction[] codeBuffer;   // spare capacity behind `code` while it is being compiled
+    private int[] liveBuffer;
+
+    /// Appends an instruction and its live-register bound. Slice appends cost a runtime block-info
+    /// lookup each; the compiler emits one instruction at a time, so capacity is managed here.
+    void pushInstruction(ref const Instruction instr, int live) {
+        size_t used = code.length;
+        if (used == codeBuffer.length || codeBuffer.ptr !is code.ptr) {
+            size_t capacity = used < 8 ? 16 : used * 2;
+            auto grown = new Instruction[capacity];
+            grown[0 .. used] = code[];
+            codeBuffer = grown;
+            auto liveGrown = new int[capacity];
+            liveGrown[0 .. liveTop.length] = liveTop[];
+            liveBuffer = liveGrown;
+        }
+        codeBuffer[used] = instr;
+        liveBuffer[used] = live;
+        code = codeBuffer[0 .. used + 1];
+        liveTop = liveBuffer[0 .. used + 1];
+    }
     DebugLocal[] debugLocals;
     // Call PC -> lexical world: register+1, -(upvalue+1), or 0 for global.
     int[int] callWorlds;
     CallName[int] callNames;
+    int[] lookupHints;                  // per-pc inline-cache node hints (see LuaTable.findStringHinted)
+
+    /// Dense per-pc view of `callNames` and `callWorlds`, built once before first execution.
+    struct CallSite {
+        string name;
+        string kind;
+        int world;          // register+1, -(upvalue+1), or 0 for the global world
+    }
+    CallSite[] callSites;
+    /// Table-constructor sizes by NewTable pc: (array items << 16) | keyed fields, both capped. Kept out
+    /// of the instruction operands so code fingerprints and dumps are unaffected.
+    int[int] tableSizeHints;
+    uint[] newTableSizes;     // dense per-pc copy, built before first execution
+    size_t[] constantHashes;  // hashOf of string constants (0 otherwise), for hashed table lookups
+    Instruction[] execCode;   // `code` plus a guaranteed final Return, run by the interpreter loop
+    bool prepared;      // sentinel Return appended and callSites built (see VM.prepareForExecution)
+
+    void buildCallSites() {
+        auto table = new CallSite[code.length];
+        foreach (pc, identity; callNames)
+            if (pc >= 0 && pc < table.length) { table[pc].name = identity.name; table[pc].kind = identity.kind; }
+        foreach (pc, world; callWorlds)
+            if (pc >= 0 && pc < table.length) table[pc].world = world;
+        callSites = table;
+    }
     LuaValue[] constants;
     Prototype[] subPrototypes;
     UpvalDesc[] upvalues;

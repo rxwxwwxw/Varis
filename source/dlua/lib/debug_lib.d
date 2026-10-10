@@ -167,12 +167,12 @@ void openDebugLib(LuaState state) {
             string name;
             if (setter) {
                 if (args.length < 3) throw new LuaException("bad argument #3 to 'setlocal' (value expected)");
-                if (frame.setLocal !is null) name = frame.setLocal(index, args[2]);
+                name = frame.setLocal(index, args[2]);
                 return [name is null ? luaNil() : LuaValue(name)];
             }
             LuaValue value;
             bool inTransfer = frame.ftransfer > 0 && index >= frame.ftransfer && index - frame.ftransfer < cast(long)frame.transfer.length;
-            if (frame.getLocal !is null) name = frame.getLocal(index, value);
+            name = frame.getLocal(index, value);
             if (inTransfer) {
                 // Transferred values (call parameters, returned values) override the frame's slots.
                 bool named = name !is null && name != "(temporary)" && name != "(C temporary)" && !frame.transferIsReturn;
@@ -207,6 +207,10 @@ void openDebugLib(LuaState state) {
         thread.hookMask = (mask.indexOf('c') >= 0 ? 1 : 0) | (mask.indexOf('r') >= 0 ? 2 : 0) |
             (mask.indexOf('l') >= 0 ? 4 : 0) | (count > 0 ? 8 : 0);
         thread.hookCount = count; thread.hookRemaining = count;
+        if (thread.hookMask != 0) {
+            import dlua.state : vmAttention, vmSlowMode;
+            vmSlowMode = true; vmAttention = true;
+        }
         return cast(LuaValue[])[];
     }, "sethook")));
 
@@ -255,7 +259,7 @@ void openDebugLib(LuaState state) {
             auto closure = cast(LuaClosure)frame.fn;
             string source = closure is null ? "[C]" : shortSourceName(frame.source);
             trace ~= "\n\t" ~ source;
-            if (frame.currentLine > 0) trace ~= ":" ~ frame.currentLine.to!string;
+            if (frame.line > 0) trace ~= ":" ~ frame.line.to!string;
             trace ~= ": in ";
             string name = VM.globalFunctionName(s, frame.fn);
             if (name.length) trace ~= "function '" ~ name ~ "'";
@@ -332,7 +336,7 @@ void openDebugLib(LuaState state) {
                 resTbl.rawset(LuaValue("lastlinedefined"), LuaValue(clos is null ? -1L : cast(long)clos.proto.lastLineDefined));
                 resTbl.rawset(LuaValue("what"), LuaValue(clos is null ? "C" : clos.proto.lineDefined == 0 ? "main" : "Lua"));
                 break;
-            case 'l': resTbl.rawset(LuaValue("currentline"), LuaValue(cast(long)ci.currentLine)); break;
+            case 'l': resTbl.rawset(LuaValue("currentline"), LuaValue(cast(long)ci.line)); break;
             case 'n':
                 if (!byFunction && ci.name.length) resTbl.rawset(LuaValue("name"), LuaValue(ci.name));
                 resTbl.rawset(LuaValue("namewhat"), LuaValue(byFunction ? "" : ci.nameKind));

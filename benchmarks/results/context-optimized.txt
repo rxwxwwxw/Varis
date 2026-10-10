@@ -1,0 +1,15 @@
+ldc2 -Isource -O3 -L-export_dynamic source/dlua/package.d source/dlua/types.d source/dlua/exception.d source/dlua/table.d source/dlua/state.d source/dlua/ast.d source/dlua/lexer.d source/dlua/parser.d source/dlua/opcode.d source/dlua/fiber.d source/dlua/compiler.d source/dlua/vm.d source/dlua/pattern.d source/dlua/lib/package.d source/dlua/lib/base.d source/dlua/lib/math.d source/dlua/lib/string.d source/dlua/lib/pack.d source/dlua/lib/auxlib.d source/dlua/dump.d source/dlua/gc.d source/dlua/lib/table.d source/dlua/lib/coroutine.d source/dlua/lib/os.d source/dlua/lib/io.d source/dlua/lib/utf8.d source/dlua/lib/package_lib.d source/dlua/capi.d source/dlua/lib/debug_lib.d source/dlua/logic/model.d source/dlua/logic/world.d source/dlua/logic/validate.d source/dlua/logic/evaluate.d source/dlua/logic/query.d source/dlua/narrative/codec.d source/dlua/narrative/templates.d source/dlua/narrative/fingerprint.d source/dlua/narrative/session.d source/dlua/narrative/persistence.d source/dlua/narrative/observe.d source/dlua/narrative/diagnostics.d source/dlua/narrative/analysis.d source/dlua/narrative/registry.d source/dlua/lib/narrative.d source/dlua/lib/quality.d source/dlua/lib/logic.d tests/unit/test_vm.d -of=bin/test_vm
+python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=300).returncode)" ./bin/test_vm
+Running dlua Runtime & VM Unit Tests...
+  [PASS] testFrameContextAndHooks
+  [PASS] testBasicExecution
+  [PASS] testControlFlow
+  [PASS] testGotoAndPrecedence
+  [PASS] testCloseAndConst
+  [PASS] testForScopeClosing
+  [PASS] testTailCalls
+  [PASS] testRecursionAndClosures
+  [PASS] testTablesAndMetamethods
+  [PASS] testLogicalOperators
+  [PASS] testArithmeticFastPaths
+All Runtime & VM Tests Passed Successfully!

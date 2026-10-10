@@ -270,8 +270,10 @@ class Session : TransactionParticipant {
             foreach (name; definition.incomingParameters) args ~= inputs.get(name, luaNil());
             auto returned = VM.callValue(state, definition.availability, args);
             if (!returned.length) throw new LuaException("availability callback did not return an iterator");
+            // Results live in a per-depth buffer that guard calls made by the iterator reuse.
+            auto iterator = returned[0];
             while (true) {
-                auto next = VM.callValue(state, returned[0], []);
+                auto next = VM.callValue(state, iterator, []);
                 if (!next.length || isNil(next[0])) break;
                 rows ~= unwrapBindingRecord(next[0]).fields;
             }
@@ -349,10 +351,12 @@ class Session : TransactionParticipant {
         auto tentative = data.copy();
         auto deck = registry.deck(tentative.decks[$ - 1].name);
         ContentInstance[] candidates;
+        ContentInstance[] pinned;
         foreach (definition; registry.storylets()) {
             if (definition.symbolOption("deck", "default") != tentative.decks[$ - 1].name) continue;
             foreach (instance; instances(definition, snapshot)) {
                 if (!policyAllows(instance, tentative) || weight(instance) == 0) continue;
+                if (instance.definition.sticky) { pinned ~= instance; continue; }
                 if (!deck.replacement && instance.key in tentative.decks[$ - 1].drawn) continue;
                 candidates ~= instance;
             }
@@ -379,8 +383,14 @@ class Session : TransactionParticipant {
             tentative.decks[$ - 1].drawn[candidates[chosen].key] = true;
             candidates = candidates[0 .. chosen] ~ candidates[chosen + 1 .. $];
         }
-        selected.sort!((left, right) => left.definition.integerOption("priority", 0) > right.definition.integerOption("priority", 0) ||
-            (left.definition.integerOption("priority", 0) == right.definition.integerOption("priority", 0) && left.key < right.key));
+        // Sticky storylets are always listed: no draw slot, no RNG, exempt from non-replacement history.
+        selected ~= pinned;
+        selected.sort!((left, right) {
+            auto lo = left.definition.integerOption("order", 0), ro = right.definition.integerOption("order", 0);
+            if (lo != ro) return lo < ro;
+            auto lp = left.definition.integerOption("priority", 0), rp = right.definition.integerOption("priority", 0);
+            return lp > rp || (lp == rp && left.key < right.key);
+        });
         LuaValue[] stories;
         LuaValue[] variantLog;
         void logVariants(string key, string field, size_t[] vars) {

@@ -1,0 +1,4 @@
+# Symbols dlopen()ed C modules may bind to (the exported C API subset in source/dlua/capi.d).
+# Exporting everything (-export_dynamic) costs ~8 ms of process startup.
+_lua_*
+_luaL_*

@@ -83,10 +83,12 @@ end
 -- The storm: scheduled from an action parameter, resolved by a handler.
 ------------------------------------------------------------------------
 action storm_brews(?h)
-    when { quality(:world, :day, ?d), ?d >= 2, quality(:world, :hour, ?h), ?h >= 12, ?h < 20 }
+    when { quality(:world, :day, ?d), ?d >= 2, quality(:world, :hour, ?h), ?h >= 12, ?h < 20,
+           not flag(:storm_scheduled) }
     priority 60
     once_per :game
     effect do
+        fact flag(:storm_scheduled)
         narrative.schedule(:storm, narrative.sequence(:ellen_may), 22 - h)
         narrative.emit(:say, "The sky to the west turns the colour of a bruise.")
     end

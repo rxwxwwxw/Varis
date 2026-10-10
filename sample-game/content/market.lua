@@ -28,7 +28,7 @@ storylet wares(?thing)
     end
 
     choice haggle
-        when { quality(:player, :coins, ?c), ?c < 3 }
+        when { quality(:player, :coins, ?c), ?c < 3, quality(:player, :resolve, ?r), ?r >= 1 }
         title "Plead poverty"
         effect do
             adjust quality(:player, :resolve) by -1
@@ -54,7 +54,8 @@ end
 storylet leave_market()
     when { at(:player, :market) }
     deck :market
-    priority 100        -- top tier so the exit is always drawn (see needed_extensions.md §4.2)
+    sticky true         -- always listed, no draw slot, exempt from non-replacement history
+    order 100           -- displayed last
     title "Leave the stalls"
     text ""
     choice leave

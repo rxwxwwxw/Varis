@@ -45,6 +45,7 @@ private class AnalysisClone {
     this(LuaState source, AnalysisBudget budget) {
         this.source = source; this.budget = budget;
         state = new LuaState(); openLibs(state); state.analysisBudget = budget;
+        { import dlua.state : vmAttention, vmSlowMode; vmSlowMode = true; vmAttention = true; }
         values[LuaValue(source.globals)] = LuaValue(state.globals);
         source.narrativeRegistry.copyForAnalysis(state.narrativeRegistry, &cloneValue, &cloneDefinition);
         copyTable(source.globals, state.globals);

@@ -1,0 +1,306 @@
+{
+    "failed": 0,
+    "partial": 1,
+    "passed": 31,
+    "results": [
+        {
+            "diagnostic": "",
+            "duration_seconds": 56.5919999999999987,
+            "exit_code": 0,
+            "name": "all.lua",
+            "reason": "run in a scratch copy with gc.lua replaced by a stub (gc.lua excluded)",
+            "reference_status": "",
+            "status": "PARTIAL"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "api.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "attrib.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.221000000000000002,
+            "exit_code": 0,
+            "name": "big.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0509999999999999967,
+            "exit_code": 0,
+            "name": "bitwise.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "bwcoercion.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.660000000000000031,
+            "exit_code": 0,
+            "name": "calls.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "closure.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "code.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 2.78600000000000003,
+            "exit_code": 0,
+            "name": "constructs.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "coroutine.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 6.90599999999999969,
+            "exit_code": 0,
+            "name": "cstack.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.220000000000000001,
+            "exit_code": 0,
+            "name": "db.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 29.8150000000000013,
+            "exit_code": 0,
+            "name": "errors.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "events.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.38600000000000001,
+            "exit_code": 0,
+            "name": "files.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0,
+            "exit_code": null,
+            "name": "gc.lua",
+            "reason": "excluded by decision: exact collector reachability (conservative D GC; Lua objects must stay accessible from D)",
+            "reference_status": "",
+            "status": "SKIP"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "gengc.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "goto.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 13.984,
+            "exit_code": 0,
+            "name": "heavy.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "literals.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 2.41100000000000003,
+            "exit_code": 0,
+            "name": "locals.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 2.61699999999999999,
+            "exit_code": 0,
+            "name": "main.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.214999999999999997,
+            "exit_code": 0,
+            "name": "math.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "nextvar.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0529999999999999985,
+            "exit_code": 0,
+            "name": "pm.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 1.84800000000000009,
+            "exit_code": 0,
+            "name": "sort.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "strings.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "tpack.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0529999999999999985,
+            "exit_code": 0,
+            "name": "tracegc.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "utf8.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.0560000000000000012,
+            "exit_code": 0,
+            "name": "vararg.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        },
+        {
+            "diagnostic": "",
+            "duration_seconds": 0.435999999999999999,
+            "exit_code": 0,
+            "name": "verybig.lua",
+            "reason": "",
+            "reference_status": "",
+            "status": "PASS"
+        }
+    ],
+    "skipped": 1,
+    "total": 33
+}

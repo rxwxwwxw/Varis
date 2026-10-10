@@ -11,11 +11,14 @@
 module dlua.state;
 
 import dlua.types;
+import dlua.opcode : Instruction;
 import dlua.table;
 import dlua.exception;
 import std.sumtype;
 import core.thread : Fiber;
 import dlua.logic.world : World;
+
+import dlua.vm : LuaClosure;
 
 struct CallInfo {
     LuaFunction fn;
@@ -24,13 +27,137 @@ struct CallInfo {
     bool tailCall;
     string name;
     string nameKind;
-    string delegate(long, out LuaValue) getLocal;
-    string delegate(long, LuaValue) setLocal;
     // Values transferred by the call/return being hooked (debug.getinfo "r").
     LuaValue[] transfer;
     int ftransfer;
     bool transferIsReturn;
-    void delegate() clearDead;  // nils the frame's registers that hold no live values
+
+    // Execution context for active Lua frames (null for C functions)
+    LuaValue[]* registers;
+    LuaValue[]* varargs;
+    const(Instruction)** pc;   // address of the frame's instruction pointer (next to execute)
+    int* debugLimit;
+
+    // For C functions
+    LuaValue[] cArgs;
+
+
+    /// Index of the next instruction of an active Lua frame (0 when unknown).
+    int pcValue() {
+        if (pc is null) return 0;
+        auto closure = cast(LuaClosure)fn;
+        if (closure is null) return 0;
+        return cast(int)(*pc - closure.proto.execCode.ptr);
+    }
+
+    /// Line being executed: derived from the live program counter for active Lua frames, so the
+    /// interpreter loop does not have to publish it on every instruction.
+    int line() {
+        if (pc !is null && registers !is null) {
+            auto closure = cast(LuaClosure)fn;
+            if (closure !is null) {
+                int position = pcValue();
+                auto code = closure.proto.execCode;
+                size_t index = position > 0 ? position - 1 : 0;
+                if (index < code.length && code[index].line > 0) return code[index].line;
+                if (code.length == 0) return 1;
+            }
+        }
+        return currentLine;
+    }
+
+    string getLocal(long index, out LuaValue value) {
+        if (registers is null) {
+            if (index <= 0 || index > cArgs.length) return null;
+            value = cArgs[cast(size_t)(index - 1)];
+            return "(C temporary)";
+        }
+        auto closure = cast(LuaClosure)fn;
+        if (closure is null) return null;
+        auto proto = closure.proto;
+        int curPc = pcValue();
+        int limit = debugLimit !is null ? *debugLimit : proto.maxStackSize;
+        int targetPc = curPc > 0 ? curPc - 1 : 0;
+        if (index < 0) {
+            if (!proto.isVararg || varargs is null || index < -cast(long)(*varargs).length) return null;
+            size_t slot = cast(size_t)(-index - 1);
+            value = (*varargs)[slot];
+            return "(vararg)";
+        }
+        if (index == 0) return null;
+        long remaining = index;
+        foreach (local; proto.debugLocals) {
+            if (local.startPC <= targetPc && targetPc < local.endPC && (local.name.length == 0 || local.name[0] != '@')) {
+                if (--remaining == 0) {
+                    value = (*registers)[local.register];
+                    return local.name;
+                }
+            }
+        }
+        if (index <= limit) {
+            int slot = cast(int)index - 1;
+            foreach (local; proto.debugLocals) {
+                if (local.register == slot && local.name.length && local.name[0] == '@' &&
+                    local.startPC <= targetPc && targetPc < local.endPC) return null;
+            }
+            value = (*registers)[slot];
+            return "(temporary)";
+        }
+        return null;
+    }
+
+    string setLocal(long index, LuaValue value) {
+        if (registers is null) {
+            if (index <= 0 || index > cArgs.length) return null;
+            cArgs[cast(size_t)(index - 1)] = value;
+            return "(C temporary)";
+        }
+        auto closure = cast(LuaClosure)fn;
+        if (closure is null) return null;
+        auto proto = closure.proto;
+        int curPc = pcValue();
+        int limit = debugLimit !is null ? *debugLimit : proto.maxStackSize;
+        int targetPc = curPc > 0 ? curPc - 1 : 0;
+        if (index < 0) {
+            if (!proto.isVararg || varargs is null || index < -cast(long)(*varargs).length) return null;
+            size_t slot = cast(size_t)(-index - 1);
+            (*varargs)[slot] = value;
+            return "(vararg)";
+        }
+        if (index == 0) return null;
+        long remaining = index;
+        foreach (local; proto.debugLocals) {
+            if (local.startPC <= targetPc && targetPc < local.endPC && (local.name.length == 0 || local.name[0] != '@')) {
+                if (--remaining == 0) {
+                    if (local.readOnly)
+                        throw new LuaException("attempt to modify read-only narrative parameter '" ~ local.name ~ "'");
+                    (*registers)[local.register] = value;
+                    return local.name;
+                }
+            }
+        }
+        if (index <= limit) {
+            int slot = cast(int)index - 1;
+            foreach (local; proto.debugLocals) {
+                if (local.register == slot && local.name.length && local.name[0] == '@' &&
+                    local.startPC <= targetPc && targetPc < local.endPC) return null;
+            }
+            (*registers)[slot] = value;
+            return "(temporary)";
+        }
+        return null;
+    }
+
+    void clearDead() {
+        if (registers is null) return;
+        auto closure = cast(LuaClosure)fn;
+        if (closure is null) return;
+        auto proto = closure.proto;
+        int curPc = pcValue();
+        int limit = curPc > 0 && curPc <= proto.liveTop.length ? proto.liveTop[curPc - 1] : int.max;
+        if (limit == int.max) return;
+        foreach (i; limit .. (*registers).length) (*registers)[i] = luaNil();
+    }
 }
 
 /// Shared only among isolated analysis branches, never with the live state.
@@ -41,9 +168,23 @@ class AnalysisBudget {
     this(size_t instructions) { remaining = instructions; }
 }
 
+/// Set whenever the interpreter loop has something unusual to look at before the next
+/// instruction (pending collection, interrupt, hooks, analysis budget). The loop tests this one
+/// flag per instruction and does the detailed checks only when it is set.
+__gshared bool vmAttention;
+
+/// Sticky: some hook or instruction budget may be active, so the detailed checks stay on.
+__gshared bool vmSlowMode;
+
+/// Frame transactions currently open in any frame; while nonzero the loop checks their ranges.
+__gshared uint openFrameTransactions;
+
 /// Central runtime state for Lua execution
 class LuaState {
     bool gcRunning = true;
+    LuaFunction errorFunction;   // the builtin `error`, raised directly by the interpreter
+    LuaFunction fastNext;        // the builtin `next`, recognized by the generic-for fast path
+    LuaFunction fastIpairsIter;  // the iterator function returned by `ipairs`
     LuaThread mainThread;
     string[LuaFunction] standardNativePaths;
     LuaFunction[string] standardNativeFunctions;
@@ -51,15 +192,15 @@ class LuaState {
     // Per-Fiber so a suspended ordinary coroutine cannot leak its call context.
     World mainCallWorld;
 
-    World callWorld() {
-        import dlua.fiber : DluaFiber;
-        auto fiber = cast(DluaFiber)Fiber.getThis();
+    final World callWorld() {
+        import dlua.fiber : DluaFiber, currentLuaFiber;
+        auto fiber = currentLuaFiber();
         return fiber is null ? mainCallWorld : fiber.callWorld;
     }
 
-    void callWorld(World world) {
-        import dlua.fiber : DluaFiber;
-        auto fiber = cast(DluaFiber)Fiber.getThis();
+    final void callWorld(World world) {
+        import dlua.fiber : DluaFiber, currentLuaFiber;
+        auto fiber = currentLuaFiber();
         if (fiber is null) mainCallWorld = world; else fiber.callWorld = world;
     }
     LuaTable globals;
@@ -73,7 +214,12 @@ class LuaState {
     bool closing;
     bool inFinalizer;
     bool inGcCycle;
-    bool pendingCollect;
+    private bool pendingCollectFlag;
+    @property bool pendingCollect() const { return pendingCollectFlag; }
+    @property void pendingCollect(bool value) {
+        pendingCollectFlag = value;
+        if (value) vmAttention = true;
+    }
     double gcStepProgress;  // work done towards the current emulated collection cycle (KB)
     LuaValue[] stashedResults;  // call results waiting for the register array to grow
     size_t allocTicks;
@@ -160,17 +306,18 @@ class LuaState {
     // Call stack for arguments / results
     LuaValue[] stack;
     private CallInfo[] mainCallStack;
-    @property ref CallInfo[] callStack() {
-        import dlua.fiber : DluaFiber;
-        if (auto fiber = cast(DluaFiber)Fiber.getThis()) return fiber.callStack;
+    private CallInfo[] mainCallStackStorage;
+    final @property ref CallInfo[] callStack() {
+        import dlua.fiber : DluaFiber, currentLuaFiber;
+        if (auto fiber = currentLuaFiber()) return fiber.callStack;
         return mainCallStack;
     }
 
     CallInfo[] mainStack() { return mainCallStack; }
 
-    LuaThread currentThread() {
-        import dlua.fiber : DluaFiber;
-        auto fiber = cast(DluaFiber)Fiber.getThis();
+    final LuaThread currentThread() {
+        import dlua.fiber : DluaFiber, currentLuaFiber;
+        auto fiber = currentLuaFiber();
         return fiber is null ? mainThread : fiber.thread;
     }
 
@@ -180,8 +327,8 @@ class LuaState {
         auto boundary = thread.errorBoundaries[$ - 1];
         if (!boundary.handlesErrors || boundary.active || error.processedBy is boundary) return;
         import dlua.vm : VM;
-        import dlua.fiber : DluaFiber;
-        auto fiber = cast(DluaFiber)Fiber.getThis();
+        import dlua.fiber : DluaFiber, currentLuaFiber;
+        auto fiber = currentLuaFiber();
         bool previous = fiber !is null && fiber.isYieldAllowed;
         if (fiber !is null) fiber.isYieldAllowed = false;
         boundary.active = true;
@@ -203,9 +350,9 @@ class LuaState {
     string locationPrefix(int level) {
         auto frames = callStack;
         long index = cast(long)frames.length - 1 - level;
-        if (level < 0 || index < 0 || index >= frames.length || frames[index].currentLine <= 0) return "";
+        if (level < 0 || index < 0 || index >= frames.length || frames[index].line <= 0) return "";
         import std.conv : to;
-        return shortSourceName(frames[index].source) ~ ":" ~ frames[index].currentLine.to!string ~ ": ";
+        return shortSourceName(frames[index].source) ~ ":" ~ frames[index].line.to!string ~ ": ";
     }
 
     void debugHook(string event, int line = -1, LuaValue[] transfer = null, bool hasTransfer = false) {
@@ -214,8 +361,8 @@ class LuaState {
         int mask = event == "call" || event == "tail call" ? 1 : event == "return" ? 2 : event == "line" ? 4 : 8;
         if (!(thread.hookMask & mask)) return;
         import dlua.vm : VM;
-        import dlua.fiber : DluaFiber;
-        auto fiber = cast(DluaFiber)Fiber.getThis();
+        import dlua.fiber : DluaFiber, currentLuaFiber;
+        auto fiber = currentLuaFiber();
         bool previous = fiber !is null && fiber.isYieldAllowed;
         thread.hookActive = true;
         size_t hookedDepth = callStack.length;
@@ -236,14 +383,50 @@ class LuaState {
         VM.callValue(this, LuaValue(thread.hookFunction), [LuaValue(event), line >= 0 ? LuaValue(line) : luaNil()], false, "?", "hook");
     }
 
-    void pushCall(LuaFunction fn, string source = "", int line = 1, bool tailCall = false, string name = "", string nameKind = "") {
-        callStack ~= CallInfo(fn, source, line, tailCall, name, nameKind);
+    final void pushCall(LuaFunction fn, string source = "", int line = 1, bool tailCall = false, string name = "", string nameKind = "",
+                  LuaValue[]* registers = null, LuaValue[]* varargs = null, const(Instruction)** pc = null, int* debugLimit = null) {
+        import dlua.fiber : DluaFiber, currentLuaFiber;
+        auto fiber = currentLuaFiber();
+        auto active = fiber is null ? &mainCallStack : &fiber.callStack;
+        auto storage = fiber is null ? &mainCallStackStorage : &fiber.callStackStorage;
+        size_t depth = (*active).length;
+        if (depth == (*storage).length) {
+            // Explicit capacity avoids D append's alias-preserving allocation
+            // after popCall shortens the active slice. No inactive record roots
+            // Lua objects or frame delegates.
+            (*storage).length = depth ? depth * 2 : 16;
+        }
+        // Inactive records are always CallInfo.init (see popCall), so fields are set in place.
+        auto ci = &(*storage)[depth];
+        ci.fn = fn;
+        ci.source = source;
+        ci.currentLine = line;
+        ci.tailCall = tailCall;
+        ci.name = name;
+        ci.nameKind = nameKind;
+        ci.registers = registers;
+        ci.varargs = varargs;
+        ci.pc = pc;
+        ci.debugLimit = debugLimit;
+        *active = (*storage)[0 .. depth + 1];
     }
 
-    void popCall() {
-        if (callStack.length > 0) {
-            callStack[$ - 1] = CallInfo.init;
-            callStack = callStack[0 .. $ - 1];
+    final void popCall() {
+        auto active = &callStack();
+        if ((*active).length > 0) {
+            // Inactive records must not root Lua objects. Strings, the line and the flags are
+            // plain data that pushCall overwrites, so only references are cleared here.
+            auto ci = &(*active)[$ - 1];
+            ci.fn = null;
+            ci.registers = null;
+            ci.varargs = null;
+            ci.pc = null;
+            ci.debugLimit = null;
+            ci.transfer = null;
+            ci.ftransfer = 0;
+            ci.transferIsReturn = false;
+            ci.cArgs = null;
+            *active = (*active)[0 .. $ - 1];
         }
     }
 
@@ -367,13 +550,13 @@ class LuaState {
     }
 
     PCallResult pcall(LuaFunction fn, LuaValue[] args) {
-        import dlua.fiber : DluaFiber;
-        auto fiber = cast(DluaFiber)Fiber.getThis();
+        import dlua.fiber : DluaFiber, currentLuaFiber;
+        auto fiber = currentLuaFiber();
         if (fiber !is null) fiber.protectedDepth++;
         scope(exit) if (fiber !is null) fiber.protectedDepth--;
         auto thread = currentThread();
-        if (thread !is null) thread.errorBoundaries ~= new ErrorBoundary(false);
-        scope(exit) if (thread !is null) { thread.errorBoundaries[$ - 1] = null; thread.errorBoundaries.length--; }
+        if (thread !is null) thread.pushBoundary(false);
+        scope(exit) if (thread !is null) thread.popBoundary();
         if (fn is null) {
             return PCallResult(false, [], LuaValue("attempt to call a nil value"));
         }

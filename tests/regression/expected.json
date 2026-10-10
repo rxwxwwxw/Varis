@@ -1,6 +1,8 @@
 {
   "coroutines": "CHECKSUM 45ca0dfdce181427 lines 25",
+  "deepframes": "CHECKSUM e93c11a45a282cf4 lines 21",
   "errors": "CHECKSUM 2bac5e2d074a3705 lines 73",
+  "fastpaths": "CHECKSUM e8bb5568ae3f8e4a lines 86",
   "fuzz_expr": "CHECKSUM 972f08e0d74aa257 lines 1501",
   "fuzz_table": "CHECKSUM baf960147f824755 lines 40",
   "int_float": "CHECKSUM 60619b62e0cb9a21 lines 228",
@@ -13,5 +15,6 @@
   "tables": "CHECKSUM dd6f26a6a4585960 lines 22",
   "tbc_goto": "CHECKSUM 8e734a02d148fa3e lines 24",
   "weak_gc": "CHECKSUM 521e636fa4fdde88 lines 12",
-  "workloads": "CHECKSUM 0c8c31c68098f277 lines 9"
+  "workloads": "CHECKSUM 0c8c31c68098f277 lines 9",
+  "wrapcalls": "CHECKSUM d104b8d86758e4a7 lines 15"
 }

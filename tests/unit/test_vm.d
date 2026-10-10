@@ -403,8 +403,97 @@ void testForScopeClosing() {
     writeln("  [PASS] testForScopeClosing");
 }
 
+void testRegisterReuseLifetimes() {
+    import dlua.lib : openLibs;
+    auto state = new LuaState();
+    openLibs(state);
+    state.doString(q"{
+        local function capture(value, ...)
+            local saved = value
+            local function get() return saved end
+            local args = {...}
+            local function relay(...) return ... end
+            -- Variable results grow the register window while saved is open.
+            local result = {relay(table.unpack(args))}
+            assert(#result == #args)
+            return get
+        end
+        local args = {}
+        for i=1,600 do args[i] = i end
+        local keep = capture('kept', table.unpack(args))
+        for i=1,100 do assert(capture(i)() == i) end
+        assert(keep() == 'kept')
+        local co = coroutine.create(function()
+            local value = 'suspended'
+            local get = function() return value end
+            coroutine.yield(get)
+            value = 'resumed'
+            return get
+        end)
+        local ok, get = coroutine.resume(co)
+        assert(ok and get() == 'suspended')
+        for i=1,100 do assert(capture(i)() == i) end
+        assert(get() == 'suspended')
+        local ok2, get2 = coroutine.resume(co)
+        assert(ok2 and get2() == 'resumed' and get() == 'resumed')
+        local closed
+        local ok3 = pcall(function()
+            local value <close> = setmetatable({}, {__close=function()
+                closed = capture('closed')
+            end})
+            error('unwind')
+        end)
+        assert(not ok3 and closed() == 'closed' and keep() == 'kept')
+        for i=1,100 do assert(capture(i)() == i) end
+        assert(closed() == 'closed' and keep() == 'kept')
+    }");
+    writeln("  [PASS] testRegisterReuseLifetimes");
+}
+
+void testFrameContextAndHooks() {
+    auto state = new LuaState();
+    import dlua.lib : openLibs;
+    openLibs(state);
+    state.doString(q"{
+        local hits, childHits = 0, 0
+        local function recurse(n)
+            if n == 0 then return debug.getinfo(1, 'l').currentline end
+            local result = recurse(n-1)
+            return result
+        end
+        local co = coroutine.create(function()
+            debug.sethook(function() childHits = childHits + 1 end, 'l')
+            assert(recurse(80) > 0)
+            coroutine.yield('ready')
+            assert(recurse(100) > 0)
+            debug.sethook()
+        end)
+        debug.sethook(function() hits = hits + 1 end, '', 3)
+        local ok, result = coroutine.resume(co)
+        assert(ok and result == 'ready')
+        assert(hits > 0 and childHits > 0)
+        local before = childHits
+        assert(recurse(120) > 0)
+        assert(childHits == before)
+        assert(coroutine.resume(co))
+        assert(childHits > before)
+        debug.sethook()
+        local stopped = hits
+        assert(recurse(100) > 0)
+        assert(hits == stopped)
+        local lineHits = 0
+        debug.sethook(function() lineHits = lineHits + 1 end, 'l')
+        for i=1,10 do recurse(2) end
+        debug.sethook()
+        assert(lineHits > 0)
+    }");
+    writeln("  [PASS] testFrameContextAndHooks");
+}
+
 int main() {
     writeln("Running dlua Runtime & VM Unit Tests...");
+    testRegisterReuseLifetimes();
+    testFrameContextAndHooks();
     testBasicExecution();
     testControlFlow();
     testGotoAndPrecedence();

@@ -94,7 +94,7 @@ storylet drop(?thing, ?room)
         title "Put it down"
         effect do
             retract carries(:player, thing)
-            fact at(thing, room)
+            set at(thing, room)
         end
     end
 end

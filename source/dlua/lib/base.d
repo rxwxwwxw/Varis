@@ -14,7 +14,7 @@ import dlua.types;
 import dlua.table;
 import dlua.state;
 import dlua.vm;
-import dlua.fiber : DluaFiber;
+import dlua.fiber : DluaFiber, currentLuaFiber;
 import core.thread : Fiber;
 import dlua.exception : LuaException;
 import dlua.lib.auxlib;
@@ -123,6 +123,14 @@ private bool str2int(string s, int base, out long result) {
     return true;
 }
 
+/// `true` followed by `results`, in a single allocation.
+private LuaValue[] successResults(LuaValue[] results) {
+    auto all = new LuaValue[results.length + 1];
+    all[0] = LuaValue(true);
+    all[1 .. $] = results[];
+    return all;
+}
+
 void openBaseLib(LuaState state) {
     auto G = state.globals;
     string gcMode = "incremental";
@@ -132,10 +140,15 @@ void openBaseLib(LuaState state) {
     G.registerDelegate("collectgarbage", (LuaState s, LuaValue[] a) {
         import core.memory : GC;
         import dlua.gc : stackHygiene;
-        stackHygiene = true;  // the program observes collection: track coroutines from here on
         static immutable options = ["stop", "restart", "collect", "count", "step", "setpause", "setstepmul",
             "isrunning", "generational", "incremental"];
-        switch (options[checkOption(s, a, 1, "collect", options)]) {
+        immutable choice = checkOption(s, a, 1, "collect", options);
+        // Mode and tuning calls (lua.c issues one at startup) do not observe collection; only
+        // calls that do enable the per-call dead-stack scrub, which is costly for every Lua call.
+        if (options[choice] != "generational" && options[choice] != "incremental" &&
+            options[choice] != "setpause" && options[choice] != "setstepmul")
+            stackHygiene = true;
+        switch (options[choice]) {
             case "collect":
                 if (s.inFinalizer) return [luaNil()];
                 // Unreferenced files are flushed/closed by C Lua's collector; flush all streams instead.
@@ -239,17 +252,21 @@ void openBaseLib(LuaState state) {
         throw failure;
     });
 
+    state.errorFunction = G.rawget(LuaValue("error")).asFunction;
+
     G.registerDelegate("pcall", (LuaState s, LuaValue[] a) {
-        auto fiber = cast(DluaFiber)Fiber.getThis();
+        auto fiber = currentLuaFiber();
         if (fiber !is null) fiber.protectedDepth++;
         scope(exit) if (fiber !is null) fiber.protectedDepth--;
         checkAny(a, 1);
         auto thread = s.currentThread();
-        if (thread !is null) thread.errorBoundaries ~= new ErrorBoundary(false);
-        scope(exit) if (thread !is null) { thread.errorBoundaries[$ - 1] = null; thread.errorBoundaries.length--; }
+        if (thread !is null) thread.pushBoundary(false);
+        scope(exit) if (thread !is null) thread.popBoundary();
         try {
-            auto results = VM.callValue(s, a[0], a.length > 1 ? a[1 .. $] : []);
-            return [LuaValue(true)] ~ results;
+            LuaException protectedFailure;
+            auto results = VM.callProtected(s, a[0], a.length > 1 ? a[1 .. $] : [], protectedFailure);
+            if (protectedFailure !is null) return [LuaValue(false), protectedFailure.errorObject];
+            return successResults(results);
         } catch (LuaException e) {
             return [LuaValue(false), e.errorObject];
         } catch (Exception e) {
@@ -258,16 +275,21 @@ void openBaseLib(LuaState state) {
     });
 
     G.registerDelegate("xpcall", (LuaState s, LuaValue[] a) {
-        auto fiber = cast(DluaFiber)Fiber.getThis();
+        auto fiber = currentLuaFiber();
         if (fiber !is null) fiber.protectedDepth++;
         scope(exit) if (fiber !is null) fiber.protectedDepth--;
         if (a.length < 2 || !isFunction(a[1])) typeError(s, a, 2, "function");
         auto thread = s.currentThread();
-        if (thread !is null) thread.errorBoundaries ~= new ErrorBoundary(true, a[1]);
-        scope(exit) if (thread !is null) { thread.errorBoundaries[$ - 1] = null; thread.errorBoundaries.length--; }
+        if (thread !is null) thread.pushBoundary(true, a[1]);
+        scope(exit) if (thread !is null) thread.popBoundary();
         try {
-            auto results = VM.callValue(s, a[0], a.length > 2 ? a[2 .. $] : []);
-            return [LuaValue(true)] ~ results;
+            LuaException protectedFailure;
+            auto results = VM.callProtected(s, a[0], a.length > 2 ? a[2 .. $] : [], protectedFailure);
+            if (protectedFailure !is null) {
+                s.dispatchError(protectedFailure);
+                return [LuaValue(false), protectedFailure.errorObject];
+            }
+            return successResults(results);
         } catch (LuaException error) {
             s.dispatchError(error);
             return [LuaValue(false), error.errorObject];
@@ -285,6 +307,7 @@ void openBaseLib(LuaState state) {
         return [luaNil()];
     });
     auto nextFunction = G.rawget(LuaValue("next"));
+    state.fastNext = nextFunction.asFunction;
 
     G.registerDelegate("pairs", (LuaState s, LuaValue[] a) {
         checkAny(a, 1);
@@ -304,6 +327,7 @@ void openBaseLib(LuaState state) {
         if (isNil(item)) return [luaNil()];
         return [LuaValue(i), item];
     }, "ipairs_aux"));
+    state.fastIpairsIter = ipairsIterator.asFunction;
     G.register("ipairs", (LuaState s, LuaValue[] a) {
         checkAny(a, 1);
         return [ipairsIterator, a[0], LuaValue(0L)];
@@ -365,6 +389,12 @@ void openBaseLib(LuaState state) {
         registerWeakIfNeeded(t);
         return [a[0]];
     });
+
+    foreach (name; ["pcall", "xpcall"]) {
+        // They only read their arguments and hand a view of them to the protected call.
+        auto protectedCall = G.rawget(LuaValue(name));
+        if (protectedCall.isFunction) protectedCall.asFunction.borrowsArgs = true;
+    }
 
     G.registerDelegate("load", (LuaState s, LuaValue[] a) {
         string mode = optString(s, a, 3, "bt");

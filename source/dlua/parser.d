@@ -448,14 +448,14 @@ class Parser {
         auto expr = parsePrefixExpr();
 
         // Check if this is a function call statement
-        if (cast(CallExpr)expr !is null || cast(MethodCallExpr)expr !is null) {
+        if (as!CallExpr(expr) !is null || as!MethodCallExpr(expr) !is null) {
             if (!check(TokenType.Comma) && !check(TokenType.Equal)) {
                 return new CallStmt(expr, loc);
             }
         }
 
         // Otherwise, it must be an assignment: varlist '=' explist
-        bool isVariable(Expr e) { return !e.parenthesized && (cast(VariableExpr)e !is null || cast(IndexExpr)e !is null || cast(FieldExpr)e !is null); }
+        bool isVariable(Expr e) { return !e.parenthesized && (as!VariableExpr(e) !is null || as!IndexExpr(e) !is null || as!FieldExpr(e) !is null); }
         if (!check(TokenType.Comma) && !check(TokenType.Equal)) syntaxError("syntax error", current);
         if (!isVariable(expr)) syntaxError("syntax error", current);
         Expr[] targets = [expr];
@@ -912,7 +912,7 @@ class Parser {
             string field = current.text;
             if (field == "choice" || field == "effect") break;
             bool allowed = kind != "action" && (field == "title" || field == "text");
-            if (kind == "storylet") allowed = allowed || field == "deck" || field == "priority" || field == "weight" || field == "cooldown" || field == "repeatable";
+            if (kind == "storylet") allowed = allowed || field == "deck" || field == "priority" || field == "weight" || field == "cooldown" || field == "repeatable" || field == "sticky" || field == "order";
             if (kind == "action") allowed = field == "phase" || field == "priority" || field == "once_per";
             if (!allowed) syntaxError("invalid " ~ kind ~ " field '" ~ field ~ "'", current);
             if (field in fields) syntaxError("duplicate content field '" ~ field ~ "'", current);
@@ -1224,7 +1224,7 @@ class Parser {
             return new QueryExpr(goals, true, loc);
         } else {
             auto g = parseGoal();
-            if (auto atomGoal = cast(AstRelAtomGoal)g) {
+            if (auto atomGoal = as!AstRelAtomGoal(g)) {
                 if (atomGoal.isNegated) {
                     syntaxError("simple query must be a positive relation atom", previous);
                 }
@@ -1249,8 +1249,8 @@ private struct Numeral {
 }
 
 private bool numeralOf(Expr e, out Numeral n) {
-    if (auto li = cast(LiteralIntExpr)e) { n.isInt = true; n.i = li.value; return true; }
-    if (auto lf = cast(LiteralFloatExpr)e) { n.isInt = false; n.d = lf.value; return true; }
+    if (auto li = as!LiteralIntExpr(e)) { n.isInt = true; n.i = li.value; return true; }
+    if (auto lf = as!LiteralFloatExpr(e)) { n.isInt = false; n.d = lf.value; return true; }
     return false;
 }
 
@@ -1359,9 +1359,9 @@ private Expr foldUnary(UnaryOp op, Expr operand, SourceLoc loc) {
             return new LiteralIntExpr(~x, loc);
         }
         case UnaryOp.Not:
-            if (cast(LiteralNilExpr)operand !is null) return new LiteralBoolExpr(true, loc);
-            if (auto lb = cast(LiteralBoolExpr)operand) return new LiteralBoolExpr(!lb.value, loc);
-            if (numeralOf(operand, a) || cast(LiteralStringExpr)operand !is null) return new LiteralBoolExpr(false, loc);
+            if (as!LiteralNilExpr(operand) !is null) return new LiteralBoolExpr(true, loc);
+            if (auto lb = as!LiteralBoolExpr(operand)) return new LiteralBoolExpr(!lb.value, loc);
+            if (numeralOf(operand, a) || as!LiteralStringExpr(operand) !is null) return new LiteralBoolExpr(false, loc);
             return null;
         default:
             return null;

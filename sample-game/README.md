@@ -54,4 +54,10 @@ cd sample-game
 
 ## Status
 
-Not yet executed. The interpreter couldn't be built in the authoring environment. Expect small syntax or API mismatches on the first run. In particular, check the field names used from `explain`/`analyze` results, and whether `narrative.emit` is allowed inside an `on` handler.
+Playable in the terminal with `../bin/dlua main.lua [seed]` (build with `make dlua` from the repo root). `tools/check.lua` passes, and a random-choice bot reached an ending on 40 of 40 seeds without errors or stranded menus.
+
+Changes made when the game was first executed:
+
+- The runtime gained storylet options `sticky true` (always listed, no draw slot, exempt from non-replacement history) and `order n` (display order, separate from `priority`), (REVIEW §2.6). `present()` itself is unchanged, so `main.lua` caches the presentation until a choice or load succeeds.
+- `leave_market`/`end_talk` are `sticky`; the storm is scheduled once via `flag(:storm_scheduled)`; the key topic can be offered again after refusing; `haggle` requires resolve; dropping an item uses `set at(...)`.
+- `G.load` no longer re-syncs periods, which had appended a spurious replay record and broken byte-identical save round trips.

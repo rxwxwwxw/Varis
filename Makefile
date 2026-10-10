@@ -2,7 +2,7 @@
 
 DC ?= ldc2
 UNAME_S := $(shell uname -s)
-EXPORT_DYNAMIC := $(if $(filter Darwin,$(UNAME_S)),-L-export_dynamic,-L--export-dynamic)
+EXPORT_DYNAMIC := $(if $(filter Darwin,$(UNAME_S)),-L-exported_symbols_list -Llua_api.exports,-L--export-dynamic)
 DFLAGS ?= -Isource -g $(EXPORT_DYNAMIC)
 
 SRC_FILES = source/dlua/package.d \
@@ -24,6 +24,7 @@ SRC_FILES = source/dlua/package.d \
             source/dlua/lib/string.d \
             source/dlua/lib/pack.d \
             source/dlua/lib/auxlib.d \
+            source/dlua/lib/fastcall.d \
             source/dlua/dump.d \
             source/dlua/gc.d \
             source/dlua/lib/table.d \
@@ -61,7 +62,7 @@ RUN_TEST = python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[
 
 BIN_DIR = bin
 
-.PHONY: all test test-regression test-regression-record test-regression-runner benchmark-regression test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner dlua c-lua benchmark benchmark-datalog benchmark-datalog-record test-benchmarks clean
+.PHONY: all test test-regression test-regression-record test-regression-runner benchmark-regression test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner dlua c-lua benchmark benchmark-workloads benchmark-datalog benchmark-datalog-record test-benchmarks clean
 
 all: test dlua
 
@@ -134,6 +135,10 @@ benchmark: dlua c-lua
 	python3 benchmarks/bench.py
 	python3 benchmarks/regression.py
 	python3 benchmarks/datalog.py $(DATALOG_BENCH_ARGS)
+
+# Whole-process timings of the application-style programs in benchmarks/workloads/ (informational).
+benchmark-workloads: dlua c-lua
+	python3 benchmarks/workloads.py
 
 benchmark-datalog: dlua
 	python3 benchmarks/datalog.py $(DATALOG_BENCH_ARGS)

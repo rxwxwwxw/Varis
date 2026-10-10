@@ -23,6 +23,7 @@ public import dlua.lib.debug_lib;
 public import dlua.lib.logic;
 public import dlua.lib.narrative;
 public import dlua.lib.quality;
+import dlua.lib.fastcall : installFastCalls;
 
 import dlua.types;
 import dlua.table;
@@ -75,5 +76,6 @@ void openLibs(LuaState state) {
         if (library is null) continue;
         foreach (entry; library.hashEntries) with (entry) if (isString(key)) remember(name ~ "." ~ key.match!((string s) => s, _ => ""), value);
     }
+    installFastCalls(state);
 
 }

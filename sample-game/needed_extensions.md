@@ -15,7 +15,7 @@ Priority key: **P0** means the game needs a workaround today. **P1** is needed f
 
 **Proposal:** a transaction-aware `narrative.set_period(symbol, value)`, usable from effects and handlers. It would be recorded in the session, saved, and logged for replay like the existing period changes.
 
-### 1.2 Always-shown storylets, and display order separate from selection (P0)
+### 1.2 Always-shown storylets, and display order separate from selection (P0) — implemented: `sticky`, `order`
 Exits from sub-decks ("Leave the stalls", "Get up") must always appear. Under tier filling (§9.3), a low-priority exit can be crowded out by `draw`, which strands the player. The game gives exits `priority 100` so they are drawn first. As a side effect they are also *listed* first, because display order is the same as priority order.
 
 **Proposal:**

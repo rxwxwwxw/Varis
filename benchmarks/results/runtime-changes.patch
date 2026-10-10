@@ -1,0 +1,133 @@
+--- a/source/dlua/vm.d
++++ b/source/dlua/vm.d
+@@ -143,9 +143,30 @@
+             throw new LuaException("stack overflow");
+         }
+         size_t stackSize = max(cast(size_t)proto.maxStackSize + 8, 32);
+-        LuaValue[] registers = new LuaValue[stackSize];
+-
+-        // LuaValue.init is nil; new already initializes every register.
++        enum cachedFrameLimit = 64;
++        enum cachedRegisterLimit = 256;
++        size_t registerDepth = frameThread.registerDepth++;
++        scope(exit) --frameThread.registerDepth;
++        LuaValue[] registers;
++        if (registerDepth < cachedFrameLimit) {
++            if (frameThread.registerBuffers.length <= registerDepth)
++                frameThread.registerBuffers.length = registerDepth + 1;
++            registers = frameThread.registerBuffers[registerDepth];
++            frameThread.registerBuffers[registerDepth] = null;
++        }
++        scope(exit) {
++            // Registered before frame cleanup: close handlers, transactions and
++            // open upvalues finish before a buffer can be reused. Suspended
++            // coroutines retain their active buffers on their own native stack.
++            if (registerDepth < cachedFrameLimit && registers.length <= cachedRegisterLimit) {
++                auto empty = luaNil();
++                foreach (ref slot; registers) copyValue(slot, empty);
++                frameThread.registerBuffers[registerDepth] = registers;
++            }
++        }
++        if (registers.length < stackSize) registers = new LuaValue[stackSize];
++
++        // Both newly allocated and returned cached registers are nil.
+ 
+         // Pass parameters into registers R[0 .. numParams-1]
+         for (int i = 0; i < proto.numParams; ++i) {
+@@ -283,6 +304,10 @@
+             if (limit == int.max) return;
+             foreach (i; limit .. registers.length) registers[i] = luaNil();
+         };
++        // A native execution frame always resumes on its original Fiber. Cache
++        // the owning slice descriptor, not its backing array: nested calls can
++        // grow/reallocate the array, but the descriptor remains on its owner.
++        auto frameCalls = &state.callStack();
+         int lastHookPC = -1;
+         int lastHookLine = -1;
+ 
+@@ -310,16 +335,16 @@
+                 vmInterrupt = false;
+                 throw new LuaException("interrupted!");
+             }
+-            if (instr.line > 0 && state !is null && state.callStack.length > 0) {
+-                state.callStack[$ - 1].currentLine = instr.line;
+-            }
+-            auto thread = state.currentThread();
++            if (instr.line > 0 && (*frameCalls).length > 0) {
++                (*frameCalls)[$ - 1].currentLine = instr.line;
++            }
++            auto thread = frameThread;
+             if (thread !is null && !thread.hookActive) {
+                 if ((thread.hookMask & 8) && --thread.hookRemaining == 0) {
+                     thread.hookRemaining = thread.hookCount;
+                     state.debugHook("count");
+                 }
+-                if (instr.line > 0 ? (pc - 1 <= lastHookPC || instr.line != lastHookLine) : (lastHookPC < 0 || pc - 1 <= lastHookPC))
++                if ((thread.hookMask & 4) && (instr.line > 0 ? (pc - 1 <= lastHookPC || instr.line != lastHookLine) : (lastHookPC < 0 || pc - 1 <= lastHookPC)))
+                     state.debugHook("line", instr.line > 0 ? instr.line : -1);
+                 lastHookPC = pc - 1; lastHookLine = instr.line;
+             }
+--- a/source/dlua/state.d
++++ b/source/dlua/state.d
+@@ -160,6 +160,7 @@
+     // Call stack for arguments / results
+     LuaValue[] stack;
+     private CallInfo[] mainCallStack;
++    private CallInfo[] mainCallStackStorage;
+     @property ref CallInfo[] callStack() {
+         import dlua.fiber : DluaFiber;
+         if (auto fiber = cast(DluaFiber)Fiber.getThis()) return fiber.callStack;
+@@ -237,13 +238,26 @@
+     }
+ 
+     void pushCall(LuaFunction fn, string source = "", int line = 1, bool tailCall = false, string name = "", string nameKind = "") {
+-        callStack ~= CallInfo(fn, source, line, tailCall, name, nameKind);
++        import dlua.fiber : DluaFiber;
++        auto fiber = cast(DluaFiber)Fiber.getThis();
++        auto active = fiber is null ? &mainCallStack : &fiber.callStack;
++        auto storage = fiber is null ? &mainCallStackStorage : &fiber.callStackStorage;
++        size_t depth = (*active).length;
++        if (depth == (*storage).length) {
++            // Explicit capacity avoids D append's alias-preserving allocation
++            // after popCall shortens the active slice. No inactive record roots
++            // Lua objects or frame delegates.
++            (*storage).length = depth ? depth * 2 : 16;
++        }
++        (*storage)[depth] = CallInfo(fn, source, line, tailCall, name, nameKind);
++        *active = (*storage)[0 .. depth + 1];
+     }
+ 
+     void popCall() {
+-        if (callStack.length > 0) {
+-            callStack[$ - 1] = CallInfo.init;
+-            callStack = callStack[0 .. $ - 1];
++        auto active = &callStack();
++        if ((*active).length > 0) {
++            (*active)[$ - 1] = CallInfo.init;
++            *active = (*active)[0 .. $ - 1];
+         }
+     }
+ 
+--- a/source/dlua/fiber.d
++++ b/source/dlua/fiber.d
+@@ -31,6 +31,7 @@
+     LuaFunction targetFunction;
+     LuaThread thread;
+     CallInfo[] callStack;
++    CallInfo[] callStackStorage; // capacity retained across calls; inactive records are cleared
+     World callWorld;  // lexical world of the call in progress (see VM.doCall)
+     void* luaStatePtr;
+ 
+--- a/source/dlua/types.d
++++ b/source/dlua/types.d
+@@ -649,6 +649,10 @@
+     int hookCount;
+     int hookRemaining;
+     bool hookActive;
++    // Bounded reusable register buffers, indexed by active VM depth. Active
++    // buffers are removed from the cache and returned only after upvalue close.
++    LuaValue[][] registerBuffers;
++    size_t registerDepth;
+     int cCalls;               // nested VM re-entries from native code (emulates nCcalls)
+     size_t stackSlots;        // Lua stack slots in use (emulates LUAI_MAXSTACK)
+     bool overflowed;          // a stack overflow error is being handled

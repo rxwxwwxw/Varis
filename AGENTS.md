@@ -2,7 +2,7 @@
 
 Welcome to **dlua**! This document serves as the primary technical specification, architectural guide, and operational manual for AI agents and human contributors implementing and maintaining the codebase.
 
-For declarative extensions, [LANGUAGE_EXTENSIONS.md](LANGUAGE_EXTENSIONS.md) defines the base v0.1 semantics, and [LANGUAGE_EXTENSIONS2.md](LANGUAGE_EXTENSIONS2.md) defines the stateful/narrative companion. Phase 6 milestones 0–8 and Phase 7 milestones 9–18 are implemented; [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md) records their interfaces and semantic decisions. [The companion conformance audit](tests/narrative/README.md) maps requirements and errors to executable evidence and reports support limits. Preserve separate coverage for core stateful behavior, aggregates, narrative behavior and optional authoring tools. The official Lua harness remains a separate Phase 5 gate. Phase 8 milestone 20's conformance gate is met (31 pass / 1 partial / 1 skipped / 0 fail on the official suite; see [tests/official/README.md](tests/official/README.md) for the remaining issues). Performance work may now be targeted, with the documented known costs (~5 KB native stack per Lua frame, slow deep-recursion unwinding, `errors.lua` ~30 s); the ≤2× C Lua target is not yet achieved.
+For declarative extensions, [LANGUAGE_EXTENSIONS.md](LANGUAGE_EXTENSIONS.md) defines the base v0.1 semantics, and [LANGUAGE_EXTENSIONS2.md](LANGUAGE_EXTENSIONS2.md) defines the stateful/narrative companion. Phase 6 milestones 0–8 and Phase 7 milestones 9–18 are implemented; [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md) records their interfaces and semantic decisions. [The companion conformance audit](tests/narrative/README.md) maps requirements and errors to executable evidence and reports support limits. Preserve separate coverage for core stateful behavior, aggregates, narrative behavior and optional authoring tools. The official Lua harness remains a separate Phase 5 gate. Phase 8 milestone 20's conformance gate is met (31 pass / 1 partial / 1 skipped / 0 fail on the official suite; see [tests/official/README.md](tests/official/README.md) for the remaining issues). Performance work is targeted and measured: the core-Lua benchmark workloads run at roughly 0.6–2.3× C Lua (see [benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md)); documented known costs remain (slow `error` unwinding through D exceptions, `errors.lua` ~25 s; recursion deeper than 150 Lua frames runs in `executeDeepFrame`, which must stay behaviourally identical to `executeFrame`).
 
 ---
 
@@ -109,7 +109,8 @@ For declarative extensions, [LANGUAGE_EXTENSIONS.md](LANGUAGE_EXTENSIONS.md) def
 | `source/dlua/vm.d` | ✅ Phase 3 | Bytecode execution loop, upvalues, closures |
 | `source/dlua/fiber.d` | ✅ Phase 3 | Coroutine execution runner wrapping D `Fiber` |
 | `source/dlua/pattern.d` | ✅ Phase 4 | Lua pattern matching engine ported from `lstrlib.c` |
-| `source/dlua/lib/*.d` | ✅ Phase 4 | Standard libraries (`base`, `math`, `string`, `table`, etc.) |
+| `source/dlua/lib/*.d` | ✅ Phase 4 | Standard libraries (`base`, `math`, `string`, `table`, etc.); `fastcall.d` holds allocation-free fast entry points for hot built-ins |
+| `lua_api.exports` | ✅ Phase 5 | Symbols the dlua executable exports to `dlopen`ed C modules (replaces `-export_dynamic`, which cost ~8 ms startup) |
 | `source/dlua/cli.d` | ✅ Phase 5 | Standalone `dlua` executable runner & REPL |
 | `tests/unit/*.d` | ✅ Completed | Comprehensive unit tests (foundation, frontend, vm, libs) |
 | `tests/runner.d` | ✅ Phase 5 | Automated runner for `c-implementation/lua-5.4.9-tests/` (`make test-official`) |
@@ -188,9 +189,10 @@ Follow milestones 19–25 in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_P
 | 25 | Release performance gates, build tuning and documented final conformance evidence |
 
 The goal is ≤2× C Lua time on each agreed representative core-Lua workload;
-a geometric mean cannot hide a failing workload. Current exploratory ratios
-are approximately 3.4–17.2× (see README for methodology limits). The CLI already
-uses `-O3 -release`; D unit tests default to `-g`, and C Lua defaults to `-O2`.
+a geometric mean cannot hide a failing workload. Current ratios on the six
+`bench.py` workloads are about 0.6–2.3× (recursive Fibonacci is the highest; see
+README and `benchmarks/PERFORMANCE_WORK.md` for methodology limits). The CLI uses
+`-O3 -release`; D unit tests default to `-g`, and C Lua defaults to `-O2`.
 Record actual build settings rather than assuming optimization parity.
 Datalog/narrative performance remains separately measured against calibrated
 baselines; do not reset baselines to conceal regressions.

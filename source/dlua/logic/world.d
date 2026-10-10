@@ -17,7 +17,7 @@ import dlua.logic.model;
 import std.format : format;
 import std.conv : to;
 import core.thread : Fiber;
-import dlua.fiber : DluaFiber;
+import dlua.fiber : DluaFiber, currentLuaFiber;
 
 private size_t g_nextRelId = 1;
 private size_t g_nextWorldId = 1;
@@ -29,10 +29,10 @@ size_t getNextRuleId() {
 
 /// Transaction state is coroutine-specific; overlays never modify committed relations.
 private Transaction[Fiber] activeTransactions;
-private size_t readOnlyEvaluations;
-private size_t notificationDepth;
+private __gshared size_t readOnlyEvaluations;  // one interpreter thread; thread-local access is slow on macOS
+private __gshared size_t notificationDepth;  // one interpreter thread; thread-local access is slow on macOS
 // Dynamic no-yield scopes include helpers and synchronously resumed coroutines.
-private size_t noYieldDepth;
+private __gshared size_t noYieldDepth;  // one interpreter thread; thread-local access is slow on macOS
 void beginNoYieldScope() { noYieldDepth++; }
 void endNoYieldScope() { assert(noYieldDepth); noYieldDepth--; }
 bool isNoYieldScope() { return noYieldDepth != 0; }
@@ -95,7 +95,7 @@ class Transaction {
             throw new LuaException("world is locked by another transaction");
         this.world = world;
         if (parent is null) world.transactionOwner = this;
-        fiber = cast(DluaFiber)Fiber.getThis();
+        fiber = currentLuaFiber();
         if (fiber !is null) {
             previousYieldAllowed = fiber.isYieldAllowed;
             fiber.isYieldAllowed = false;

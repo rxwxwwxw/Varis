@@ -22,6 +22,13 @@ struct SourceLoc {
 }
 
 /// Abstract base class for all AST nodes
+/// Exact-type downcast of an AST node: the node classes are final, so one comparison of the
+/// runtime type replaces the checked class cast (a function call per test).
+pragma(inline, true)
+T as(T : AstNode)(AstNode node) @trusted {
+    return node !is null && typeid(node) is typeid(T) ? cast(T)cast(void*)node : null;
+}
+
 abstract class AstNode {
     SourceLoc loc;
 
@@ -42,13 +49,13 @@ abstract class Expr : AstNode {
     }
 }
 
-class LiteralNilExpr : Expr {
+final class LiteralNilExpr : Expr {
     this(SourceLoc loc = SourceLoc.init) {
         super(loc);
     }
 }
 
-class LiteralBoolExpr : Expr {
+final class LiteralBoolExpr : Expr {
     bool value;
 
     this(bool value, SourceLoc loc = SourceLoc.init) {
@@ -57,7 +64,7 @@ class LiteralBoolExpr : Expr {
     }
 }
 
-class LiteralIntExpr : Expr {
+final class LiteralIntExpr : Expr {
     long value;
 
     this(long value, SourceLoc loc = SourceLoc.init) {
@@ -66,7 +73,7 @@ class LiteralIntExpr : Expr {
     }
 }
 
-class LiteralFloatExpr : Expr {
+final class LiteralFloatExpr : Expr {
     double value;
 
     this(double value, SourceLoc loc = SourceLoc.init) {
@@ -75,7 +82,7 @@ class LiteralFloatExpr : Expr {
     }
 }
 
-class LiteralStringExpr : Expr {
+final class LiteralStringExpr : Expr {
     string value;
 
     this(string value, SourceLoc loc = SourceLoc.init) {
@@ -84,13 +91,13 @@ class LiteralStringExpr : Expr {
     }
 }
 
-class VarargExpr : Expr {
+final class VarargExpr : Expr {
     this(SourceLoc loc = SourceLoc.init) {
         super(loc);
     }
 }
 
-class VariableExpr : Expr {
+final class VariableExpr : Expr {
     string name;
 
     this(string name, SourceLoc loc = SourceLoc.init) {
@@ -99,7 +106,7 @@ class VariableExpr : Expr {
     }
 }
 
-class SymbolLiteralExpr : Expr {
+final class SymbolLiteralExpr : Expr {
     string name;
 
     this(string name, SourceLoc loc = SourceLoc.init) {
@@ -108,7 +115,7 @@ class SymbolLiteralExpr : Expr {
     }
 }
 
-class LogicVarExpr : Expr {
+final class LogicVarExpr : Expr {
     string name;
     bool isAnonymous;
 
@@ -119,7 +126,7 @@ class LogicVarExpr : Expr {
     }
 }
 
-class QueryExpr : Expr {
+final class QueryExpr : Expr {
     AstGoal[] goals;
     bool isBraced;
 
@@ -135,7 +142,7 @@ struct TableField {
     Expr value;
 }
 
-class TableConstructorExpr : Expr {
+final class TableConstructorExpr : Expr {
     TableField[] fields;
 
     this(TableField[] fields, SourceLoc loc = SourceLoc.init) {
@@ -144,7 +151,7 @@ class TableConstructorExpr : Expr {
     }
 }
 
-class IndexExpr : Expr {
+final class IndexExpr : Expr {
     Expr table;
     Expr key;
 
@@ -155,7 +162,7 @@ class IndexExpr : Expr {
     }
 }
 
-class FieldExpr : Expr {
+final class FieldExpr : Expr {
     Expr table;
     string field;
 
@@ -166,7 +173,7 @@ class FieldExpr : Expr {
     }
 }
 
-class CallExpr : Expr {
+final class CallExpr : Expr {
     Expr callee;
     Expr[] args;
 
@@ -177,7 +184,7 @@ class CallExpr : Expr {
     }
 }
 
-class MethodCallExpr : Expr {
+final class MethodCallExpr : Expr {
     int nameLine;   // line of the method name (OP_SELF)
     int argsLine;   // line of the call arguments (OP_CALL)
     Expr receiver;
@@ -199,7 +206,7 @@ enum UnaryOp {
     Len     // #
 }
 
-class UnaryExpr : Expr {
+final class UnaryExpr : Expr {
     UnaryOp op;
     Expr expr;
 
@@ -234,7 +241,7 @@ enum BinaryOp {
     Or      // or
 }
 
-class BinaryExpr : Expr {
+final class BinaryExpr : Expr {
     BinaryOp op;
     Expr left;
     Expr right;
@@ -247,7 +254,7 @@ class BinaryExpr : Expr {
     }
 }
 
-class FunctionDefExpr : Expr {
+final class FunctionDefExpr : Expr {
     int endLine;
     string[] params;
     bool isVararg;
@@ -271,7 +278,7 @@ abstract class Stmt : AstNode {
     }
 }
 
-class BlockStmt : Stmt {
+final class BlockStmt : Stmt {
     Stmt[] statements;
     int endLine;  // line of the last token of the block (chunks only)
 
@@ -281,13 +288,13 @@ class BlockStmt : Stmt {
     }
 }
 
-class EmptyStmt : Stmt {
+final class EmptyStmt : Stmt {
     this(SourceLoc loc = SourceLoc.init) {
         super(loc);
     }
 }
 
-class AssignStmt : Stmt {
+final class AssignStmt : Stmt {
     Expr[] targets;
     Expr[] values;
 
@@ -298,7 +305,7 @@ class AssignStmt : Stmt {
     }
 }
 
-class LocalDeclStmt : Stmt {
+final class LocalDeclStmt : Stmt {
     string[] names;
     string[] attributes;
     Expr[] values;
@@ -310,7 +317,7 @@ class LocalDeclStmt : Stmt {
     }
 }
 
-class CallStmt : Stmt {
+final class CallStmt : Stmt {
     Expr call; // CallExpr or MethodCallExpr
 
     this(Expr call, SourceLoc loc = SourceLoc.init) {
@@ -319,7 +326,7 @@ class CallStmt : Stmt {
     }
 }
 
-class DoStmt : Stmt {
+final class DoStmt : Stmt {
     BlockStmt body;
 
     this(BlockStmt body, SourceLoc loc = SourceLoc.init) {
@@ -328,7 +335,7 @@ class DoStmt : Stmt {
     }
 }
 
-class WhileStmt : Stmt {
+final class WhileStmt : Stmt {
     Expr condition;
     BlockStmt body;
 
@@ -339,7 +346,7 @@ class WhileStmt : Stmt {
     }
 }
 
-class RepeatStmt : Stmt {
+final class RepeatStmt : Stmt {
     BlockStmt body;
     Expr condition;
 
@@ -357,7 +364,7 @@ struct IfBranch {
     int thenLine;  // line of the 'then' token
 }
 
-class IfStmt : Stmt {
+final class IfStmt : Stmt {
     IfBranch[] branches;
     BlockStmt elseBody; // may be null
 
@@ -368,7 +375,7 @@ class IfStmt : Stmt {
     }
 }
 
-class ForNumericStmt : Stmt {
+final class ForNumericStmt : Stmt {
     string varName;
     Expr start;
     Expr limit;
@@ -385,7 +392,7 @@ class ForNumericStmt : Stmt {
     }
 }
 
-class ForGenericStmt : Stmt {
+final class ForGenericStmt : Stmt {
     string[] varNames;
     Expr[] iterators;
     BlockStmt body;
@@ -398,7 +405,7 @@ class ForGenericStmt : Stmt {
     }
 }
 
-class FunctionDeclStmt : Stmt {
+final class FunctionDeclStmt : Stmt {
     Expr target;            // e.g. VariableExpr, FieldExpr, IndexExpr
     FunctionDefExpr def;
     bool isLocal;
@@ -413,7 +420,7 @@ class FunctionDeclStmt : Stmt {
     }
 }
 
-class ReturnStmt : Stmt {
+final class ReturnStmt : Stmt {
     Expr[] values;
 
     this(Expr[] values = null, SourceLoc loc = SourceLoc.init) {
@@ -422,13 +429,13 @@ class ReturnStmt : Stmt {
     }
 }
 
-class BreakStmt : Stmt {
+final class BreakStmt : Stmt {
     this(SourceLoc loc = SourceLoc.init) {
         super(loc);
     }
 }
 
-class GotoStmt : Stmt {
+final class GotoStmt : Stmt {
     string label;
 
     this(string label, SourceLoc loc = SourceLoc.init) {
@@ -437,7 +444,7 @@ class GotoStmt : Stmt {
     }
 }
 
-class LabelStmt : Stmt {
+final class LabelStmt : Stmt {
     string label;
 
     this(string label, SourceLoc loc = SourceLoc.init) {
@@ -452,7 +459,7 @@ class LabelStmt : Stmt {
 
 import dlua.logic.model : CompareOp;
 
-class AstRelRef : AstNode {
+final class AstRelRef : AstNode {
     string[] worldPath;
     string name;
 
@@ -469,7 +476,7 @@ abstract class AstGoal : AstNode {
     }
 }
 
-class AstRelAtomGoal : AstGoal {
+final class AstRelAtomGoal : AstGoal {
     AstRelRef relRef;
     Expr[] terms;
     bool isNegated;
@@ -482,7 +489,7 @@ class AstRelAtomGoal : AstGoal {
     }
 }
 
-class AstComparisonGoal : AstGoal {
+final class AstComparisonGoal : AstGoal {
     Expr left;
     CompareOp op;
     Expr right;
@@ -495,7 +502,7 @@ class AstComparisonGoal : AstGoal {
     }
 }
 
-class AstAggregateGoal : AstGoal {
+final class AstAggregateGoal : AstGoal {
     string resultVariable;
     string operation;
     Expr expression;
@@ -506,7 +513,7 @@ class AstAggregateGoal : AstGoal {
     }
 }
 
-class AstGuardGoal : AstGoal {
+final class AstGuardGoal : AstGoal {
     Expr expr;
 
     this(Expr expr, SourceLoc loc = SourceLoc.init) {
@@ -515,7 +522,7 @@ class AstGuardGoal : AstGoal {
     }
 }
 
-class FactStmt : Stmt {
+final class FactStmt : Stmt {
     AstRelRef relRef;
     Expr[] args;
 
@@ -526,7 +533,7 @@ class FactStmt : Stmt {
     }
 }
 
-class RetractStmt : Stmt {
+final class RetractStmt : Stmt {
     AstRelRef relRef;
     Expr[] args;
 
@@ -537,7 +544,7 @@ class RetractStmt : Stmt {
     }
 }
 
-class NarrativeDefinitionStmt : Stmt {
+final class NarrativeDefinitionStmt : Stmt {
     string kind;
     string name;
     string[] parameters;
@@ -549,13 +556,13 @@ class NarrativeDefinitionStmt : Stmt {
     this(string kind, string name, SourceLoc loc) { super(loc); this.kind = kind; this.name = name; }
 }
 
-class NarrativeDeckStmt : Stmt {
+final class NarrativeDeckStmt : Stmt {
     string name;
     Expr options;
     this(string name, Expr options, SourceLoc loc) { super(loc); this.name = name; this.options = options; }
 }
 
-class TransactionStmt : Stmt {
+final class TransactionStmt : Stmt {
     Expr worldExpr;
     BlockStmt body;
     this(Expr worldExpr, BlockStmt body, SourceLoc loc) {
@@ -563,11 +570,11 @@ class TransactionStmt : Stmt {
     }
 }
 
-class RollbackStmt : Stmt {
+final class RollbackStmt : Stmt {
     this(SourceLoc loc) { super(loc); }
 }
 
-class UpdateStmt : Stmt {
+final class UpdateStmt : Stmt {
     string operation;
     AstRelRef relRef;
     Expr[] args;
@@ -577,7 +584,7 @@ class UpdateStmt : Stmt {
     }
 }
 
-class RelationDeclStmt : Stmt {
+final class RelationDeclStmt : Stmt {
     string name;
     int arity;
     string[] columns;
@@ -591,7 +598,7 @@ class RelationDeclStmt : Stmt {
     }
 }
 
-class LocalRelationDeclStmt : Stmt {
+final class LocalRelationDeclStmt : Stmt {
     string name;
     int arity;
 
@@ -602,7 +609,7 @@ class LocalRelationDeclStmt : Stmt {
     }
 }
 
-class RuleDeclStmt : Stmt {
+final class RuleDeclStmt : Stmt {
     AstRelRef headRel;
     Expr[] headArgs;
     AstGoal[] goals;
@@ -615,7 +622,7 @@ class RuleDeclStmt : Stmt {
     }
 }
 
-class WorldBlockStmt : Stmt {
+final class WorldBlockStmt : Stmt {
     Expr worldExpr;
     BlockStmt body;
 

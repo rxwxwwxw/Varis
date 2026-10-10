@@ -41,6 +41,7 @@ class ContentDefinition {
     long integerOption(string key, long fallback) {
         return option(key, LuaValue(fallback)).match!((long n) => n, _ => fallback);
     }
+    bool sticky() { return option("sticky", LuaValue(false)).match!((bool b) => b, _ => false); }
     string symbolOption(string key, string fallback) {
         return option(key, LuaValue(Symbol(fallback))).match!((Symbol symbol) => symbol.name, _ => fallback);
     }
@@ -235,6 +236,8 @@ class ContentRegistry {
             auto cooldown = definition.option("cooldown", LuaValue(0L));
             if (!isInteger(cooldown) || cooldown.match!((long n) => n, _ => -1L) < 0) throw new LuaException("storylet cooldown must be a nonnegative integer");
             if (!isBoolean(definition.option("repeatable", LuaValue(true)))) throw new LuaException("storylet repeatable must be Boolean");
+            if (!isBoolean(definition.option("sticky", LuaValue(false)))) throw new LuaException("storylet sticky must be Boolean");
+            if (!isInteger(definition.option("order", LuaValue(0L)))) throw new LuaException("storylet order must be an integer");
             if (!isSymbol(definition.option("deck", LuaValue(Symbol("default"))))) throw new LuaException("storylet deck must be a symbol");
             if (!definition.choices.length) throw new LuaException("storylet requires at least one choice: " ~ definition.id);
             bool[string] choices;

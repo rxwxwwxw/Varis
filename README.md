@@ -198,39 +198,41 @@ make clean
 
 The target is **no more than 2× C Lua 5.4 execution time on each agreed
 representative core-Lua workload**, with a geometric mean reported only as a
-summary. This target is not achieved or enforced by the current Lua benchmark.
-Datalog and narrative workloads have separate regression budgets because stock
-Lua cannot execute their syntax.
+summary. Datalog and narrative workloads have separate regression budgets because
+stock Lua cannot execute their syntax.
 
-A preliminary run on October 9, 2026, using the existing workspace binaries:
+Measured on October 9, 2026 with `python3 benchmarks/bench.py` (release CLI built
+with `-O3 -release`, C Lua with `-O2`; execution only, one warmup, median of seven
+runs of five repetitions; assertion-checked workloads):
 
 | Workload | dlua / C Lua |
 | --- | ---: |
-| Recursive Fibonacci | 17.21× |
-| Numeric loop | 7.56× |
-| Array inserts and reads | 7.14× |
-| Hash-table workload | 3.44× |
-| String manipulation | 3.52× |
-| Sieve | 7.53× |
+| Recursive Fibonacci | 2.0–2.3× |
+| Numeric loop | 1.6× |
+| Array inserts and reads | 1.6× |
+| Hash-table workload | 1.4–1.5× |
+| String manipulation | 0.6× |
+| Sieve | 1.3× |
 
-These are diagnostic observations, not a calibrated release baseline: binaries
-were not rebuilt for this run, and `benchmarks/bench.py` reports the minimum of
-three fresh-process runs including startup and parsing. Several workloads lack
-result assertions; ratios are printed without a performance failure threshold.
-The Datalog check already enforces machine-specific suite medians and functional
-success, but includes process/runner overhead and does not isolate engine costs.
+The numbers move by roughly ±10% between builds because the interpreter loop is one
+large function (code layout effects); `benchmarks/PERFORMANCE_WORK.md` records the
+methodology, the changes and the remaining costs. Calls and returns, object
+creation, closures and coroutines (≈2.3–2.5×) and caught errors (≈4.5 µs each; macOS's unwinder
+is slow for D exceptions) are the known remaining gaps; deep recursion past 150 frames runs in a
+flat-stack executor (stack overflow ≈2.6× C Lua).
+The ratios are printed without a failure threshold. The Datalog check enforces
+machine-specific suite medians and functional success, but includes
+process/runner overhead and does not isolate engine costs.
 
 [Phase 8, milestones 19–25](LANGUAGE_EXTENSIONS_PLAN.md#phase-8--performance-and-remaining-lua-conformance)
 plans reproducible benchmarks, official-suite reporting, profiling, reusable call
 frames, lower VM overhead, table/bytecode improvements, and enforced performance
-gates. Source inspection identifies per-call allocation/copying, world-context
-lookups, per-instruction bookkeeping, and repeated hash-iteration scans as
-candidates; their contribution must be measured before changing architecture.
+gates.
 
 ### Remaining conformance work
 
 - Conformance scope (owner decision): the official suite as a stock Lua 5.4 binary runs it (no internal `T` library), with `gc.lua` excluded; an ltests-style `T` for `api.lua`/`code.lua` is out of scope. The official Lua 5.4.9 suite runs clean: the October 9, 2026 release-build run reports **31 pass, 1 partial, 1 skipped, 0 fail, 0 timeout** across 33 files (240 seconds per file, C Lua as reference). `gc.lua` is the one skip, excluded by decision because exact collector reachability conflicts with keeping dlua objects directly accessible from D. The one partial is the suite driver `all.lua`, which the runner executes with `gc.lua` stubbed (it ends with `final OK !!!` and also pushes each file through `string.dump`/`load`). The suite's C test modules are compiled and loaded through the exported C API subset (`source/dlua/capi.d`), and `files.lua` runs against an `sh` wrapper because macOS `sh` reports a signal for the nested-shell check where the suite expects an exit status. `api` and `code` pass because, as with stock C Lua, they return immediately when the internal `T` library is absent. See the [recorded results and remaining issues](tests/official/README.md); a file pass means the process exited successfully.
-- `make test-official` fails on interpreter failures or timeouts. The runner captures both output streams without pipe deadlocks and retains exit codes and diagnostics. Weak tables and `__gc`/`__close` finalizers are emulated on D's conservative GC (`source/dlua/gc.d`), so `collectgarbage` modes/step are bookkeeping-level rather than a Lua collector. Native stack use (~5 KB per Lua call frame) and slow deep-recursion unwinding are known performance issues for Phase 8.
+- `make test-official` fails on interpreter failures or timeouts. The runner captures both output streams without pipe deadlocks and retains exit codes and diagnostics. Weak tables and `__gc`/`__close` finalizers are emulated on D's conservative GC (`source/dlua/gc.d`), so `collectgarbage` modes/step are bookkeeping-level rather than a Lua collector. Native stack use (~5 KB per Lua call frame) and slow deep-recursion unwinding (D exceptions through the platform unwinder) remain known performance issues.
 - Implemented conformance work includes luac-style compiler output (RK operands, condition jumps, line attribution, strip semantics), lvm.c-style loops and error messages with variable info, ports of lstrlib/ltablib/lmathlib/loslib/liolib/loadlib/lcorolib/lua.c, binary chunks (`string.dump`/`load`, private body behind a standard header), debug hooks/getinfo/locals/upvalues, coroutine close/wrap semantics, tracebacks and C-call depth limits. Remaining work before performance optimization is only the explicit skips and partial exclusions above.
 - `make test-conformance-core` compares a deterministic core fixture against bundled C Lua. `make test` includes runner regression tests, while the official suite and differential target remain separate gates.
 - Add differential coverage against C Lua for supported numeric behavior,
@@ -255,7 +257,7 @@ known unsupported cases remain visible rather than being counted as successes.
 - [x] **Phase 5: CLI & Conformance**: CLI and runner implemented; the official suite reports 31 pass / 1 partial / 1 skipped / 0 fail (skip and partial documented in [tests/official/README.md](tests/official/README.md)).
 - [x] **Phase 6: Declarative Extensions v0.1**: Finite Datalog relations, symbols, runtime facts/rules, stratified negation, lexical local relations, independent worlds, and snapshot query iterators.
 - [x] **Phase 7: Stateful and Narrative Extensions**: Named/keyed relations, atomic updates, transactions, storylets and choices, automatic actions, decks, templates, qualities, events, deterministic saves/replay, authoring diagnostics, custom display formatters, and deterministic weighted text variants. Optional aggregates, subscriptions, and bounded state-space analysis are implemented.
-- [ ] **Phase 8: Performance & Remaining Lua Conformance**: Milestone 20 conformance gate is met for all executable official files; benchmark hardening and optimization milestones (19, 21–25) remain planned and the ≤2× target remains unmet.
+- [ ] **Phase 8: Performance & Remaining Lua Conformance**: Milestone 20 conformance gate is met for all executable official files; core-Lua execution is now within about 2× of C Lua on the benchmark workloads (see Performance Benchmarks); enforcement gates (milestones 19, 25) remain planned.
 
 Phase 6 follows the milestones in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md):
 

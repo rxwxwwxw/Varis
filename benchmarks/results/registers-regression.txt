@@ -1,0 +1,16 @@
+[PASS] coroutines             dlua   0.02s  C   0.00s  CHECKSUM 45ca0dfdce181427 lines 25
+[PASS] errors                 dlua   0.02s  C   0.00s  CHECKSUM 2bac5e2d074a3705 lines 73
+[PASS] fuzz_expr              dlua   0.13s  C   0.02s  CHECKSUM 972f08e0d74aa257 lines 1501
+[PASS] fuzz_table             dlua   0.04s  C   0.01s  CHECKSUM baf960147f824755 lines 40
+[PASS] int_float              dlua   0.03s  C   0.00s  CHECKSUM 60619b62e0cb9a21 lines 228
+[PASS] io_os                  dlua   0.03s  C   0.01s  CHECKSUM 4e68ac90c0b7972f lines 31
+[PASS] limits                 dlua   7.35s  C   0.08s  CHECKSUM 13df34175ebee77e lines 31
+[PASS] load_dump              dlua   0.02s  C   0.00s  CHECKSUM 7d063760a938d8a6 lines 20
+[PASS] metamethods            dlua   0.02s  C   0.00s  CHECKSUM f1487c4a84abd0fe lines 21
+[PASS] random_math            dlua   0.02s  C   0.00s  CHECKSUM 188068cb7b31b249 lines 13
+[PASS] strings                dlua   0.02s  C   0.00s  CHECKSUM 7aabe6cac3afadc8 lines 34
+[PASS] tables                 dlua   0.02s  C   0.00s  CHECKSUM dd6f26a6a4585960 lines 22
+[PASS] tbc_goto               dlua   0.02s  C   0.00s  CHECKSUM 8e734a02d148fa3e lines 24
+[PASS] weak_gc                dlua   0.04s  C   0.01s  CHECKSUM 521e636fa4fdde88 lines 12
+[PASS] workloads              dlua   1.00s  C   0.12s  CHECKSUM 0c8c31c68098f277 lines 9
+15 passed, 0 failed

@@ -58,9 +58,15 @@ local function status()
         quality.get(:player, :resolve, w), load))
 end
 
+-- present() draws from the deck and consumes RNG, so the host asks for a
+-- presentation only after a state change and re-prints the cached one otherwise.
+local p
 while true do
-    local ok, p = pcall(session.present, session)
-    if not ok then print("error: " .. tostring(p)); break end
+    if not p then
+        local ok, result = pcall(session.present, session)
+        if not ok then print("error: " .. tostring(result)); break end
+        p = result
+    end
     show_events()
     status()
 
@@ -87,7 +93,7 @@ while true do
             local text = f:read("a"); f:close()
             local okl, s = pcall(G.load, text)
             if okl then
-                unwatch(); session = s; unwatch = watch(session)
+                unwatch(); session = s; unwatch = watch(session); p = nil
                 -- re-seed last_seq from restored history so old events aren't reprinted
                 last_seq = 0
                 logic (session:world()) do
@@ -104,10 +110,12 @@ while true do
         local c = menu[tonumber(line)]
         if c then
             local okc, err = pcall(session.choose, session, c.token)
-            if not okc then print("  (" .. tostring(err) .. ")") end
+            if not okc then print("  (" .. tostring(err) .. ")") else p = nil end
             G.sync_periods(session)
             narrative.flush(session:world())
             if G.is_over(session) then show_events(); print("\n*** THE END ***"); break end
+        else
+            print("  (Please enter a number from 1 to " .. #menu .. ", s, l or q.)")
         end
     end
 end

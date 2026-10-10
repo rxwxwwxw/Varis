@@ -140,7 +140,7 @@ private LuaValue[] exclusions(Session session, ContentInstance instance) {
     double weight = instance.definition.option("weight", LuaValue(1L)).match!((long n) => cast(double)n, (double n) => n, _ => 0.0);
     if (!weight) result ~= session.state.getSymbol("zero_weight");
     auto deck = session.registry.deck(session.activeDeck());
-    if (!deck.replacement && instance.key in data.decks[$ - 1].drawn) result ~= session.state.getSymbol("already_drawn");
+    if (!deck.replacement && !instance.definition.sticky && instance.key in data.decks[$ - 1].drawn) result ~= session.state.getSymbol("already_drawn");
     return result;
 }
 

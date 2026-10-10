@@ -22,7 +22,6 @@ storylet topic_key()
     when { told(:lamp), not told(:key), quality(:keeper, :trust, ?t), ?t >= 1 }
     deck :talk
     priority 9
-    repeatable false
     title "Ask why the lamp room is locked"
     text [[He fishes in his coat. "My knees can't manage the stair. Take this."]]
     choice accept
@@ -73,7 +72,8 @@ end
 storylet end_talk()
     when { met(:keeper) }
     deck :talk
-    priority 100        -- top tier so the exit is always drawn (see needed_extensions.md §4.2)
+    sticky true
+    order 100
     title "Get up"
     text ""
     choice bye

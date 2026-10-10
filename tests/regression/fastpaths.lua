@@ -1,0 +1,203 @@
+-- Interpreter fast paths (allocation-free built-ins, inline table/array access, pairs/ipairs loops,
+-- tail-call buffers, nil-padded arrays, upvalue closing): every observable result must match C Lua,
+-- including the error cases that must fall back to the generic implementations.
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local emit, try = T.emit, T.try
+
+-- built-ins called with unusual argument shapes
+emit("type", type(nil), type(1), type(1.5), type("x"), type({}), type(print), type(true), type(coroutine.create(print)))
+try(type)
+emit("select", select("#"), select("#", nil, nil), select(1, "a", "b"), select(2, "a", "b"), select(-1, "a", "b", "c"))
+emit("select3", select(3, "a", "b"))
+try(select, 0)
+try(select, -5, 1, 2)
+try(select, "x")
+emit("select-float", select(2.0, "a", "b", "c"))
+emit("rawget", rawget({10, 20}, 2), rawget({a = 1}, "a"), rawget({}, nil), rawget(setmetatable({}, {__index = function() return 1 end}), "k"))
+try(rawget, 1, 2)
+try(rawset, {}, nil, 1)
+try(rawset, {}, 0 / 0, 1)
+local rs = {}
+emit("rawset", rawset(rs, "k", 5) == rs, rs.k, rawset(rs, 1.0, "one")[1])
+emit("rawequal", rawequal("a", "a"), rawequal({}, {}), rawequal(1, 1.0), rawequal(0 / 0, 0 / 0))
+try(rawequal, 1)
+-- metatables
+local base = {}
+local obj = setmetatable({}, base)
+emit("getmt", getmetatable(obj) == base, getmetatable({}), getmetatable("x").__index == string)
+local prot = setmetatable({}, {__metatable = "locked"})
+emit("protected", getmetatable(prot))
+try(setmetatable, prot, {})
+try(setmetatable, 1, {})
+try(setmetatable, {}, 1)
+try(setmetatable, {})
+emit("clearmt", getmetatable(setmetatable(obj, nil)))
+local weak = setmetatable({}, {__mode = "k"})
+weak[{}] = 1
+emit("weak", type(weak))
+local closed = {}
+local gcobj = setmetatable({}, {__gc = function() closed[#closed + 1] = "gc" end})
+emit("gcmt", type(gcobj))
+-- assert / next / pairs / ipairs
+emit("assert", assert(1, 2, 3))
+emit("assert-nil-msg", select("#", assert(true)))
+try(assert, false)
+try(assert, nil, "boom")
+try(assert, false, {1})
+emit("next", next({}), next({7}), next({a = 1}))
+try(next, {}, "missing")
+try(next, {10, 20}, 3)
+local keys = {}
+for k, v in pairs({1, 2, 3, x = "a", y = "b"}) do keys[#keys + 1] = tostring(k) .. "=" .. tostring(v) end
+table.sort(keys)
+emit("pairs", table.concat(keys, ","))
+local seen = 0
+for i, v in ipairs({1, 2, nil, 4}) do seen = seen + 1 end
+emit("ipairs-stops-at-nil", seen)
+local proxy = setmetatable({}, {__index = function(_, i) if i <= 3 then return i * 10 end end})
+local sum = 0
+for i, v in ipairs(proxy) do sum = sum + v end
+emit("ipairs-index", sum)
+local viaPairs = setmetatable({}, {__pairs = function(t) return function(_, k) if not k then return 1, "one" end end, t, nil end})
+for k, v in pairs(viaPairs) do emit("__pairs", k, v) end
+-- clearing during traversal, then reuse
+local clear = {}
+for i = 1, 20 do clear[i] = i; clear["k" .. i] = i end
+local removed = 0
+for k in pairs(clear) do clear[k] = nil; removed = removed + 1 end
+emit("clear", removed, next(clear))
+for i = 1, 5 do clear[i] = i * i end
+emit("reuse", #clear, clear[5])
+-- numeric helpers
+emit("floor", math.floor(3.7), math.floor(-3.7), math.floor(5), math.floor(2 ^ 62), math.floor(2 ^ 70), math.floor("3.5"))
+emit("ceil", math.ceil(3.2), math.ceil(-3.2), math.ceil(7), math.ceil(1e300))
+emit("sqrt", math.sqrt(16), math.sqrt(2), math.sqrt("4"), math.sqrt(-1) ~= math.sqrt(-1))
+emit("abs", math.abs(-3), math.abs(3.5), math.abs(math.mininteger), math.abs(-0.0))
+emit("minmax", math.min(3, 1, 2), math.max(3, 1, 2), math.min(1.5, 2), math.max(2, 2.0), math.max(1, 0 / 0) == 1)
+try(math.floor)
+try(math.max)
+try(math.min, "a")
+try(math.floor, {})
+-- strings
+local s = "hello world"
+emit("len", ("").len(s), string.len("\0\0"), #s)
+emit("sub", s:sub(1, 5), s:sub(-5), s:sub(7), s:sub(0), s:sub(5, 1), s:sub(-100, 3), s:sub(2, -2), s:sub(20), s:sub(3, 100))
+emit("sub-float", s:sub(2.0, 4.0))
+try(s.sub, s, 1.5)
+try(s.sub, s)
+emit("byte", s:byte(), s:byte(1), s:byte(-1), s:byte(100), s:byte(0), s:byte(1, 3))
+try(string.byte)
+emit("sub-number", string.sub(12345, 2, 3), string.len(12345))
+-- table.insert
+local ins = {}
+table.insert(ins, "a"); table.insert(ins, "b"); table.insert(ins, 1, "z"); table.insert(ins, #ins + 1, "end")
+emit("insert", table.concat(ins, ","), #ins)
+try(table.insert, ins, 10, "x")
+try(table.insert, ins)
+try(table.insert, ins, 1, 2, 3)
+local proxied = setmetatable({}, {__newindex = function(t, k, v) rawset(t, k, v * 2) end})
+table.insert(proxied, 21)
+emit("insert-newindex", proxied[1])
+local lenmt = setmetatable({}, {__len = function() return 41 end})
+table.insert(lenmt, "x")
+emit("insert-len", rawget(lenmt, 42))
+-- length of tables with holes and padding
+local grow = {}
+for i = 1, 100 do grow[i] = i end
+emit("len100", #grow)
+for i = 100, 51, -1 do grow[i] = nil end
+emit("len50", #grow)
+grow[#grow + 1] = "x"
+emit("len51", #grow, grow[51])
+local rev = {}
+for i = 10, 1, -1 do rev[i] = i end
+emit("reverse-fill", #rev)
+local sparse = {}
+sparse[3] = 3; sparse[2] = 2; sparse[1] = 1
+emit("sparse-fill", #sparse)
+local holes = {1, 2, nil, 4}
+emit("holes", #holes == 4 or #holes == 2)
+local big = {}
+for i = 1, 70 do big[i * 2] = i end
+local count = 0
+for _ in pairs(big) do count = count + 1 end
+emit("big-sparse", count, big[140], big[1])
+-- next on integer keys beyond the array part
+local mixed = {}
+for i = 1, 8 do mixed[i] = i end
+mixed[20] = "twenty"; mixed.name = "n"
+local total = 0
+for k, v in pairs(mixed) do total = total + 1 end
+emit("mixed", total, #mixed)
+-- field caches across shape changes
+local function readX(t) return t.x end
+local a, b, c = {x = 1, y = 2}, {y = 3, x = 4}, setmetatable({}, {__index = {x = 5}})
+local results = {}
+for i = 1, 3 do for _, t in ipairs({a, b, c}) do results[#results + 1] = readX(t) end end
+a.x = nil
+results[#results + 1] = tostring(readX(a))
+a.z = 1; a.x = 9
+results[#results + 1] = readX(a)
+emit("field-cache", table.concat(results, ","))
+local inherit = setmetatable({}, {__index = setmetatable({mid = "m"}, {__index = {leaf = "l"}})})
+emit("chain", inherit.mid, inherit.leaf, inherit.none)
+local fnindex = setmetatable({}, {__index = function(_, k) return k .. "!" end})
+emit("fn-index", fnindex.abc, fnindex.def)
+local newidx = {}
+local logged = {}
+setmetatable(newidx, {__newindex = function(t, k, v) logged[#logged + 1] = k; rawset(t, k, v) end})
+newidx.a = 1; newidx.a = 2; newidx.b = 3
+emit("newindex", table.concat(logged, ","), newidx.a)
+-- globals
+gcount = 0
+for i = 1, 10 do gcount = gcount + i end
+emit("globals", gcount, rawget(_G, "gcount"), undefinedglobal)
+local env = setmetatable({}, {__index = _G})
+local chunk = load("x = 5; return x + gcount, type", "=chunk", "t", env)
+emit("env", chunk(), rawget(env, "x"), rawget(_G, "x"))
+-- tail calls with many arguments, varargs and method syntax
+local function tail(n, ...) if n == 0 then return select("#", ...), ... end return tail(n - 1, n, ...) end
+emit("tail", tail(5))
+local function va(...) return ... end
+local function tailva(...) return va(...) end
+emit("tailva", select("#", tailva()), select("#", tailva(nil, nil)), tailva(1, 2, 3))
+local obj2 = {n = 0}
+function obj2:bump(by) self.n = self.n + (by or 1); return self end
+emit("method-chain", obj2:bump():bump(5):bump().n)
+local function loopTail(n, acc) if n == 0 then return acc end return loopTail(n - 1, acc + n) end
+emit("deep-tail", loopTail(100000, 0))
+-- per-iteration upvalues
+local fns = {}
+for i = 1, 4 do local j = i * 10; fns[i] = function() j = j + 1; return i, j end end
+emit("closures", fns[1](), fns[1](), fns[4]())
+-- closing upvalues must not accumulate: this loop was quadratic when closed upvalues stayed listed
+local made = 0
+for i = 1, 200000 do local f = function() return i end; made = made + (f() == i and 1 or 0) end
+emit("many-closures", made)
+local survived = 0
+for i = 1, 50000 do if pcall(function() return i end) then survived = survived + 1 end end
+emit("many-pcalls", survived)
+-- hooks installed in the middle of a function
+local lines = {}
+local function hooked()
+  local a = 1
+  debug.sethook(function(_, l) lines[#lines + 1] = l end, "l")
+  local b = 2
+  local c = 3
+  debug.sethook()
+  return a + b + c
+end
+local base_line = debug.getinfo(hooked, "S").linedefined
+hooked()
+local rel = {}
+for i, l in ipairs(lines) do rel[i] = l - base_line end
+emit("hook-lines", table.concat(rel, ","))
+-- error positions through fast paths
+local function failing() local t = nil; return t.field end
+local ok, msg = pcall(failing)
+emit("err-index", ok, (msg:gsub("^[^:]*:", "")))
+local ok2, msg2 = pcall(function() return #nil end)
+emit("err-len", ok2, (msg2:gsub("^[^:]*:", "")))
+local ok3, msg3 = pcall(function() return -{} end)
+emit("err-unm", ok3, (msg3:gsub("^[^:]*:", "")))
+T.done()

@@ -100,9 +100,8 @@ class Compiler {
         instr.c = c;
         instr.sBx = sBx;
         instr.line = (line > 0) ? line : currentLine;
-        proto.code ~= instr;
         bool variableTop = ((op == OpCode.Call || op == OpCode.TailCall || op == OpCode.Return) && b == 0) || op == OpCode.SetList;
-        proto.liveTop ~= variableTop ? int.max : freeReg;
+        proto.pushInstruction(instr, variableTop ? int.max : freeReg);
         return cast(int)(proto.code.length - 1);
     }
 
@@ -285,11 +284,11 @@ class Compiler {
         auto entryLocals = locals.dup;
         size_t endLabels = block.statements.length;
         if (allowEndLabels) {
-            while (endLabels && (cast(LabelStmt)block.statements[endLabels - 1]
-                || cast(EmptyStmt)block.statements[endLabels - 1])) --endLabels;
+            while (endLabels && (as!LabelStmt(block.statements[endLabels - 1])
+                || as!EmptyStmt(block.statements[endLabels - 1]))) --endLabels;
         }
         foreach (index, stmt; block.statements) {
-            if (auto label = cast(LabelStmt)stmt) {
+            if (auto label = as!LabelStmt(stmt)) {
                 for (auto visible = current; visible !is null; visible = visible.parent) {
                     if (auto prior = label.label in visible.labels)
                         throw fail("label '" ~ label.label ~ "' already defined on line " ~ prior.line.to!string);
@@ -311,74 +310,74 @@ class Compiler {
     }
 
     void compileStmt(Stmt stmt) {
-        if (stmt is null || cast(EmptyStmt)stmt) return;
+        if (stmt is null || as!EmptyStmt(stmt)) return;
         if (stmt.loc.line > 0) currentLine = stmt.loc.line;
 
-        if (auto jump = cast(GotoStmt)stmt) {
+        if (auto jump = as!GotoStmt(stmt)) {
             int closePc = emit(OpCode.Close, int.max);
             int jumpPc = emitJump();
             labelBlock.pending ~= PendingGoto(jump.label, closePc, jumpPc, locals.dup, locals.length, jump.loc.line);
             return;
         }
 
-        if (auto s = cast(DoStmt)stmt) {
+        if (auto s = as!DoStmt(stmt)) {
             enterScope();
             compileBlock(s.body);
             exitScope();
             return;
         }
 
-        if (auto s = cast(LocalDeclStmt)stmt) {
+        if (auto s = as!LocalDeclStmt(stmt)) {
             compileLocalDecl(s);
             return;
         }
 
-        if (auto s = cast(AssignStmt)stmt) {
+        if (auto s = as!AssignStmt(stmt)) {
             compileAssign(s);
             return;
         }
 
-        if (auto s = cast(CallStmt)stmt) {
+        if (auto s = as!CallStmt(stmt)) {
             compileExpr(s.call, freeReg, 0); // 0 return values; the call allocates its own base
             return;
         }
 
-        if (auto s = cast(ReturnStmt)stmt) {
+        if (auto s = as!ReturnStmt(stmt)) {
             compileReturn(s);
             return;
         }
 
-        if (auto s = cast(IfStmt)stmt) {
+        if (auto s = as!IfStmt(stmt)) {
             compileIf(s);
             return;
         }
 
-        if (auto s = cast(WhileStmt)stmt) {
+        if (auto s = as!WhileStmt(stmt)) {
             compileWhile(s);
             return;
         }
 
-        if (auto s = cast(RepeatStmt)stmt) {
+        if (auto s = as!RepeatStmt(stmt)) {
             compileRepeat(s);
             return;
         }
 
-        if (auto s = cast(ForNumericStmt)stmt) {
+        if (auto s = as!ForNumericStmt(stmt)) {
             compileForNumeric(s);
             return;
         }
 
-        if (auto s = cast(ForGenericStmt)stmt) {
+        if (auto s = as!ForGenericStmt(stmt)) {
             compileForGeneric(s);
             return;
         }
 
-        if (auto s = cast(FunctionDeclStmt)stmt) {
+        if (auto s = as!FunctionDeclStmt(stmt)) {
             compileFunctionDecl(s);
             return;
         }
 
-        if (auto s = cast(BreakStmt)stmt) {
+        if (auto s = as!BreakStmt(stmt)) {
             if (loopDepth <= 0) {
                 throw fail("break outside loop at line " ~ currentLine.to!string);
             }
@@ -387,14 +386,14 @@ class Compiler {
             return;
         }
 
-        if (auto definition = cast(NarrativeDefinitionStmt)stmt) {
+        if (auto definition = as!NarrativeDefinitionStmt(stmt)) {
             int[] registers;
             proto.contentTemplates ~= compileContent(definition, [], registers);
             emit(OpCode.DefineContent, 0, cast(int)proto.contentTemplates.length - 1);
             freeRegs(cast(int)registers.length);
             return;
         }
-        if (auto deck = cast(NarrativeDeckStmt)stmt) {
+        if (auto deck = as!NarrativeDeckStmt(stmt)) {
             int options = allocReg();
             compileExpr(deck.options, options, 1);
             emit(OpCode.DefineDeck, options, addConstant(LuaValue(deck.name)));
@@ -402,7 +401,7 @@ class Compiler {
             return;
         }
 
-        if (auto s = cast(TransactionStmt)stmt) {
+        if (auto s = as!TransactionStmt(stmt)) {
             enterScope();
             int startRegister = freeReg;
             int world = resolveLocal("@world");
@@ -423,43 +422,43 @@ class Compiler {
             proto.code[begin].b = cast(int)proto.code.length;
             return;
         }
-        if (cast(RollbackStmt)stmt !is null) {
+        if (as!RollbackStmt(stmt) !is null) {
             if (transactionDepth == 0) throw new LuaException("rollback outside a transaction");
             emit(OpCode.Rollback); return;
         }
-        if (auto s = cast(UpdateStmt)stmt) {
+        if (auto s = as!UpdateStmt(stmt)) {
             auto args = s.args.dup;
             if (s.delta !is null) args ~= s.delta;
             compileFactOrRetract(s.relRef, args, true,
                 s.operation == "set" ? OpCode.SetFact : s.operation == "delete" ? OpCode.DeleteKey : OpCode.AdjustKey);
             return;
         }
-        if (auto s = cast(FactStmt)stmt) {
+        if (auto s = as!FactStmt(stmt)) {
             compileFact(s);
             return;
         }
 
-        if (auto s = cast(RetractStmt)stmt) {
+        if (auto s = as!RetractStmt(stmt)) {
             compileRetract(s);
             return;
         }
 
-        if (auto s = cast(RelationDeclStmt)stmt) {
+        if (auto s = as!RelationDeclStmt(stmt)) {
             compileRelationDecl(s);
             return;
         }
 
-        if (auto s = cast(LocalRelationDeclStmt)stmt) {
+        if (auto s = as!LocalRelationDeclStmt(stmt)) {
             compileLocalRelationDecl(s);
             return;
         }
 
-        if (auto s = cast(RuleDeclStmt)stmt) {
+        if (auto s = as!RuleDeclStmt(stmt)) {
             compileRuleDecl(s);
             return;
         }
 
-        if (auto s = cast(WorldBlockStmt)stmt) {
+        if (auto s = as!WorldBlockStmt(stmt)) {
             compileWorldBlock(s);
             return;
         }
@@ -470,9 +469,9 @@ class Compiler {
     private bool isVarargOrCall(Expr expr) {
         if (expr is null) return false;
         if (expr.parenthesized) return false;
-        return (cast(CallExpr)expr !is null) ||
-               (cast(MethodCallExpr)expr !is null) ||
-               (cast(VarargExpr)expr !is null);
+        return (as!CallExpr(expr) !is null) ||
+               (as!MethodCallExpr(expr) !is null) ||
+               (as!VarargExpr(expr) !is null);
     }
 
     private void compileLocalDecl(LocalDeclStmt s) {
@@ -569,11 +568,11 @@ class Compiler {
     /// Registers upvalues referenced by an assignment target in source order
     /// (targets are written before the values are evaluated in the bytecode).
     private void touchNames(Expr e) {
-        if (auto v = cast(VariableExpr)e) {
+        if (auto v = as!VariableExpr(e)) {
             if (resolveLocal(v.name) < 0) resolveUpvalue(v.name);
-        } else if (auto f = cast(FieldExpr)e) {
+        } else if (auto f = as!FieldExpr(e)) {
             touchNames(f.table);
-        } else if (auto i = cast(IndexExpr)e) {
+        } else if (auto i = as!IndexExpr(e)) {
             touchNames(i.table);
             touchNames(i.key);
         }
@@ -588,21 +587,21 @@ class Compiler {
 
     /// `v.f1.f2...` where `v` is a plain variable and there is at least one field access.
     private static bool isFieldChainOnVariable(Expr e) {
-        auto f = cast(FieldExpr)e;
+        auto f = as!FieldExpr(e);
         if (f is null || e.parenthesized) return false;
-        return cast(VariableExpr)f.table !is null || isFieldChainOnVariable(f.table);
+        return as!VariableExpr(f.table) !is null || isFieldChainOnVariable(f.table);
     }
 
     private static bool isConstantExpr(Expr e) {
-        return cast(LiteralIntExpr)e !is null || cast(LiteralFloatExpr)e !is null || cast(LiteralStringExpr)e !is null ||
-            cast(LiteralNilExpr)e !is null || cast(LiteralBoolExpr)e !is null;
+        return as!LiteralIntExpr(e) !is null || as!LiteralFloatExpr(e) !is null || as!LiteralStringExpr(e) !is null ||
+            as!LiteralNilExpr(e) !is null || as!LiteralBoolExpr(e) !is null;
     }
 
     private LuaValue constantValue(Expr e) {
-        if (auto i = cast(LiteralIntExpr)e) return LuaValue(i.value);
-        if (auto f = cast(LiteralFloatExpr)e) return LuaValue(f.value);
-        if (auto str = cast(LiteralStringExpr)e) return LuaValue(str.value);
-        if (auto b = cast(LiteralBoolExpr)e) return LuaValue(b.value);
+        if (auto i = as!LiteralIntExpr(e)) return LuaValue(i.value);
+        if (auto f = as!LiteralFloatExpr(e)) return LuaValue(f.value);
+        if (auto str = as!LiteralStringExpr(e)) return LuaValue(str.value);
+        if (auto b = as!LiteralBoolExpr(e)) return LuaValue(b.value);
         return luaNil();
     }
 
@@ -610,7 +609,7 @@ class Compiler {
     /// everything else is evaluated into a fresh temporary.
     private RK compileRK(Expr e, bool allowK = true) {
         if (allowK && isConstantExpr(e)) return RK(addConstant(constantValue(e)), true, false);
-        if (auto v = cast(VariableExpr)e) {
+        if (auto v = as!VariableExpr(e)) {
             int reg = resolveLocal(v.name);
             if (reg >= 0) return RK(reg, false, false);
         }
@@ -625,9 +624,9 @@ class Compiler {
 
     private static bool targetsAreSafeLocalDest(Expr value) {
         if (value.parenthesized) return false;
-        if (isConstantExpr(value) || cast(VariableExpr)value !is null || cast(IndexExpr)value !is null ||
-            cast(FieldExpr)value !is null || cast(UnaryExpr)value !is null || cast(FunctionDefExpr)value !is null) return true;
-        if (auto b = cast(BinaryExpr)value) {
+        if (isConstantExpr(value) || as!VariableExpr(value) !is null || as!IndexExpr(value) !is null ||
+            as!FieldExpr(value) !is null || as!UnaryExpr(value) !is null || as!FunctionDefExpr(value) !is null) return true;
+        if (auto b = as!BinaryExpr(value)) {
             if (b.op == BinaryOp.And || b.op == BinaryOp.Or) return false;
             // A single operation reads its operands before writing the destination.
             return cast(BinaryExpr)b.left is null || b.op == BinaryOp.Concat || b.op == BinaryOp.Pow;
@@ -646,7 +645,7 @@ class Compiler {
 
     private AssignTarget prepareTarget(Expr target, bool copyLocals) {
         AssignTarget t;
-        if (auto varExpr = cast(VariableExpr)target) {
+        if (auto varExpr = as!VariableExpr(target)) {
             checkWritable(varExpr.name);
             int localReg = resolveLocal(varExpr.name);
             if (localReg >= 0) { t.kind = AssignTarget.Kind.local; t.reg = localReg; return t; }
@@ -659,8 +658,8 @@ class Compiler {
         t.kind = AssignTarget.Kind.index;
         Expr tableExpr, keyExpr = null;
         string fieldName;
-        if (auto indexExpr = cast(IndexExpr)target) { tableExpr = indexExpr.table; keyExpr = indexExpr.key; }
-        else if (auto fieldExpr = cast(FieldExpr)target) { tableExpr = fieldExpr.table; fieldName = fieldExpr.field; }
+        if (auto indexExpr = as!IndexExpr(target)) { tableExpr = indexExpr.table; keyExpr = indexExpr.key; }
+        else if (auto fieldExpr = as!FieldExpr(target)) { tableExpr = fieldExpr.table; fieldName = fieldExpr.field; }
         else throw fail("syntax error");
         t.table = compileRK(tableExpr, false);
         if (copyLocals && !t.table.temp) {
@@ -742,7 +741,7 @@ class Compiler {
         // General case: evaluate target operands first, then all values, then store right to left
         // (the order C Lua uses).
         bool anyLocalTarget = false;
-        foreach (target; s.targets) if (auto v = cast(VariableExpr)target) if (resolveLocal(v.name) >= 0) anyLocalTarget = true;
+        foreach (target; s.targets) if (auto v = as!VariableExpr(target)) if (resolveLocal(v.name) >= 0) anyLocalTarget = true;
         AssignTarget[] prepared;
         foreach (target; s.targets) prepared ~= prepareTarget(target, anyLocalTarget);
 
@@ -786,15 +785,15 @@ class Compiler {
         bool canTailCall = transactionDepth == 0;
         foreach (local; locals) if (local.isClose) canTailCall = false;
         if (canTailCall && s.values.length == 1 && !s.values[0].parenthesized &&
-            (cast(CallExpr)s.values[0] !is null || cast(MethodCallExpr)s.values[0] !is null)) {
+            (as!CallExpr(s.values[0]) !is null || as!MethodCallExpr(s.values[0]) !is null)) {
             compileExpr(s.values[0], freeReg, -1);
             assert(proto.code[$ - 1].op == OpCode.Call);
             proto.code[$ - 1].op = OpCode.TailCall;
             return;
         }
-        if (s.values.length == 1 && cast(VariableExpr)s.values[0] !is null && resolveLocal((cast(VariableExpr)s.values[0]).name) >= 0) {
+        if (s.values.length == 1 && as!VariableExpr(s.values[0]) !is null && resolveLocal((as!VariableExpr(s.values[0])).name) >= 0) {
             if (s.values[0].lastTokenLine > 0) currentLine = s.values[0].lastTokenLine;
-            emit(OpCode.Return, resolveLocal((cast(VariableExpr)s.values[0]).name), 2);
+            emit(OpCode.Return, resolveLocal((as!VariableExpr(s.values[0])).name), 2);
         } else if (s.values.length == 0) {
             emit(OpCode.Return, 0, 1); // 0 values
         } else {
@@ -821,10 +820,10 @@ class Compiler {
     /// Emits code that jumps (to be patched) when the truth value of `e` equals `jumpIf`
     /// and falls through otherwise. Returns the jumps to patch.
     private int[] condJump(Expr e, bool jumpIf) {
-        if (auto u = cast(UnaryExpr)e) {
+        if (auto u = as!UnaryExpr(e)) {
             if (u.op == UnaryOp.Not) return condJump(u.expr, !jumpIf);
         }
-        if (auto b = cast(BinaryExpr)e) {
+        if (auto b = as!BinaryExpr(e)) {
             if (b.op == BinaryOp.And || b.op == BinaryOp.Or) {
                 bool isAnd = b.op == BinaryOp.And;
                 // For "a and b" jumping when false: both operands jump when false.
@@ -845,8 +844,8 @@ class Compiler {
             }
         }
         // Constants decide at compile time.
-        if (cast(LiteralNilExpr)e !is null || cast(LiteralBoolExpr)e !is null || isConstantExpr(e)) {
-            bool truthy = !(cast(LiteralNilExpr)e !is null) && !(cast(LiteralBoolExpr)e !is null && !(cast(LiteralBoolExpr)e).value);
+        if (as!LiteralNilExpr(e) !is null || as!LiteralBoolExpr(e) !is null || isConstantExpr(e)) {
+            bool truthy = !(as!LiteralNilExpr(e) !is null) && !(as!LiteralBoolExpr(e) !is null && !(as!LiteralBoolExpr(e)).value);
             if (truthy == jumpIf) return [emitJump()];
             return [];
         }
@@ -1102,7 +1101,7 @@ class Compiler {
         int r = allocReg();
         compileFunctionDef(s.def, r);
 
-        if (auto varExpr = cast(VariableExpr)s.target) {
+        if (auto varExpr = as!VariableExpr(s.target)) {
             checkWritable(varExpr.name);
             int localReg = resolveLocal(varExpr.name);
             if (localReg >= 0) {
@@ -1116,7 +1115,7 @@ class Compiler {
                     emit(OpCode.SetGlobal, r, k, environmentOperand());
                 }
             }
-        } else if (auto fieldExpr = cast(FieldExpr)s.target) {
+        } else if (auto fieldExpr = as!FieldExpr(s.target)) {
             int rTable = allocReg();
             compileExpr(fieldExpr.table, rTable, 1);
             int kField = addConstant(LuaValue(fieldExpr.field));
@@ -1137,17 +1136,17 @@ class Compiler {
         if (expr is null) return;
         if (expr.loc.line > 0) currentLine = expr.loc.line;
 
-        if (cast(LiteralNilExpr)expr) {
+        if (as!LiteralNilExpr(expr)) {
             emit(OpCode.LoadNil, targetReg, 0);
             return;
         }
 
-        if (auto b = cast(LiteralBoolExpr)expr) {
+        if (auto b = as!LiteralBoolExpr(expr)) {
             emit(OpCode.LoadBool, targetReg, b.value ? 1 : 0, 0);
             return;
         }
 
-        if (auto i = cast(LiteralIntExpr)expr) {
+        if (auto i = as!LiteralIntExpr(expr)) {
             if (i.value >= -32768 && i.value <= 32767) {
                 emit(OpCode.LoadInt, targetReg, 0, 0, cast(int)i.value);
             } else {
@@ -1157,24 +1156,24 @@ class Compiler {
             return;
         }
 
-        if (auto f = cast(LiteralFloatExpr)expr) {
+        if (auto f = as!LiteralFloatExpr(expr)) {
             int k = addConstant(LuaValue(f.value));
             emit(OpCode.LoadK, targetReg, k);
             return;
         }
 
-        if (auto s = cast(LiteralStringExpr)expr) {
+        if (auto s = as!LiteralStringExpr(expr)) {
             int k = addConstant(LuaValue(s.value));
             emit(OpCode.LoadK, targetReg, k);
             return;
         }
 
-        if (cast(VarargExpr)expr) {
+        if (as!VarargExpr(expr)) {
             emit(OpCode.Vararg, targetReg, numResults + 1);
             return;
         }
 
-        if (auto v = cast(VariableExpr)expr) {
+        if (auto v = as!VariableExpr(expr)) {
             int localReg = resolveLocal(v.name);
             if (localReg >= 0) {
                 emit(OpCode.Move, targetReg, localReg);
@@ -1190,8 +1189,18 @@ class Compiler {
             return;
         }
 
-        if (auto t = cast(TableConstructorExpr)expr) {
+        if (auto t = as!TableConstructorExpr(expr)) {
             emit(OpCode.NewTable, targetReg);
+            {
+                int listItems, keyedFields;
+                foreach (fi, f; t.fields) {
+                    if (f.key !is null) ++keyedFields;
+                    else if (fi + 1 < t.fields.length || !isVarargOrCall(f.value)) ++listItems;
+                }
+                if (listItems > 0x7fff) listItems = 0x7fff;
+                if (keyedFields > 0xffff) keyedFields = 0xffff;
+                if (listItems || keyedFields) proto.tableSizeHints[cast(int)proto.code.length - 1] = (listItems << 16) | keyedFields;
+            }
             long listIdx = 1;
             for (size_t fi = 0; fi < t.fields.length; ++fi) {
                 auto f = t.fields[fi];
@@ -1222,7 +1231,7 @@ class Compiler {
             return;
         }
 
-        if (auto idx = cast(IndexExpr)expr) {
+        if (auto idx = as!IndexExpr(expr)) {
             RK table = compileRK(idx.table, false);
             RK key = compileRK(idx.key);
             if (idx.lastTokenLine > 0) currentLine = idx.lastTokenLine;
@@ -1233,7 +1242,7 @@ class Compiler {
             return;
         }
 
-        if (auto f = cast(FieldExpr)expr) {
+        if (auto f = as!FieldExpr(expr)) {
             if (isFieldChainOnVariable(f.table)) {
                 // a.b.c.d: evaluate the chain in the target register itself, like luac, instead of
                 // one temporary per level.
@@ -1253,7 +1262,7 @@ class Compiler {
             return;
         }
 
-        if (auto call = cast(CallExpr)expr) {
+        if (auto call = as!CallExpr(expr)) {
             // Put callee and arguments starting at a new block of registers; a call whose
             // result goes to the top temporary can use that register as its base (like luac).
             bool reuseBase = targetReg == freeReg - 1 && numResults == 1;
@@ -1294,7 +1303,7 @@ class Compiler {
             return;
         }
 
-        if (auto mCall = cast(MethodCallExpr)expr) {
+        if (auto mCall = as!MethodCallExpr(expr)) {
             bool reuseBase = targetReg == freeReg - 1 && numResults == 1;
             int rCall = reuseBase ? targetReg : allocReg();
             // The receiver lands in rCall+1 (the 'self' slot) unless it already is a local variable.
@@ -1342,33 +1351,33 @@ class Compiler {
             return;
         }
 
-        if (auto b = cast(BinaryExpr)expr) {
+        if (auto b = as!BinaryExpr(expr)) {
             compileBinary(b, targetReg);
             return;
         }
 
-        if (auto u = cast(UnaryExpr)expr) {
+        if (auto u = as!UnaryExpr(expr)) {
             compileUnary(u, targetReg);
             return;
         }
 
-        if (auto fn = cast(FunctionDefExpr)expr) {
+        if (auto fn = as!FunctionDefExpr(expr)) {
             compileFunctionDef(fn, targetReg);
             return;
         }
 
-        if (auto sym = cast(SymbolLiteralExpr)expr) {
+        if (auto sym = as!SymbolLiteralExpr(expr)) {
             int k = addConstant(LuaValue(sym.name));
             emit(OpCode.LoadSymbol, targetReg, k);
             return;
         }
 
-        if (auto q = cast(QueryExpr)expr) {
+        if (auto q = as!QueryExpr(expr)) {
             compileQuery(q, targetReg);
             return;
         }
 
-        if (auto lv = cast(LogicVarExpr)expr) {
+        if (auto lv = as!LogicVarExpr(expr)) {
             if (lv.isAnonymous) {
                 throw new LuaException("anonymous variable '?_' not permitted in procedural guard");
             }
@@ -1392,9 +1401,9 @@ class Compiler {
 
     /// 1 for a constant that is always true, 0 for nil/false, -1 otherwise (luaK_goiftrue/goiffalse).
     private static int constantTruth(Expr e) {
-        if (cast(LiteralNilExpr)e !is null) return 0;
-        if (auto lb = cast(LiteralBoolExpr)e) return lb.value ? 1 : 0;
-        if (cast(LiteralIntExpr)e !is null || cast(LiteralFloatExpr)e !is null || cast(LiteralStringExpr)e !is null) return 1;
+        if (as!LiteralNilExpr(e) !is null) return 0;
+        if (auto lb = as!LiteralBoolExpr(e)) return lb.value ? 1 : 0;
+        if (as!LiteralIntExpr(e) !is null || as!LiteralFloatExpr(e) !is null || as!LiteralStringExpr(e) !is null) return 1;
         return -1;
     }
 
@@ -1448,7 +1457,7 @@ class Compiler {
         // iteratively so that only the accumulator and one operand are live.
         BinaryExpr[] spine;
         Expr leftmost = b;
-        while (auto inner = cast(BinaryExpr)leftmost) {
+        while (auto inner = as!BinaryExpr(leftmost)) {
             if (inner.op == BinaryOp.And || inner.op == BinaryOp.Or || isComparison(inner.op)) break;
             if (inner !is b && (inner.op == BinaryOp.Concat || inner.op == BinaryOp.Pow)) break;
             spine ~= inner;
@@ -1474,15 +1483,15 @@ class Compiler {
 
     /// True for operands that C Lua discharges lazily (variables, indexing, constants).
     private static bool isLazyOperand(Expr e) {
-        return cast(VariableExpr)e !is null || cast(IndexExpr)e !is null || cast(FieldExpr)e !is null ||
-            cast(LiteralIntExpr)e !is null || cast(LiteralFloatExpr)e !is null || cast(LiteralStringExpr)e !is null ||
-            cast(LiteralNilExpr)e !is null || cast(LiteralBoolExpr)e !is null;
+        return as!VariableExpr(e) !is null || as!IndexExpr(e) !is null || as!FieldExpr(e) !is null ||
+            as!LiteralIntExpr(e) !is null || as!LiteralFloatExpr(e) !is null || as!LiteralStringExpr(e) !is null ||
+            as!LiteralNilExpr(e) !is null || as!LiteralBoolExpr(e) !is null;
     }
 
     private static bool containsCall(Expr e) {
-        if (auto i = cast(IndexExpr)e) return containsCall(i.table) || containsCall(i.key);
-        if (auto f = cast(FieldExpr)e) return containsCall(f.table);
-        return cast(CallExpr)e !is null || cast(MethodCallExpr)e !is null || cast(BinaryExpr)e !is null || cast(UnaryExpr)e !is null;
+        if (auto i = as!IndexExpr(e)) return containsCall(i.table) || containsCall(i.key);
+        if (auto f = as!FieldExpr(e)) return containsCall(f.table);
+        return as!CallExpr(e) !is null || as!MethodCallExpr(e) !is null || as!BinaryExpr(e) !is null || as!UnaryExpr(e) !is null;
     }
 
     /// The left operand of a binary operator is discharged after the operator token was read.
@@ -1522,11 +1531,11 @@ class Compiler {
     private void compileUnary(UnaryExpr u, int targetReg) {
         // Negative numeric literals are constants.
         if (u.op == UnaryOp.Neg && !u.expr.parenthesized) {
-            if (auto i = cast(LiteralIntExpr)u.expr) {
+            if (auto i = as!LiteralIntExpr(u.expr)) {
                 emitLoadConstant(targetReg, addConstant(LuaValue(cast(long)(0UL - cast(ulong)i.value))));
                 return;
             }
-            if (auto f = cast(LiteralFloatExpr)u.expr) {
+            if (auto f = as!LiteralFloatExpr(u.expr)) {
                 emitLoadConstant(targetReg, addConstant(LuaValue(-f.value)));
                 return;
             }
@@ -1600,10 +1609,10 @@ class Compiler {
         template_.kind = definition.kind; template_.id = definition.name;
         template_.parameters = definition.parameters.dup; template_.incomingParameters = incoming.dup;
         foreach (goal; definition.goals) {
-            if (auto atom = cast(AstRelAtomGoal)goal) {
+            if (auto atom = as!AstRelAtomGoal(goal)) {
                 if (!atom.isNegated) foreach (term; atom.terms)
-                    if (auto variable = cast(LogicVarExpr)term) template_.groundedParameters ~= variable.name;
-            } else if (auto aggregate = cast(AstAggregateGoal)goal) template_.groundedParameters ~= aggregate.resultVariable;
+                    if (auto variable = as!LogicVarExpr(term)) template_.groundedParameters ~= variable.name;
+            } else if (auto aggregate = as!AstAggregateGoal(goal)) template_.groundedParameters ~= aggregate.resultVariable;
         }
         foreach (i, field; definition.fieldNames) {
             int register = allocReg(); registers ~= register;
@@ -1695,11 +1704,11 @@ class Compiler {
     private void emitCall(int callee, int arguments, int results, Expr expression = null, string method = "") {
         CallName identity;
         if (method.length) identity = CallName(method, "method");
-        else if (auto variable = cast(VariableExpr)expression) {
+        else if (auto variable = as!VariableExpr(expression)) {
             identity = CallName(variable.name, resolveLocal(variable.name) >= 0 ? "local" : resolveUpvalue(variable.name) >= 0 ? "upvalue" : "global");
-        } else if (auto field = cast(FieldExpr)expression) identity = CallName(field.field, "field");
-        else if (auto index = cast(IndexExpr)expression) {
-            auto key = cast(LiteralStringExpr)index.key;
+        } else if (auto field = as!FieldExpr(expression)) identity = CallName(field.field, "field");
+        else if (auto index = as!IndexExpr(expression)) {
+            auto key = as!LiteralStringExpr(index.key);
             identity = CallName(key is null ? "?" : key.value, "field");
         }
         if (identity.kind.length) proto.callNames[currentPc()] = identity;
@@ -1774,7 +1783,7 @@ class Compiler {
 
     private TermTemplate compileTermTemplate(Expr expr, ref int[string] varMap, ref string[] varNames, ref int[] constRegs) {
         TermTemplate tt;
-        if (auto lv = cast(LogicVarExpr)expr) {
+        if (auto lv = as!LogicVarExpr(expr)) {
             if (lv.name in groundedLogicParameters) {
                 int register = allocReg(); constRegs ~= register;
                 compileExpr(new VariableExpr(lv.name, lv.loc), register, 1);
@@ -1804,7 +1813,7 @@ class Compiler {
 
     private void collectGuardVars(Expr expr, ref string[] varNames) {
         if (expr is null) return;
-        if (auto lv = cast(LogicVarExpr)expr) {
+        if (auto lv = as!LogicVarExpr(expr)) {
             if (lv.name in groundedLogicParameters) return;
             if (lv.isAnonymous) {
                 throw new LuaException("anonymous variable '?_' not permitted in procedural guard");
@@ -1815,35 +1824,35 @@ class Compiler {
             }
             return;
         }
-        if (auto u = cast(UnaryExpr)expr) {
+        if (auto u = as!UnaryExpr(expr)) {
             collectGuardVars(u.expr, varNames);
             return;
         }
-        if (auto b = cast(BinaryExpr)expr) {
+        if (auto b = as!BinaryExpr(expr)) {
             collectGuardVars(b.left, varNames);
             collectGuardVars(b.right, varNames);
             return;
         }
-        if (auto call = cast(CallExpr)expr) {
+        if (auto call = as!CallExpr(expr)) {
             collectGuardVars(call.callee, varNames);
             foreach (arg; call.args) collectGuardVars(arg, varNames);
             return;
         }
-        if (auto mcall = cast(MethodCallExpr)expr) {
+        if (auto mcall = as!MethodCallExpr(expr)) {
             collectGuardVars(mcall.receiver, varNames);
             foreach (arg; mcall.args) collectGuardVars(arg, varNames);
             return;
         }
-        if (auto idx = cast(IndexExpr)expr) {
+        if (auto idx = as!IndexExpr(expr)) {
             collectGuardVars(idx.table, varNames);
             collectGuardVars(idx.key, varNames);
             return;
         }
-        if (auto f = cast(FieldExpr)expr) {
+        if (auto f = as!FieldExpr(expr)) {
             collectGuardVars(f.table, varNames);
             return;
         }
-        if (auto tc = cast(TableConstructorExpr)expr) {
+        if (auto tc = as!TableConstructorExpr(expr)) {
             foreach (field; tc.fields) {
                 if (field.key !is null) collectGuardVars(field.key, varNames);
                 collectGuardVars(field.value, varNames);
@@ -1959,7 +1968,7 @@ class Compiler {
         ref string[] varNames, ref int[] constRegs, int defaultWorldReg) {
         GoalTemplate[] templates;
         foreach (g; goals) {
-            if (auto aggregate = cast(AstAggregateGoal)g) {
+            if (auto aggregate = as!AstAggregateGoal(g)) {
                 GoalTemplate gt;
                 gt.kind = GoalKind.Aggregate;
                 gt.aggregateOp = aggregate.operation;
@@ -1983,7 +1992,7 @@ class Compiler {
                     gt.aggregateExpressionProto = cast(int)proto.subPrototypes.length - 1;
                 }
                 templates ~= gt;
-            } else if (auto relAtom = cast(AstRelAtomGoal)g) {
+            } else if (auto relAtom = as!AstRelAtomGoal(g)) {
                 GoalTemplate gt;
                 gt.kind = relAtom.isNegated ? GoalKind.NegatedAtom : GoalKind.PositiveAtom;
                 gt.relName = relAtom.relRef.name;
@@ -1994,14 +2003,14 @@ class Compiler {
                 }
                 resolveGoalRel(relAtom.relRef, gt, constRegs, defaultWorldReg);
                 templates ~= gt;
-            } else if (auto comp = cast(AstComparisonGoal)g) {
+            } else if (auto comp = as!AstComparisonGoal(g)) {
                 GoalTemplate gt;
                 gt.kind = GoalKind.Comparison;
                 gt.compOp = comp.op;
                 gt.leftTerm = compileTermTemplate(comp.left, varMap, varNames, constRegs);
                 gt.rightTerm = compileTermTemplate(comp.right, varMap, varNames, constRegs);
                 templates ~= gt;
-            } else if (auto guard = cast(AstGuardGoal)g) {
+            } else if (auto guard = as!AstGuardGoal(g)) {
                 GoalTemplate gt;
                 gt.kind = GoalKind.Guard;
                 string[] guardVars;

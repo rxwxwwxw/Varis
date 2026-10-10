@@ -1,0 +1,232 @@
+ldc2 -Isource -g -L-export_dynamic source/dlua/package.d source/dlua/types.d source/dlua/exception.d source/dlua/table.d source/dlua/state.d source/dlua/ast.d source/dlua/lexer.d source/dlua/parser.d source/dlua/opcode.d source/dlua/fiber.d source/dlua/compiler.d source/dlua/vm.d source/dlua/pattern.d source/dlua/lib/package.d source/dlua/lib/base.d source/dlua/lib/math.d source/dlua/lib/string.d source/dlua/lib/pack.d source/dlua/lib/auxlib.d source/dlua/dump.d source/dlua/gc.d source/dlua/lib/table.d source/dlua/lib/coroutine.d source/dlua/lib/os.d source/dlua/lib/io.d source/dlua/lib/utf8.d source/dlua/lib/package_lib.d source/dlua/capi.d source/dlua/lib/debug_lib.d source/dlua/logic/model.d source/dlua/logic/world.d source/dlua/logic/validate.d source/dlua/logic/evaluate.d source/dlua/logic/query.d source/dlua/narrative/codec.d source/dlua/narrative/templates.d source/dlua/narrative/fingerprint.d source/dlua/narrative/session.d source/dlua/narrative/persistence.d source/dlua/narrative/observe.d source/dlua/narrative/diagnostics.d source/dlua/narrative/analysis.d source/dlua/narrative/registry.d source/dlua/lib/narrative.d source/dlua/lib/quality.d source/dlua/lib/logic.d tests/unit/test_foundation.d -of=bin/test_foundation
+python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=300).returncode)" ./bin/test_foundation
+Running dlua Foundation Unit Tests...
+  [PASS] testTypes
+  [PASS] testTable
+  [PASS] testStateAndPCall
+All Foundation Tests Passed Successfully!
+ldc2 -Isource -g -L-export_dynamic source/dlua/package.d source/dlua/types.d source/dlua/exception.d source/dlua/table.d source/dlua/state.d source/dlua/ast.d source/dlua/lexer.d source/dlua/parser.d source/dlua/opcode.d source/dlua/fiber.d source/dlua/compiler.d source/dlua/vm.d source/dlua/pattern.d source/dlua/lib/package.d source/dlua/lib/base.d source/dlua/lib/math.d source/dlua/lib/string.d source/dlua/lib/pack.d source/dlua/lib/auxlib.d source/dlua/dump.d source/dlua/gc.d source/dlua/lib/table.d source/dlua/lib/coroutine.d source/dlua/lib/os.d source/dlua/lib/io.d source/dlua/lib/utf8.d source/dlua/lib/package_lib.d source/dlua/capi.d source/dlua/lib/debug_lib.d source/dlua/logic/model.d source/dlua/logic/world.d source/dlua/logic/validate.d source/dlua/logic/evaluate.d source/dlua/logic/query.d source/dlua/narrative/codec.d source/dlua/narrative/templates.d source/dlua/narrative/fingerprint.d source/dlua/narrative/session.d source/dlua/narrative/persistence.d source/dlua/narrative/observe.d source/dlua/narrative/diagnostics.d source/dlua/narrative/analysis.d source/dlua/narrative/registry.d source/dlua/lib/narrative.d source/dlua/lib/quality.d source/dlua/lib/logic.d tests/unit/test_parser.d -of=bin/test_parser
+python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=300).returncode)" ./bin/test_parser
+Running dlua Frontend (AST, Lexer, Parser) Unit Tests...
+  [PASS] testLexer
+  [PASS] testExpressions
+  [PASS] testControlFlow
+  [PASS] testTablesAndFunctions
+  [PASS] testDeclarativeParser
+All Frontend Tests Passed Successfully!
+ldc2 -Isource -g -L-export_dynamic source/dlua/package.d source/dlua/types.d source/dlua/exception.d source/dlua/table.d source/dlua/state.d source/dlua/ast.d source/dlua/lexer.d source/dlua/parser.d source/dlua/opcode.d source/dlua/fiber.d source/dlua/compiler.d source/dlua/vm.d source/dlua/pattern.d source/dlua/lib/package.d source/dlua/lib/base.d source/dlua/lib/math.d source/dlua/lib/string.d source/dlua/lib/pack.d source/dlua/lib/auxlib.d source/dlua/dump.d source/dlua/gc.d source/dlua/lib/table.d source/dlua/lib/coroutine.d source/dlua/lib/os.d source/dlua/lib/io.d source/dlua/lib/utf8.d source/dlua/lib/package_lib.d source/dlua/capi.d source/dlua/lib/debug_lib.d source/dlua/logic/model.d source/dlua/logic/world.d source/dlua/logic/validate.d source/dlua/logic/evaluate.d source/dlua/logic/query.d source/dlua/narrative/codec.d source/dlua/narrative/templates.d source/dlua/narrative/fingerprint.d source/dlua/narrative/session.d source/dlua/narrative/persistence.d source/dlua/narrative/observe.d source/dlua/narrative/diagnostics.d source/dlua/narrative/analysis.d source/dlua/narrative/registry.d source/dlua/lib/narrative.d source/dlua/lib/quality.d source/dlua/lib/logic.d tests/unit/test_vm.d -of=bin/test_vm
+python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=300).returncode)" ./bin/test_vm
+Running dlua Runtime & VM Unit Tests...
+  [PASS] testFrameContextAndHooks
+  [PASS] testBasicExecution
+  [PASS] testControlFlow
+  [PASS] testGotoAndPrecedence
+  [PASS] testCloseAndConst
+  [PASS] testForScopeClosing
+  [PASS] testTailCalls
+  [PASS] testRecursionAndClosures
+  [PASS] testTablesAndMetamethods
+  [PASS] testLogicalOperators
+  [PASS] testArithmeticFastPaths
+All Runtime & VM Tests Passed Successfully!
+ldc2 -Isource -g -L-export_dynamic source/dlua/package.d source/dlua/types.d source/dlua/exception.d source/dlua/table.d source/dlua/state.d source/dlua/ast.d source/dlua/lexer.d source/dlua/parser.d source/dlua/opcode.d source/dlua/fiber.d source/dlua/compiler.d source/dlua/vm.d source/dlua/pattern.d source/dlua/lib/package.d source/dlua/lib/base.d source/dlua/lib/math.d source/dlua/lib/string.d source/dlua/lib/pack.d source/dlua/lib/auxlib.d source/dlua/dump.d source/dlua/gc.d source/dlua/lib/table.d source/dlua/lib/coroutine.d source/dlua/lib/os.d source/dlua/lib/io.d source/dlua/lib/utf8.d source/dlua/lib/package_lib.d source/dlua/capi.d source/dlua/lib/debug_lib.d source/dlua/logic/model.d source/dlua/logic/world.d source/dlua/logic/validate.d source/dlua/logic/evaluate.d source/dlua/logic/query.d source/dlua/narrative/codec.d source/dlua/narrative/templates.d source/dlua/narrative/fingerprint.d source/dlua/narrative/session.d source/dlua/narrative/persistence.d source/dlua/narrative/observe.d source/dlua/narrative/diagnostics.d source/dlua/narrative/analysis.d source/dlua/narrative/registry.d source/dlua/lib/narrative.d source/dlua/lib/quality.d source/dlua/lib/logic.d tests/unit/test_libs.d -of=bin/test_libs
+python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=300).returncode)" ./bin/test_libs
+Running dlua Standard Libraries (Phase 4) Unit Tests...
+  [PASS] testBaseLibrary
+  [PASS] testDebugHooks
+  [PASS] testDebugLocals
+  [PASS] testEnvironmentsAndUpvalues
+  [PASS] testMathLibrary
+  [PASS] testStringLibrary
+  [PASS] testTableLibrary
+  [PASS] testCoroutineLibrary
+  [PASS] testUtf8Library
+  [PASS] testLogicLibrary
+All Standard Libraries Tests Passed Successfully!
+ldc2 -Isource -g -L-export_dynamic source/dlua/package.d source/dlua/types.d source/dlua/exception.d source/dlua/table.d source/dlua/state.d source/dlua/ast.d source/dlua/lexer.d source/dlua/parser.d source/dlua/opcode.d source/dlua/fiber.d source/dlua/compiler.d source/dlua/vm.d source/dlua/pattern.d source/dlua/lib/package.d source/dlua/lib/base.d source/dlua/lib/math.d source/dlua/lib/string.d source/dlua/lib/pack.d source/dlua/lib/auxlib.d source/dlua/dump.d source/dlua/gc.d source/dlua/lib/table.d source/dlua/lib/coroutine.d source/dlua/lib/os.d source/dlua/lib/io.d source/dlua/lib/utf8.d source/dlua/lib/package_lib.d source/dlua/capi.d source/dlua/lib/debug_lib.d source/dlua/logic/model.d source/dlua/logic/world.d source/dlua/logic/validate.d source/dlua/logic/evaluate.d source/dlua/logic/query.d source/dlua/narrative/codec.d source/dlua/narrative/templates.d source/dlua/narrative/fingerprint.d source/dlua/narrative/session.d source/dlua/narrative/persistence.d source/dlua/narrative/observe.d source/dlua/narrative/diagnostics.d source/dlua/narrative/analysis.d source/dlua/narrative/registry.d source/dlua/lib/narrative.d source/dlua/lib/quality.d source/dlua/lib/logic.d tests/unit/test_logic.d -of=bin/test_logic
+python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=300).returncode)" ./bin/test_logic
+Running dlua Declarative Logic Unit Tests...
+  [PASS] testSymbolsAndTuples
+  [PASS] testWorldAndRelations
+  [PASS] testValidation
+  [PASS] testEvaluatorAndQuery
+  [PASS] testEndToEndScript
+  [PASS] testJoinBindings
+All Declarative Logic Tests Passed Successfully!
+ldc2 -Isource -g -L-export_dynamic source/dlua/package.d source/dlua/types.d source/dlua/exception.d source/dlua/table.d source/dlua/state.d source/dlua/ast.d source/dlua/lexer.d source/dlua/parser.d source/dlua/opcode.d source/dlua/fiber.d source/dlua/compiler.d source/dlua/vm.d source/dlua/pattern.d source/dlua/lib/package.d source/dlua/lib/base.d source/dlua/lib/math.d source/dlua/lib/string.d source/dlua/lib/pack.d source/dlua/lib/auxlib.d source/dlua/dump.d source/dlua/gc.d source/dlua/lib/table.d source/dlua/lib/coroutine.d source/dlua/lib/os.d source/dlua/lib/io.d source/dlua/lib/utf8.d source/dlua/lib/package_lib.d source/dlua/capi.d source/dlua/lib/debug_lib.d source/dlua/logic/model.d source/dlua/logic/world.d source/dlua/logic/validate.d source/dlua/logic/evaluate.d source/dlua/logic/query.d source/dlua/narrative/codec.d source/dlua/narrative/templates.d source/dlua/narrative/fingerprint.d source/dlua/narrative/session.d source/dlua/narrative/persistence.d source/dlua/narrative/observe.d source/dlua/narrative/diagnostics.d source/dlua/narrative/analysis.d source/dlua/narrative/registry.d source/dlua/lib/narrative.d source/dlua/lib/quality.d source/dlua/lib/logic.d tests/unit/test_stateful.d -of=bin/test_stateful
+python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=300).returncode)" ./bin/test_stateful
+Running dlua Stateful Extension Unit Tests...
+  [PASS] keyed indexes, versions, schemas and numeric arithmetic
+  [PASS] tentative snapshots, commit versions and rollback invalidation
+  [PASS] VM return/error cleanup and rollback context
+ldc2 -Isource -g -L-export_dynamic source/dlua/package.d source/dlua/types.d source/dlua/exception.d source/dlua/table.d source/dlua/state.d source/dlua/ast.d source/dlua/lexer.d source/dlua/parser.d source/dlua/opcode.d source/dlua/fiber.d source/dlua/compiler.d source/dlua/vm.d source/dlua/pattern.d source/dlua/lib/package.d source/dlua/lib/base.d source/dlua/lib/math.d source/dlua/lib/string.d source/dlua/lib/pack.d source/dlua/lib/auxlib.d source/dlua/dump.d source/dlua/gc.d source/dlua/lib/table.d source/dlua/lib/coroutine.d source/dlua/lib/os.d source/dlua/lib/io.d source/dlua/lib/utf8.d source/dlua/lib/package_lib.d source/dlua/capi.d source/dlua/lib/debug_lib.d source/dlua/logic/model.d source/dlua/logic/world.d source/dlua/logic/validate.d source/dlua/logic/evaluate.d source/dlua/logic/query.d source/dlua/narrative/codec.d source/dlua/narrative/templates.d source/dlua/narrative/fingerprint.d source/dlua/narrative/session.d source/dlua/narrative/persistence.d source/dlua/narrative/observe.d source/dlua/narrative/diagnostics.d source/dlua/narrative/analysis.d source/dlua/narrative/registry.d source/dlua/lib/narrative.d source/dlua/lib/quality.d source/dlua/lib/logic.d tests/unit/test_narrative.d -of=bin/test_narrative
+python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=300).returncode)" ./bin/test_narrative
+Running dlua Narrative Extension Tests...
+  [PASS] canonical scalar identities and portable immutable codec
+  [PASS] sealing validation and read-only effect parameters
+  [PASS] companion content/parameter/option error diagnostics
+  [PASS] narrative session-world contexts and correlated choice bindings
+  [PASS] session choices, deck draws, atomic rollback, events and stale tokens
+  [PASS] action scheduling, nested narrative savepoints, due events and action limits
+  [PASS] independent deterministic sessions, scheduled-event budgets and post-commit errors
+  [PASS] quality metadata, nil presence, direct-write bounds, numeric precision and transactional world defaults
+  [PASS] portable session roundtrips, authored programs, cross-state replay and atomic load rejection
+  [PASS] active-save restrictions, unsupported runtime closures, anonymous aggregate reconstruction and explicit migration
+  [PASS] committed base/derived observer deltas, canonical order, rollback, cancellation, callback isolation and queued budgets
+  [PASS] structured goal explanations, policy exclusions, explicit nil bindings and logical/session/RNG purity
+  [PASS] bounded choice analysis, deep Lua alias/capture isolation, dead ends, cycle candidates, budgets and blocked external effects
+  [PASS] custom display formatters, template weighted variants and deterministic presentation
+ldc2 -Isource -O3 -release -L-export_dynamic source/dlua/package.d source/dlua/types.d source/dlua/exception.d source/dlua/table.d source/dlua/state.d source/dlua/ast.d source/dlua/lexer.d source/dlua/parser.d source/dlua/opcode.d source/dlua/fiber.d source/dlua/compiler.d source/dlua/vm.d source/dlua/pattern.d source/dlua/lib/package.d source/dlua/lib/base.d source/dlua/lib/math.d source/dlua/lib/string.d source/dlua/lib/pack.d source/dlua/lib/auxlib.d source/dlua/dump.d source/dlua/gc.d source/dlua/lib/table.d source/dlua/lib/coroutine.d source/dlua/lib/os.d source/dlua/lib/io.d source/dlua/lib/utf8.d source/dlua/lib/package_lib.d source/dlua/capi.d source/dlua/lib/debug_lib.d source/dlua/logic/model.d source/dlua/logic/world.d source/dlua/logic/validate.d source/dlua/logic/evaluate.d source/dlua/logic/query.d source/dlua/narrative/codec.d source/dlua/narrative/templates.d source/dlua/narrative/fingerprint.d source/dlua/narrative/session.d source/dlua/narrative/persistence.d source/dlua/narrative/observe.d source/dlua/narrative/diagnostics.d source/dlua/narrative/analysis.d source/dlua/narrative/registry.d source/dlua/lib/narrative.d source/dlua/lib/quality.d source/dlua/lib/logic.d source/dlua/cli.d -of=bin/dlua
+TEST_TIMEOUT=300 sh lua54_datalog_tests/run-tests.sh ./bin/dlua
+[PASS] 01_symbols_and_facts.lua
+[PASS] 02_recursive_reachability.lua
+[PASS] 03_stratified_negation_and_retraction.lua
+[PASS] 04_conjunctive_queries.lua
+[PASS] 05_pure_guards_and_capture.lua
+[PASS] 06_procedural_fact_generation.lua
+[PASS] 07_world_snapshot_inheritance.lua
+[PASS] 08_empty_parent_and_world_blocks.lua
+[PASS] 09_local_relation_closures.lua
+[PASS] 10_local_mutual_recursion.lua
+[PASS] 11_iterator_snapshot_and_immutability.lua
+[PASS] 12_zero_arity_nil_and_projection.lua
+[PASS] 13_unsafe_negation.lua (expected rejection)
+[PASS] 14_negation_cycle.lua (expected rejection)
+[PASS] 15_relation_arity_mismatch.lua (expected rejection)
+
+Result: 15 passed, 0 failed
+python3 -m unittest discover -s tests/datalog -p 'test_*.py'
+.......
+----------------------------------------------------------------------
+Ran 7 tests in 1.212s
+
+OK
+python3 tests/datalog/run.py --binary ./bin/dlua --timeout 120
+program                            scale   seconds  result
+01_symbols                         small      0.02  ok
+01_symbols                         large      0.26  ok
+02_facts_and_relations             small      0.02  ok
+02_facts_and_relations             large      0.27  ok
+03_transitive_closure              small      0.02  ok
+03_transitive_closure              large      1.55  ok
+04_cycles                          small      0.02  ok
+04_cycles                          large      0.81  ok
+05_rule_unions                     small      0.02  ok
+05_rule_unions                     large      0.42  ok
+06_stratified_negation             small      0.02  ok
+06_stratified_negation             large      2.34  ok
+07_comparisons_and_guards          small      0.02  ok
+07_comparisons_and_guards          large      0.29  ok
+08_mutation_and_invalidation       small      0.02  ok
+08_mutation_and_invalidation       large      1.18  ok
+09_query_semantics                 small      0.02  ok
+09_query_semantics                 large      1.26  ok
+10_worlds                          small      0.02  ok
+10_worlds                          large      0.63  ok
+11_local_relations                 small      0.02  ok
+11_local_relations                 large      0.46  ok
+12_constants_and_capture           small      0.02  ok
+12_constants_and_capture           large      0.22  ok
+13_errors_and_atomicity            small      0.02  ok
+13_errors_and_atomicity            large      1.08  ok
+14_conjunctive_queries             small      0.02  ok
+14_conjunctive_queries             large      0.26  ok
+15_coroutines                      small      0.02  ok
+15_coroutines                      large      0.67  ok
+16_contextual_syntax               small      0.02  ok
+16_contextual_syntax               large      0.33  ok
+17_same_generation                 small      0.02  ok
+17_same_generation                 large      1.02  ok
+18_triangles                       small      0.02  ok
+18_triangles                       large      2.39  ok
+19_grid_reachability               small      0.02  ok
+19_grid_reachability               large      1.26  ok
+known_gaps/anonymous_in_comparison -                XFAIL: anonymous variable
+known_gaps/constant_left_comparison -                XFAIL: unexpected symbol
+known_gaps/world_block_checks_entry -                XFAIL: was accepted by a world block
+
+all scenario programs passed
+python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=300).returncode)" python3 tests/extensions/test_runner.py
+....
+----------------------------------------------------------------------
+Ran 4 tests in 1.406s
+
+OK
+python3 tests/extensions/run-tests.py ./bin/dlua --timeout 300
+[PASS] aggregates (0.02s)
+[PASS] arity_rollback (0.02s)
+[PASS] base_derived_overlap (0.02s)
+[PASS] chain_retraction_stress (0.41s)
+[PASS] comparison_nan_constants (0.02s)
+[PASS] constant_single_evaluation (0.02s)
+[PASS] contextual_labels (0.04s)
+[PASS] contextual_syntax (0.04s)
+[PASS] coroutine_snapshot (0.02s)
+[PASS] guard_capture_truthiness (0.02s)
+[PASS] guard_errors_lazy (0.02s)
+[PASS] guard_yield_restore (0.02s)
+[PASS] join_projection_stress (0.04s)
+[PASS] keyed_relations (0.02s)
+[PASS] lexical_shadow_resolution (0.02s)
+[PASS] local_gc_isolation (0.02s)
+[PASS] mutation_snapshot_oracle (0.04s)
+[PASS] nan_atomicity (0.02s)
+[PASS] narrative_effect_errors (0.02s)
+[PASS] narrative_policies (0.04s)
+[PASS] narrative_registry (0.02s)
+[PASS] narrative_scheduler_stress (0.13s)
+[PASS] negation_cycle_rollback (0.02s)
+[PASS] negation_mutation (0.04s)
+[PASS] negative_anonymous_guard (0.02s)
+[PASS] negative_anonymous_head (0.02s)
+[PASS] negative_query_safety (0.02s)
+[PASS] negative_self_negation (0.02s)
+[PASS] negative_unsafe_comparison (0.02s)
+[PASS] negative_unsafe_guard (0.02s)
+[PASS] negative_unsafe_head (0.02s)
+[PASS] negative_unsafe_negation (0.02s)
+[PASS] numeric_boundaries (0.02s)
+[PASS] numeric_infinities (0.02s)
+[PASS] ownership (0.02s)
+[PASS] projection_nil (0.02s)
+[PASS] qualities (0.02s)
+[PASS] query_safety_order (0.02s)
+[PASS] raw_identity (0.02s)
+[PASS] recursive_graph_oracle (0.04s)
+[PASS] rule_body_rollback (0.02s)
+[PASS] rule_capture_constants (0.02s)
+[PASS] rule_rollback (0.02s)
+[PASS] runtime_registration (0.02s)
+[PASS] symbols_binary (0.02s)
+[PASS] transaction_coroutines (0.02s)
+[PASS] transaction_snapshot_stress (0.04s)
+[PASS] transaction_worlds_and_control (0.02s)
+[PASS] transactions (0.02s)
+[PASS] unknown_world_errors (0.02s)
+[PASS] unrelated_guard_dependency (0.02s)
+[PASS] world_inheritance_stress (0.04s)
+[PASS] worlds_nested_closures (0.02s)
+[PASS] zero_arity (0.02s)
+
+Result: 54 passed, 0 failed
+python3 -m unittest discover -s benchmarks -p 'test_*.py'
+numeric_for_loop          C=1.000000s dlua=3.000000s 3.00x
+...numeric_for_loop: FAIL Command 'fake' timed out after 1 seconds
+...........
+----------------------------------------------------------------------
+Ran 14 tests in 2.039s
+
+OK
+ldc2 -Isource -g -L-export_dynamic tests/runner.d -of=bin/test_runner
+python3 -m unittest discover -s tests/official -p 'test_*.py'
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 1.730s
+
+OK
+python3 -m unittest discover -s tests/regression -p 'test_*.py'
+.....
+----------------------------------------------------------------------
+Ran 5 tests in 1.344s
+
+OK

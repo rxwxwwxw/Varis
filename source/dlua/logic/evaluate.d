@@ -69,12 +69,12 @@ struct Evaluator {
         string[] returnedVarNames,
         LuaValue[string] initialBindings = null
     ) {
-        import dlua.fiber : DluaFiber;
+        import dlua.fiber : DluaFiber, currentLuaFiber;
         import core.thread : Fiber;
 
         beginNoYieldScope();
         scope(exit) endNoYieldScope();
-        auto curFib = cast(DluaFiber)Fiber.getThis();
+        auto curFib = currentLuaFiber();
         bool prevYield = true;
         if (curFib !is null) {
             prevYield = curFib.isYieldAllowed;

@@ -94,13 +94,15 @@ private LuaValue messageHandler(LuaState state, LuaValue error) {
 
 /// The precise heap collector ignores stale non-pointer words in heap blocks; the
 /// conservative collector retained unrelated objects often enough to defeat weak-table tests.
-extern (C) __gshared string[] rt_options = ["gcopt=gc:precise"];
+extern (C) __gshared string[] rt_options = ["gcopt=gc:precise heapSizeFactor:4"];
 
 extern (C) private void interruptHandler(int signum) nothrow @nogc {
     import core.stdc.signal : signal, SIGINT, SIG_DFL;
     import dlua.vm : vmInterrupt;
+    import dlua.state : vmAttention;
     signal(SIGINT, SIG_DFL); // a second Ctrl-C terminates the process
     vmInterrupt = true;
+    vmAttention = true;
 }
 
 private CallResult docall(LuaState state, LuaValue fn, LuaValue[] args) {
@@ -115,9 +117,8 @@ private CallResult docall(LuaState state, LuaValue fn, LuaValue[] args) {
     auto entryFrame = new LuaNativeFunction((void* sp, LuaValue[] a) => cast(LuaValue[])[], "?");
     state.pushCall(entryFrame, "[C]", -1);
     scope(exit) state.popCall();
-    auto boundary = new ErrorBoundary(true, LuaValue(handler));
-    if (thread !is null) thread.errorBoundaries ~= boundary;
-    scope(exit) if (thread !is null) { thread.errorBoundaries[$ - 1] = null; thread.errorBoundaries.length--; }
+    if (thread !is null) thread.pushBoundary(true, LuaValue(handler));
+    scope(exit) if (thread !is null) thread.popBoundary();
     try {
         return CallResult(true, VM.callValue(state, fn, args), luaNil());
     } catch (LuaException error) {
@@ -384,6 +385,10 @@ private void doREPL(LuaState state) {
 }
 
 int main(string[] argv) {
+    // Lua errors are D exceptions used for control flow; capturing a native backtrace for each
+    // would cost far more than the throw itself (and grows with stack depth).
+    import core.runtime : Runtime;
+    Runtime.traceHandler = null;
     LuaState state;
     int result;
     // The interpreter runs on a fiber with a very large stack: Lua code can recurse far deeper

@@ -43,7 +43,50 @@ private LuaValue geti(LuaState L, LuaValue t, long i) {
 }
 
 private void seti(LuaState L, LuaValue t, long i, LuaValue v) {
+    if (isTable(t)) {
+        auto table = t.match!((LuaTable x) => x, _ => null);
+        if (table.metatable is null) {
+            // A plain table needs no metamethod lookup: store directly.
+            ulong slot = cast(ulong)i - 1;
+            if (slot < table.arrayPart.length) table.arrayPart[cast(size_t)slot] = v;
+            else table.rawset(LuaValue(i), v);
+            return;
+        }
+    }
     VM.setTable(L, t, LuaValue(i), v);
+}
+
+/// `table.insert(t, pos, v)` on a plain sequence stored in the array part: one block move instead
+/// of element-wise reads and writes. Returns false (nothing changed) when the generic path must run.
+private bool shiftInsert(LuaValue t, long e, long pos, LuaValue v) {
+    if (!isTable(t)) return false;
+    auto table = t.match!((LuaTable x) => x, _ => null);
+    if (table.metatable !is null || pos < 1 || pos > e || e < 1) return false;
+    size_t n = cast(size_t)(e - 1);
+    if (n > table.arrayPart.length) return false;
+    if (pos == e) { table.rawset(LuaValue(e), v); return true; }
+    table.rawset(LuaValue(e), table.arrayPart[n - 1]);
+    auto arr = table.arrayPart;
+    if (arr.length < cast(size_t)e) return false;
+    import core.stdc.string : memmove;
+    memmove(cast(void*)&arr[cast(size_t)pos], cast(const(void)*)&arr[cast(size_t)pos - 1], (n - cast(size_t)pos) * LuaValue.sizeof);
+    arr[cast(size_t)pos - 1] = v;
+    return true;
+}
+
+/// `table.remove(t, pos)` for 1 <= pos <= size on a plain sequence in the array part.
+private bool shiftRemove(LuaValue t, long size, long pos, out LuaValue removed) {
+    if (!isTable(t)) return false;
+    auto table = t.match!((LuaTable x) => x, _ => null);
+    if (table.metatable !is null || pos < 1 || pos > size) return false;
+    size_t n = cast(size_t)size;
+    if (n > table.arrayPart.length) return false;
+    auto arr = table.arrayPart;
+    removed = arr[cast(size_t)pos - 1];
+    import core.stdc.string : memmove;
+    memmove(cast(void*)&arr[cast(size_t)pos - 1], cast(const(void)*)&arr[cast(size_t)pos], (n - cast(size_t)pos) * LuaValue.sizeof);
+    arr[n - 1] = luaNil();
+    return true;
 }
 
 /// luaL_len: length honoring __len, which must produce an integer.
@@ -70,7 +113,9 @@ private struct Sorter {
 
     bool less(LuaValue x, LuaValue y) {
         if (!hasComparator) return VM.opLt(L, x, y);
-        auto r = VM.callValue(L, comparator, [x, y]);
+        // The callee copies its arguments on entry, so a stack buffer is enough.
+        LuaValue[2] arguments = [x, y];
+        auto r = VM.callValue(L, comparator, arguments[]);
         return r.length && isTruthy(r[0]);
     }
 
@@ -158,6 +203,7 @@ void openTableLib(LuaState state) {
             case 3: {
                 pos = checkInteger(L, a, 2);
                 if (!(cast(ulong)pos - 1u < cast(ulong)e)) throw new ArgError(2, "position out of bounds");
+                if (shiftInsert(a[0], e, pos, a[2])) return cast(LuaValue[])[];
                 for (long i = e; i > pos; i--) seti(L, a[0], i, geti(L, a[0], i - 1));
                 break;
             }
@@ -172,6 +218,8 @@ void openTableLib(LuaState state) {
         long pos = optInteger(L, a, 2, size);
         if (pos != size && !(cast(ulong)pos - 1u <= cast(ulong)size))
             throw new ArgError(2, "position out of bounds");
+        LuaValue shifted;
+        if (shiftRemove(a[0], size, pos, shifted)) return [shifted];
         auto result = geti(L, a[0], pos);
         for (; pos < size; pos++) seti(L, a[0], pos, geti(L, a[0], pos + 1));
         seti(L, a[0], pos, luaNil());

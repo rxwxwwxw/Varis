@@ -1,0 +1,23 @@
+-- coroutine.wrap calls through the interpreter's allocation-free path: result counts that
+-- exceed the registers, tail calls, failures after the coroutine ran, generators in for loops.
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local emit = T.emit
+local g = coroutine.wrap(function(...) local a = ... ; while true do a = coroutine.yield(a, a+1, a+2) end end)
+emit(g(1)); emit(g(10)); emit((g(20)))
+local function tailw() return g(5) end
+emit(tailw())
+local big = coroutine.wrap(function() coroutine.yield(table.unpack({}, 1, 300)) return "done" end)
+emit(select('#', big())); emit(big()); emit(pcall(big)); 
+local bad = coroutine.wrap(function() coroutine.yield(1); error("boom") end)
+emit(bad()); emit((select(2, pcall(bad)):gsub('^[^:]*:%d+: ', ''))); emit(pcall(bad))
+local bad2 = coroutine.wrap(function() coroutine.yield(1); local x = nil; return x.y end)
+bad2(); emit((select(2, pcall(bad2)):gsub('^[^:]*:%d+: ', '')))
+local t = {}
+for v in coroutine.wrap(function() for i=1,3 do coroutine.yield(i, i*i) end end) do t[#t+1]=v end
+emit(table.concat(t, ","))
+local w2 = coroutine.wrap(function() return 1,2,3 end)
+local a,b,c,d = w2(); emit(a,b,c,d)
+emit(select('#', pcall(coroutine.wrap(function() error({}) end))))
+local co = coroutine.wrap(function() local c = coroutine.wrap(function() coroutine.yield(1) end); c(); coroutine.yield(c()) ; end)
+emit(co())
+T.done()

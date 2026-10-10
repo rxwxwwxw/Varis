@@ -26,11 +26,27 @@ class CoroutineClose : Throwable {
     }
 }
 
+/// The Lua coroutine currently executing, or null on the main interpreter fiber. Maintained by
+/// `callFiber` around every resume, so lookups avoid thread-local access and class casts.
+__gshared DluaFiber activeLuaFiber;
+
+pragma(inline, true)
+DluaFiber currentLuaFiber() { return activeLuaFiber; }
+
+/// Runs `fiber` until it yields or finishes, tracking it as the active Lua coroutine.
+void callFiber(DluaFiber fiber) {
+    auto previous = activeLuaFiber;
+    activeLuaFiber = fiber;
+    scope(exit) activeLuaFiber = previous;
+    fiber.call();
+}
+
 /// Coroutine runner wrapping D's core.thread.Fiber
 class DluaFiber : Fiber {
     LuaFunction targetFunction;
     LuaThread thread;
     CallInfo[] callStack;
+    CallInfo[] callStackStorage; // capacity retained across calls; inactive records are cleared
     World callWorld;  // lexical world of the call in progress (see VM.doCall)
     void* luaStatePtr;
 
@@ -93,7 +109,7 @@ class DluaFiber : Fiber {
         closing = true;
         isYieldAllowed = false;
         if (thread !is null) thread.status = "running";
-        if (started && state != Fiber.State.TERM) call();
+        if (started && state != Fiber.State.TERM) callFiber(this);
         if (thread !is null) thread.status = "dead";
         auto result = hasError ? [LuaValue(false), errorObject] : [LuaValue(true)];
         hasError = false; errorObject = luaNil();

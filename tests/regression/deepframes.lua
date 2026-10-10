@@ -1,0 +1,98 @@
+-- Calls nested far beyond the native recursion threshold of the interpreter (frames then run in
+-- the deep-recursion executor): results, varargs, tail calls, to-be-closed variables, errors with
+-- positions and tracebacks, hooks, coroutines and stack overflow must match C Lua.
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local emit, try = T.emit, T.try
+
+local function sum(n) if n == 0 then return 0 end return n + sum(n - 1) end
+emit("sum", sum(5000))
+local function multi(n) if n == 0 then return 1, 2, 3 end local a, b, c = multi(n - 1); return a + 1, b + 1, c + 1 end
+emit("multi", multi(1000))
+local function va(n, ...) if n == 0 then return select("#", ...), ... end return va(n - 1, n, ...) end
+emit("tail-varargs", va(400))
+local function spread(n, ...) if n == 0 then return ... end return (spread(n - 1, ...)) end
+emit("spread", spread(600, 1, 2, 3))
+local function none(n) if n > 0 then none(n - 1) end end
+emit("none", none(3000))
+local function tailloop(n, acc) if n == 0 then return acc end return tailloop(n - 1, acc + n) end
+emit("tailloop", tailloop(200000, 0))
+
+-- upvalues captured at depth
+local function capture(n)
+  local x = n
+  local f = function() x = x + 1; return x end
+  if n == 0 then return f end
+  local g = capture(n - 1)
+  return function() return f() + g() end
+end
+emit("capture", capture(300)())
+
+-- to-be-closed variables closing in order across depth
+local log = {}
+local function closer(name) return setmetatable({}, {__close = function() log[#log + 1] = name end}) end
+local function nested(n)
+  local c <close> = closer("c" .. n)
+  if n > 0 then nested(n - 1) end
+end
+nested(400)
+emit("tbc", #log, log[1], log[#log])
+local ok, msg = pcall(function()
+  local function failing(n)
+    local c <close> = closer("e" .. n)
+    if n == 0 then error("deep failure") end
+    failing(n - 1)
+  end
+  failing(300)
+end)
+emit("tbc-error", ok, (msg:gsub("^[^:]*:%d+: ", "")), #log)
+
+-- error positions, levels and tracebacks from deep frames
+local function thrower(n, level) if n == 0 then error("lvl", level) end thrower(n - 1, level) end
+emit("level1", pcall(thrower, 400, 1))
+emit("level2", pcall(thrower, 400, 2))
+local function indexNil(n) if n == 0 then local t; return t.x end return 1 + indexNil(n - 1) end
+local ok2, msg2 = pcall(indexNil, 500)
+emit("index-nil", ok2, (msg2:gsub("^[^:]*:%d+: ", "")))
+local tb = select(2, xpcall(function() thrower(300, 1) end, debug.traceback))
+local frames = 0
+for _ in tb:gmatch("\n") do frames = frames + 1 end
+emit("traceback-lines", frames > 20)
+
+-- xpcall handler sees the deepest frame
+local depthSeen
+xpcall(function() thrower(250, 1) end, function(m) depthSeen = 0; while debug.getinfo(depthSeen + 1, "l") do depthSeen = depthSeen + 1 end return m end)
+emit("handler-depth", depthSeen > 250)
+
+-- coroutines yielding from deep frames
+local co = coroutine.wrap(function()
+  local function deepyield(n) if n == 0 then coroutine.yield("bottom") return 0 end return 1 + deepyield(n - 1) end
+  return deepyield(500)
+end)
+emit("yield", co(), co())
+
+-- hooks while deep
+local calls, returns = 0, 0
+debug.sethook(function(e) if e == "call" or e == "tail call" then calls = calls + 1 else returns = returns + 1 end end, "cr")
+sum(300)
+debug.sethook()
+emit("hook-balance", calls >= 300, calls == returns + 1 or calls == returns or calls == returns - 1)
+
+-- native boundaries in the middle of the stack
+local function viaPcall(n) if n == 0 then return "base" end local ok, v = pcall(viaPcall, n - 1); return v end
+emit("pcall-chain", viaPcall(400))
+local function viaSort(n)
+  if n == 0 then return 0 end
+  local t = {3, 1, 2}
+  local r
+  table.sort(t, function(a, b) r = r or viaSort(n - 1); return a < b end)
+  return r + 1
+end
+emit("sort-nest", viaSort(40))
+local function viaGsub(n) if n == 0 then return "x" end return (("a"):gsub("a", function() return viaGsub(n - 1) end)) end
+emit("gsub-nest", viaGsub(60))
+-- stack overflow stays catchable and recovers
+local function inf(n) return 1 + inf(n + 1) end
+local ok3, msg3 = pcall(inf, 1)
+emit("overflow", ok3, (tostring(msg3):gsub("^[^:]*:%d+: ", ""):gsub("%(.*$", "")))
+emit("after-overflow", sum(100))
+T.done()

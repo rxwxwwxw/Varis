@@ -47,9 +47,9 @@ function G.sync_periods(s)
 end
 
 function G.load(text)
-    local s = narrative.load(text, G.build_world)
-    G.sync_periods(s)
-    return s
+    -- Periods are part of the saved state; re-syncing here would append a
+    -- spurious replay record and break byte-identical round trips.
+    return narrative.load(text, G.build_world)
 end
 
 function G.is_over(s)
