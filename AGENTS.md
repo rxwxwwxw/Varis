@@ -113,7 +113,7 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 | `lua_api.exports` | ✅ Phase 5 | Symbols the Varis executable exports to `dlopen`ed C modules (replaces `-export_dynamic`, which cost ~8 ms startup) |
 | `source/varis/cli.d` | ✅ Phase 5 | Standalone `varis` executable runner & REPL |
 | `tests/unit/*.d` | ✅ Completed | Comprehensive unit tests (foundation, frontend, vm, libs) |
-| `tests/runner.d` | ✅ Phase 5 | Automated runner for `c-implementation/lua-5.4.9-tests/` (`make test-official`) |
+| `tests/runner.d` | ✅ Phase 5 | Automated runner for `c-implementation/lua-5.4.9-tests/` (`python3 tools/suite test --suite official`) |
 | `docs/` | Current reference | Single Varis language definition, libraries, grammar, compatibility and runnable examples |
 | `LANGUAGE_EXTENSIONS.md` | Redirect | Links to the Varis reference; historical section map in docs/coverage.md |
 | `LANGUAGE_EXTENSIONS2.md` | Redirect | Links to the unified Varis reference and conformance evidence |
@@ -126,7 +126,7 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 | [`source/varis/lib/logic.d`](source/varis/lib/logic.d) | ✅ Phase 6 | Required `logic` library and global `symbol` |
 | [`tests/unit/test_logic.d`](tests/unit/test_logic.d) | ✅ Phase 6 | Direct engine and integration tests |
 | `tests/datalog/acceptance/` | ✅ Phase 6 | 12 positive programs, 3 negative validation cases, shell runner |
-| `tests/datalog/` | ✅ Phase 6 | 19 self-checking scenario programs (spec §2–§17) usable as benchmarks, golden output at two scales, `known_gaps/` for documented spec deviations; timed by `make benchmark-datalog` ("scenarios" suite) |
+| `tests/datalog/` | ✅ Phase 6 | 19 self-checking scenario programs (spec §2–§17) usable as benchmarks, golden output at two scales, `known_gaps/` for documented spec deviations; timed by `python3 tools/suite bench --group datalog` ("scenarios" suite) |
 
 ---
 
@@ -146,9 +146,9 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 
 ### Phase 5: CLI, REPL & Conformance (Completed ✅; documented skips remain)
 1. `source/varis/cli.d`: Standalone executable supporting `-e`, `-v`, and script files. (Working).
-2. `tests/runner.d` (conformance scope per the project owner: the suite as a stock binary runs it, `T == nil`, with `gc.lua` excluded; an ltests-style `T` is out of scope): Official Lua 5.4.9 runner via `make test-official`, with strict failure exits, combined output capture, process exit codes, PASS/PARTIAL/SKIP/FAIL statuses, `--reference` C Lua comparison and JSON reporting (default 120 s per file; use 240 s for the `all.lua` driver). It builds the suite's C test modules, provides a closed-pipe stdin and an `sh` wrapper for the nested-shell check, and runs `all.lua` in a scratch copy with `gc.lua` stubbed. Current October 9, 2026 release baseline: **31 passed, 1 partial (`all.lua` with `gc.lua` stubbed), 1 skipped (`gc.lua`, excluded by decision because exact reachability conflicts with D-accessible objects), 0 failed, 0 timed out.** [Recorded evidence and remaining issues](tests/official/README.md) supersede earlier baselines. A file PASS means the process exited successfully; `api`/`code` self-skip without the `T` library as under stock C Lua. Weak tables, ephemerons and finalizers are emulated on D's collector (`source/varis/gc.d`, forked reachability probes); library ports live in `lib/*.d` with shared argument checking in `lib/auxlib.d`; C modules load through `dlopen` and the exported C API subset in `capi.d`; binary chunks are in `dump.d` (private body behind a standard header); the interpreter runs on a large-stack Fiber (`cli.d`).
+2. `tests/runner.d` (conformance scope per the project owner: the suite as a stock binary runs it, `T == nil`, with `gc.lua` excluded; an ltests-style `T` is out of scope): Official Lua 5.4.9 runner via `python3 tools/suite test --suite official`, with strict failure exits, combined output capture, process exit codes, PASS/PARTIAL/SKIP/FAIL statuses, `--reference` C Lua comparison and JSON reporting (default 120 s per file; use 240 s for the `all.lua` driver). It builds the suite's C test modules, provides a closed-pipe stdin and an `sh` wrapper for the nested-shell check, and runs `all.lua` in a scratch copy with `gc.lua` stubbed. Current October 9, 2026 release baseline: **31 passed, 1 partial (`all.lua` with `gc.lua` stubbed), 1 skipped (`gc.lua`, excluded by decision because exact reachability conflicts with D-accessible objects), 0 failed, 0 timed out.** [Recorded evidence and remaining issues](tests/official/README.md) supersede earlier baselines. A file PASS means the process exited successfully; `api`/`code` self-skip without the `T` library as under stock C Lua. Weak tables, ephemerons and finalizers are emulated on D's collector (`source/varis/gc.d`, forked reachability probes); library ports live in `lib/*.d` with shared argument checking in `lib/auxlib.d`; C modules load through `dlopen` and the exported C API subset in `capi.d`; binary chunks are in `dump.d` (private body behind a standard header); the interpreter runs on a large-stack Fiber (`cli.d`).
 3. Benchmarking is unified in `tools/suite bench` (`make bench`, `make bench-check`) with goals, gates and floors in `benchmarks/targets.toml`; see [CONSOLIDATION_PLAN.md](CONSOLIDATION_PLAN.md).
-4. Correctness takes priority over performance optimization. Goto execution/scope validation, precedence, floor arithmetic, shifts, lexical `_ENV`, debug upvalue APIs, const attributes and basic close cleanup are implemented with targeted tests. Proper tail calls, callable-table chains, reader loading, numeric-string parsing, function debug metadata, UTF-8 APIs and pattern-library fixes are implemented. Generic for loops retain the fourth closing value and evaluate all iterator expressions; each loop iteration closes its scoped values/upvalues. Register growth preserves captured-local aliases.  Debug fidelity, binary chunks, coroutine/library/CLI gaps and large-program failures remain. `make test-conformance-core` compares deterministic core behavior with C Lua. `make test` includes runner regression tests but excludes the official suite and differential target. Skipped files and unsupported D-GC semantics remain explicit barriers to full conformance claims.
+4. Correctness takes priority over performance optimization. Goto execution/scope validation, precedence, floor arithmetic, shifts, lexical `_ENV`, debug upvalue APIs, const attributes and basic close cleanup are implemented with targeted tests. Proper tail calls, callable-table chains, reader loading, numeric-string parsing, function debug metadata, UTF-8 APIs and pattern-library fixes are implemented. Generic for loops retain the fourth closing value and evaluate all iterator expressions; each loop iteration closes its scoped values/upvalues. Register growth preserves captured-local aliases.  Debug fidelity, binary chunks, coroutine/library/CLI gaps and large-program failures remain. `python3 tools/suite test --suite core` compares deterministic core behavior with C Lua. `make test` includes runner regression tests but excludes the official suite and differential target. Skipped files and unsupported D-GC semantics remain explicit barriers to full conformance claims.
 
 ### Phase 6: Declarative Datalog Extensions v0.1 (Completed ✅)
 
@@ -160,7 +160,7 @@ The base implementation is present for milestones 0–8 in [LANGUAGE_EXTENSIONS_
 - **Milestone 5**: Declarative AST nodes and parser integration (`fact`, `retract`, `rule`, `relation`, `local relation`, `logic (w) do`, `query`, symbols, logic variables).
 - **Milestone 6**: Compiler and VM bytecode instructions (`LoadSymbol`, `NewLocalRel`, `DeclRel`, `AddFact`, `RetractFact`, `RegRule`, `MakeQuery`).
 - **Milestone 7**: Value-captured guards and strict coroutine yield boundary enforcement.
-- **Milestone 8**: `tests/unit/test_logic.d` (`make test-logic`), `make test-datalog` with per-test timeout runner, and integration into `make test`.
+- **Milestone 8**: `tests/unit/test_logic.d` (`make unit-test UNIT=test_logic`), `python3 tools/suite test --suite acceptance --suite rejection` with per-test timeout runner, and integration into `make test`.
 
 ### Phase 7: Stateful Relations and Narrative Companion (Completed ✅)
 
@@ -171,7 +171,7 @@ Companion milestones 9–18 in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS
 3. **13–15, narrative runtime**: `narrative/{registry,templates,codec,fingerprint,session}.d` and `lib/{narrative,quality}.d` implement sealed content, immutable parameters/instances/tokens, deterministic decks, atomic choices, actions/periods, qualities/constraints, events/schedules and deferred callbacks. Deck/scheduler behavior lives in `session.d`; alternate proposed module splits are not missing features.
 4. **16, persistence/replay**: `narrative/persistence.d` provides staged factory-world restoration, schema/content/code/capture checks, explicit authored reconstruction/migrations and immutable command logs. Preserve failed-load atomicity and unsupported-value diagnostics; hosts replay external inputs and reestablish subscriptions.
 5. **17, authoring**: `diagnostics.d`, `observe.d` and `analysis.d` supply pure explanations, committed visible-set deltas with bounded queued commands, and isolated bounded choice exploration. Analysis reports its scope/incompleteness and blocks host/native external operations.
-6. **18, conformance**: `make test-stateful`, `make test-narrative` (13 groups), and `make test-extensions` (54 cases) are included in `make test`. [tests/narrative/README.md](tests/narrative/README.md) contains the paragraph/grammar/error matrix, measured stress/replay coverage and limits. Keep all source modules listed explicitly in `Makefile`.
+6. **18, conformance**: `make unit-test UNIT=test_stateful`, `make unit-test UNIT=test_narrative` (13 groups), and `python3 tools/suite test --suite extensions` (54 cases) are included in `make test`. [tests/narrative/README.md](tests/narrative/README.md) contains the paragraph/grammar/error matrix, measured stress/replay coverage and limits. Keep all source modules listed explicitly in `Makefile`.
 
 Custom display formatter registration and deterministic weighted text variants are implemented and verified. Existing compiler `goto` execution and the official Lua harness are outside the companion gate; do not conceal skips or imply complete Lua 5.4 conformance.
 
@@ -224,7 +224,7 @@ baselines; do not reset baselines to conceal regressions.
 
 9. **Companion coverage**: Map [Varis rejection requirements](docs/compatibility.md#95--error-categories) (historical companion §16; see docs/coverage.md) to tests for key conflicts, transaction/savepoint/control-flow rollback, tentative snapshots, yields, stale choices, parameter binding, deterministic draws, action/event budgets, quality constraints, and save/version failures. Compare unordered relational sets and canonical narrative sequences. Keep optional aggregates/subscriptions/analysis separately identified; proposed tests and targets are not existing support.
 
-10. **Performance changes**: Resolve the Lua conformance backlog before targeting optimizations. Profile before choosing optimizations. Land small changes with targeted semantic tests, full `make test`, optimized assertion-enabled validation, actual release CLI fixtures, and before/after timing and memory evidence. `make test-official` and `make test-conformance-core` exist; broader differential/release gates remain planned. Never trade correctness for benchmark scores or silently weaken failure/skip accounting. A file passing with protected errors or internally disabled tests is not proof of feature completeness.
+10. **Performance changes**: Resolve the Lua conformance backlog before targeting optimizations. Profile before choosing optimizations. Land small changes with targeted semantic tests, full `make test`, optimized assertion-enabled validation, actual release CLI fixtures, and before/after timing and memory evidence. `python3 tools/suite test --suite official` and `python3 tools/suite test --suite core` exist; broader differential/release gates remain planned. Never trade correctness for benchmark scores or silently weaken failure/skip accounting. A file passing with protected errors or internally disabled tests is not proof of feature completeness.
 11. **Runtime optimization boundaries**: Retain SumType, typed instructions and D GC initially. Frame reuse must preserve upvalue locations/lifetimes, GC roots, native reentry, suspended coroutines and exception cleanup. Context fast paths must preserve lexical worlds, aliases and Fiber isolation; combined instructions must preserve analysis budgets, debug attribution and transaction exit boundaries. Larger representation changes require measured justification and explicit architectural review.
 
 ---
@@ -250,8 +250,9 @@ make hooks           # enable .githooks once per clone
 make fmt             # dfmt; `make fmt-check` verifies
 make check           # pre-push gate
 
-# Legacy per-suite targets (test-foundation, test-logic, test-datalog, ...) and the
-# previous full run (`make test-legacy`) remain available.
+# One suite / one D unit group:
+python3 tools/suite test --suite acceptance
+make unit-test UNIT=test_vm
 make clean
 ```
 

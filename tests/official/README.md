@@ -18,10 +18,10 @@ runner executes in a scratch copy of the suite with `gc.lua` replaced by a stub;
 removed or altered: the C test modules are built and loaded through the Varis C API subset, and
 the nested-shell status check runs against an `sh` shim (see below).
 
-Run `make test-official` (strict exit codes; 120 s default timeout, use `--timeout 240` for the
+Run `python3 tools/suite test --suite official` (strict exit codes; 120 s default timeout, use `--timeout 240` for the
 slow all.lua driver) or, for a JSON report,
 `./bin/test_runner --strict --timeout 240 --reference c-implementation/src/lua --json /tmp/varis-official.json`.
-`make test-conformance-core` compares the deterministic core fixture with C Lua. `make test`
+`python3 tools/suite test --suite core` compares the deterministic core fixture with C Lua. `make test`
 includes the runner's regression tests but not the official suite itself (`errors.lua` alone
 takes ~30 s, `all.lua` ~70 s).
 

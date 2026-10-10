@@ -72,6 +72,6 @@ not an existing implementation. In particular:
 ## Non-goals
 
 These are functional examples, not microbenchmarks or fuzz tests. Their total
-runtime is tracked by `make benchmark-datalog`; see
+runtime is tracked by `python3 tools/suite bench --group datalog`; see
 [benchmark details](../benchmarks/README.md). They do not test typed extensions, aggregates, cross-world
 rule dependencies, full purity certification, transactions, or rule removal.

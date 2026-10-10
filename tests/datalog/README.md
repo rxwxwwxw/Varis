@@ -6,7 +6,7 @@ benchmarks. The coverage table and source comments retain former specification
 section numbers, resolved by the [migration map](../../docs/coverage.md).
 
 ```sh
-make test-scenarios                              # unit tests + both scales + known gaps
+python3 tools/suite test --suite scenario --suite gap                              # unit tests + both scales + known gaps
 python3 tests/datalog/run.py --scale small 08    # one program, hand-checkable size
 python3 tests/datalog/run.py --record            # deliberately rewrite golden output
 python3 tools/suite bench --group datalog     # large-scale timings

@@ -14,7 +14,7 @@ checksum differs from the one recorded in `expected.json`. The checksum recorded
 reference makes a regression visible even when only Varis is available (`--no-reference`).
 
 ```sh
-make test-regression            # differential run (needs bin/varis and C Lua)
+python3 tools/suite test --suite regression            # differential run (needs bin/varis and C Lua)
 make test-regression-record     # deliberately re-record expected.json
 python3 tools/suite bench --group regression   # timings and ratios against C Lua
 python3 tests/regression/run.py fuzz_expr strings --timeout 30

@@ -92,5 +92,5 @@ Each row checks the intended reason, rather than accepting arbitrary failures.
   (`narrative.formatter`) and deterministic weighted text variants in templates
   (`{#variant ...}` / `{#variants}`) are implemented and verified in `testFormattersAndVariants`.
 - Existing compiler `goto` execution and the official Lua harness are outside the
-  companion gate; `tests/runner.d` provides the dedicated official runner (`make test-official`).
+  companion gate; `tests/runner.d` provides the dedicated official runner (`python3 tools/suite test --suite official`).
   Standalone labels and existing supported Lua behavior remain covered by regression tests.

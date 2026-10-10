@@ -117,7 +117,7 @@ varis/
     │   ├── test_vm.d            # Compiler and VM tests
     │   ├── test_libs.d          # Standard library tests
     │   └── test_logic.d         # Declarative engine and integration tests
-    └── runner.d                 # Automated official Lua 5.4.9 test runner (make test-official)
+    └── runner.d                 # Automated official Lua 5.4.9 test runner (python3 tools/suite test --suite official)
 ```
 
 ---
@@ -152,8 +152,8 @@ python3 tools/suite trace --verify                # requirement -> evidence map
 
 Every skip, partial and known gap must be listed in the manifest's ledger (and a ledger entry
 whose case starts passing is a failure). Results are also written as JSON with `--json`.
-The earlier per-suite targets (`make test-foundation`, `test-datalog`, ...) still exist, and
-`make test-legacy` runs them. [tests/TRACEABILITY.md](tests/TRACEABILITY.md) maps the spec
+Individual suites: `python3 tools/suite test --suite <id>`; one D unit group:
+`make unit-test UNIT=test_vm`. [tests/TRACEABILITY.md](tests/TRACEABILITY.md) maps the spec
 requirements to cases.
 
 ### Declarative Extension Acceptance Tests
@@ -161,7 +161,7 @@ requirements to cases.
 Run the base extension suite from the repository root:
 
 ```bash
-make test-datalog
+python3 tools/suite test --suite acceptance --suite rejection
 ```
 
 The runner also accepts `LUA_BIN` instead of a binary argument. Supply the extended interpreter explicitly: its default is `lua`, and stock Lua cannot parse the extension syntax.
@@ -245,9 +245,9 @@ gates.
 ### Remaining conformance work
 
 - Conformance scope (owner decision): the official suite as a stock Lua 5.4 binary runs it (no internal `T` library), with `gc.lua` excluded; an ltests-style `T` for `api.lua`/`code.lua` is out of scope. The official Lua 5.4.9 suite runs clean: the October 9, 2026 release-build run reports **31 pass, 1 partial, 1 skipped, 0 fail, 0 timeout** across 33 files (240 seconds per file, C Lua as reference). `gc.lua` is the one skip, excluded by decision because exact collector reachability conflicts with keeping Varis objects directly accessible from D. The one partial is the suite driver `all.lua`, which the runner executes with `gc.lua` stubbed (it ends with `final OK !!!` and also pushes each file through `string.dump`/`load`). The suite's C test modules are compiled and loaded through the exported C API subset (`source/varis/capi.d`), and `files.lua` runs against an `sh` wrapper because macOS `sh` reports a signal for the nested-shell check where the suite expects an exit status. `api` and `code` pass because, as with stock C Lua, they return immediately when the internal `T` library is absent. See the [recorded results and remaining issues](tests/official/README.md); a file pass means the process exited successfully.
-- `make test-official` fails on interpreter failures or timeouts. The runner captures both output streams without pipe deadlocks and retains exit codes and diagnostics. Weak tables and `__gc`/`__close` finalizers are emulated on D's conservative GC (`source/varis/gc.d`), so `collectgarbage` modes/step are bookkeeping-level rather than a Lua collector. Native stack use (~5 KB per Lua call frame) and slow deep-recursion unwinding (D exceptions through the platform unwinder) remain known performance issues.
+- `python3 tools/suite test --suite official` fails on interpreter failures or timeouts. The runner captures both output streams without pipe deadlocks and retains exit codes and diagnostics. Weak tables and `__gc`/`__close` finalizers are emulated on D's conservative GC (`source/varis/gc.d`), so `collectgarbage` modes/step are bookkeeping-level rather than a Lua collector. Native stack use (~5 KB per Lua call frame) and slow deep-recursion unwinding (D exceptions through the platform unwinder) remain known performance issues.
 - Implemented conformance work includes luac-style compiler output (RK operands, condition jumps, line attribution, strip semantics), lvm.c-style loops and error messages with variable info, ports of lstrlib/ltablib/lmathlib/loslib/liolib/loadlib/lcorolib/lua.c, binary chunks (`string.dump`/`load`, private body behind a standard header), debug hooks/getinfo/locals/upvalues, coroutine close/wrap semantics, tracebacks and C-call depth limits. Remaining work before performance optimization is only the explicit skips and partial exclusions above.
-- `make test-conformance-core` compares a deterministic core fixture against bundled C Lua. `make test` includes runner regression tests, while the official suite and differential target remain separate gates.
+- `python3 tools/suite test --suite core` compares a deterministic core fixture against bundled C Lua. `make test` includes runner regression tests, while the official suite and differential target remain separate gates.
 - Add differential coverage against C Lua for supported numeric behavior,
   calls/returns, closures, tables/metamethods, errors and coroutines. Test the
   optimized runtime as well as assertion-enabled builds.

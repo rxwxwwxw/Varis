@@ -10,7 +10,7 @@ The suite contains 55 Lua cases and four runner checks. All language cases and
 runner checks pass after fixing the seven failures found during initial validation.
 
 ```sh
-make test-extensions DC=/opt/homebrew/bin/ldc2
+python3 tools/suite test --suite extensions
 # Run a subset using an already built interpreter:
 python3 tests/extensions/run-tests.py ./bin/varis --filter rollback
 # A shorter timeout is useful when investigating a hang:
@@ -87,7 +87,7 @@ conformance passes.
 
 ## Core stateful companion coverage
 
-`make test-stateful` supplements these integration cases with direct engine tests
+`make unit-test UNIT=test_stateful` supplements these integration cases with direct engine tests
 for key-index consistency, no-op/failure versions, immutable schemas, integer
 wrapping, inheritance, tentative snapshots, and commit/rollback cleanup.
 
