@@ -1,0 +1,6 @@
+# Tool versions the repository's checks and CI expect.
+[tools]
+dfmt = "0.15.2"
+ldc2 = ">=1.43"
+python = ">=3.11"
+lua_reference = "5.4.9"

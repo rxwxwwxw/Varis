@@ -1,0 +1,9 @@
+#!/bin/sh
+# Fast checks only (< 5 s). Benchmarks and full tests do not belong here.
+set -e
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+git diff --cached --check
+python3 tools/hooks/size_guard.py
+python3 tools/hooks/fmt_check.py --staged
+python3 tools/check_sources.py

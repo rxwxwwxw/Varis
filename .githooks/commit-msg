@@ -1,0 +1,4 @@
+#!/bin/sh
+# Loosening a performance target or the skip ledger needs an explicit, reasoned trailer.
+root=$(git rev-parse --show-toplevel)
+exec python3 "$root/tools/hooks/trailer_check.py" "$1"

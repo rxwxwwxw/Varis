@@ -1,4 +1,14 @@
 /*
+** Lua - A Scripting Language
+** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
+**
+** dlua - D port of Lua 5.4
+** Copyright (C) 1994-2026 Lua.org, PUC-Rio.
+** Copyright (C) 2026 dlua contributors.
+** See LICENSE for license details.
+*/
+
+/*
 ** dlua - Unit tests for Foundation (types, table, state, exception)
 */
 

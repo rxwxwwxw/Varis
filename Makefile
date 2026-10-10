@@ -62,7 +62,7 @@ RUN_TEST = python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[
 
 BIN_DIR = bin
 
-.PHONY: all test test-regression test-regression-record test-regression-runner benchmark-regression test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner dlua c-lua benchmark benchmark-workloads benchmark-datalog benchmark-datalog-record test-benchmarks clean
+.PHONY: all check hooks fmt fmt-check check-sources test test-regression test-regression-record test-regression-runner benchmark-regression test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner dlua c-lua benchmark benchmark-workloads benchmark-datalog benchmark-datalog-record test-benchmarks clean
 
 all: test dlua
 
@@ -168,3 +168,20 @@ test-regression-runner:
 benchmark-regression: dlua c-lua
 	python3 benchmarks/regression.py
 
+# Repository hygiene (see CONSOLIDATION_PLAN.md).
+hooks:
+	git config core.hooksPath .githooks
+	git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+fmt:
+	dfmt -i $$(git ls-files '*.d' | grep -v '^c-implementation/')
+	dfmt -i $$(git ls-files '*.d' | grep -v '^c-implementation/')
+
+fmt-check:
+	python3 tools/hooks/fmt_check.py
+
+check-sources:
+	python3 tools/check_sources.py
+
+# Fast gate used by the pre-push hook; becomes `suite test --tier fast` in Phase 2.
+check: fmt-check check-sources test
