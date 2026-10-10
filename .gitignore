@@ -1,0 +1,19 @@
+# Build products
+build/
+bin/
+.cache/
+*.o
+*.obj
+*.a
+*.dylib
+# Vendored Lua build products
+c-implementation/src/lua
+c-implementation/src/luac
+c-implementation/src/liblua.a
+# Local benchmark output (named baselines live in benchmarks/baselines/)
+benchmarks/results/local/
+# Editor / OS noise
+.DS_Store
+__pycache__/
+*.pyc
+.dub/

@@ -1,0 +1,9 @@
+# The official Lua suite contains byte-exact fixtures; never normalize them.
+c-implementation/** -text
+*.d text eol=lf
+*.lua text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+Makefile text eol=lf
+*.c diff
+*.h diff
