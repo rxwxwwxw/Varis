@@ -1,0 +1,113 @@
+-- Saltmarsh Light — a minimal text host.
+--
+--   dlua main.lua [seed]
+--
+-- Presentation is deliberately bare: the engine returns presentations as
+-- immutable records and the host prints them. See needed_extensions.md §5
+-- for what a real VN/Twine-style front end would need.
+
+package.path = "./?.lua;" .. package.path
+
+local G = require("game")
+local seed = tonumber(arg and arg[1]) or 1
+local session = G.new_session(seed)
+local SAVE = "saltmarsh.sav"
+
+-- Narrative messages travel through the committed event history: the host
+-- reads every event with a sequence number above the last one it printed.
+local last_seq = 0
+local function show_events()
+    local new = {}
+    logic (session:world()) do
+        for e in query narrative_event(?seq, ?turn, ?kind, ?args) do
+            if e.seq > last_seq then new[#new + 1] = e end
+        end
+    end
+    table.sort(new, function(a, b) return a.seq < b.seq end)
+    for _, e in ipairs(new) do
+        if e.kind == :say then
+            print("  " .. e.args[1])
+        elseif e.kind == :bought then
+            print("  You buy " .. narrative.display(e.args[1]) .. ".")
+        elseif e.kind == :storm_struck then
+            print("  The storm breaks over the marsh.")
+        end
+        last_seq = e.seq
+    end
+end
+
+-- Relation-change subscription: tell the player when their pack changes.
+local function watch(s)
+    return narrative.observe(s:world(), "carries", {
+        on_enter = function(t) print("  (You now carry " .. narrative.display(t[2]) .. ".)") end,
+        on_leave = function(t) print("  (You no longer carry " .. narrative.display(t[2]) .. ".)") end,
+    })
+end
+local unwatch = watch(session)
+
+local function status()
+    local w = session:world()
+    local load = 0
+    logic (w) do
+        local r = (query load(:player, ?kg))()
+        if r then load = r.kg end
+    end
+    print(string.format("-- Day %d, %02d:00 | coins %d | oil %d | resolve %d | load %dkg --",
+        quality.get(:world, :day, w), quality.get(:world, :hour, w),
+        quality.get(:player, :coins, w), quality.get(:player, :oil, w),
+        quality.get(:player, :resolve, w), load))
+end
+
+while true do
+    local ok, p = pcall(session.present, session)
+    if not ok then print("error: " .. tostring(p)); break end
+    show_events()
+    status()
+
+    local menu = {}
+    for _, story in ipairs(p.storylets) do
+        print("\n" .. story.title)
+        if story.text ~= "" then print(story.text) end
+        for _, c in ipairs(story.choices) do
+            menu[#menu + 1] = c
+            print(string.format("  %d) %s", #menu, c.title ~= "" and c.title or "Continue"))
+        end
+    end
+    if #menu == 0 then print("\nNothing more can happen."); break end
+    io.write("\n> (number, s=save, l=load, q=quit) ")
+    local line = io.read("l")
+    if not line or line == "q" then break end
+
+    if line == "s" then
+        local f = assert(io.open(SAVE, "w")); f:write(session:save()); f:close()
+        print("Saved.")
+    elseif line == "l" then
+        local f = io.open(SAVE, "r")
+        if f then
+            local text = f:read("a"); f:close()
+            local okl, s = pcall(G.load, text)
+            if okl then
+                unwatch(); session = s; unwatch = watch(session)
+                -- re-seed last_seq from restored history so old events aren't reprinted
+                last_seq = 0
+                logic (session:world()) do
+                    for e in query narrative_event(?seq, ?turn, ?kind, ?args) do
+                        if e.seq > last_seq then last_seq = e.seq end
+                    end
+                end
+                print("Loaded.")
+            else
+                print("Could not load: " .. tostring(s))
+            end
+        end
+    else
+        local c = menu[tonumber(line)]
+        if c then
+            local okc, err = pcall(session.choose, session, c.token)
+            if not okc then print("  (" .. tostring(err) .. ")") end
+            G.sync_periods(session)
+            narrative.flush(session:world())
+            if G.is_over(session) then show_events(); print("\n*** THE END ***"); break end
+        end
+    end
+end

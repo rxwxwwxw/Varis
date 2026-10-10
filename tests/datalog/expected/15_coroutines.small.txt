@@ -1,0 +1,7 @@
+consumer saw its snapshot	5
+world has moved on	5
+coroutine-built world, at first yield	6
+after coroutine finished	8
+global untouched by that world	5
+interleaved consumers	50
+first consumer exhausted	nil

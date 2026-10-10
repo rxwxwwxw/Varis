@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "runs": 3,
+  "suites": {
+    "acceptance": {
+      "median_seconds": 0.5852812910015928,
+      "samples_seconds": [
+        0.5852812910015928,
+        0.5605900840000686,
+        0.6091699170010543
+      ]
+    },
+    "extensions": {
+      "median_seconds": 1.291673499999888,
+      "samples_seconds": [
+        1.1828925419995358,
+        1.291673499999888,
+        1.299963416000537
+      ]
+    },
+    "scenarios": {
+      "median_seconds": 17.688870416997815,
+      "samples_seconds": [
+        17.688870416997815,
+        17.598219207997317,
+        17.68992883399187
+      ]
+    }
+  }
+}

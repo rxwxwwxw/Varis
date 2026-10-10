@@ -1,0 +1,23 @@
+first result	:c
+then exhausted	nil
+still exhausted	nil
+independent iterators	4
+snapshot ignores new fact	3
+new query sees new fact	4
+anonymous variable gives one row	1
+projection on source only	a b c
+anonymous variable omitted	false
+repeated variable matches only equal	1
+repeated variable one field	:s
+ground success	1
+ground failure	0
+two-step paths	c
+nil binding reads as nil	nil
+nil binding is present	true
+binding() on nil binding	nil
+absent name	false
+absent field reads as nil	nil
+binding() of absent name	error
+records are immutable	error
+live relation is empty	0
+snapshots delivered	16

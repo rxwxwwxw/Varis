@@ -1,0 +1,13 @@
+right pairs	10
+left pairs	10
+right from 1	4
+right into N	4
+left from 1	4
+no path backwards	0
+path 1 to N exists	1
+no self paths	0
+left but not right	0
+right but not left	0
+doubly recursive pairs	10
+targets of 1	2 3 4 5
+sources of 5	1 2 3 4

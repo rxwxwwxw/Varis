@@ -1,0 +1,8 @@
+cells reachable through the gap	461
+cells reachable when sealed	220
+far corner via gap	1
+far corner when sealed	0
+wall cell never reached	0
+gap cell reached	1
+after closing the gap	220
+after reopening the gap	461

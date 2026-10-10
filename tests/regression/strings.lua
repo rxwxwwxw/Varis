@@ -1,0 +1,39 @@
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local emit, try = T.emit, T.try
+local s = "The quick brown fox jumps over the lazy dog"
+emit(#s, s:upper(), s:lower(), s:reverse(), s:len())
+emit(s:sub(5, 9), s:sub(-3), s:sub(0), s:sub(10, 5), s:sub(-100, 3), s:sub(2, -2):len())
+emit(s:find("quick"), s:find("o", 15), s:find("o", -5), s:find("xyz"), s:find("", 100), s:find("", 44))
+emit(s:find("(%a+) (%a+)", 5), s:match("(%a+)$"), s:match("^(%a+)"), s:match("()ox()"))
+emit(s:gsub("o", "0"), s:gsub("%w+", string.upper, 3), s:gsub("(%w+) (%w+)", "%2 %1", 2))
+emit(("abc"):gsub("", "-"), ("abc"):gsub(".", {a = 1, b = "B", c = false}), ("hello world"):gsub("o", "%%"))
+for w in s:gmatch("%a+") do io.write(w:sub(1, 1)) end print()
+for k, v in ("a=1, b=2, c=3"):gmatch("(%w+)=(%w+)") do emit(k, v) end
+emit(("x"):rep(5, ","), ("ab"):rep(0), ("ab"):rep(-1), ("%d"):format(3.0))
+emit(string.byte("ABC", 1, -1), string.char(72, 105), ("\0a\0"):len(), #"\u{10FFFF}", "\x41\65\z
+     B")
+emit(("f(a(b)c)d"):match("%b()"), ("THE (quick) fox"):find("%f[%a]%a+%f[%A]"), ("  trim  "):match("^%s*(.-)%s*$"))
+emit(("key = value"):match("^(%w+)%s*=%s*(%w+)$"))
+try(string.rep, "x", 1e10)
+try(string.format, "%d", 1.5)
+try(string.format, "%z", 1)
+try(string.find, "a", "[a")
+try(string.gsub, "a", "(", "")
+try(string.match, "a", "%")
+emit(tostring(nil), tostring(true), tostring(12), tostring(1.5), tostring("x"))
+emit(string.format("%-5s|%5s|%.2s|%c%c", "ab", "ab", "abcdef", 76, 117))
+emit(string.format("%10.4f|%-10.2e|%G", math.pi, math.pi, 1e-10))
+emit(table.concat({1, 2.5, "x"}, "-"), table.concat({}, ","), table.concat({1, 2, 3}, ",", 2, 3))
+emit(string.pack("<i4", 100):byte(1, -1))
+emit(string.unpack("<i2 >i2 z s1", string.pack("<i2 >i2 z s1", -2, 513, "hi", "yo")))
+emit(string.packsize("i4 i8 d"), string.packsize("!8 b d"), #string.pack("j n s", 1, 2.5, "abc"))
+emit(utf8.char(72, 228, 8364, 128512), utf8.len("häl€"), utf8.codepoint("€", 1), utf8.offset("a€b", 3))
+for p, c in utf8.codes("aé€") do emit(p, c) end
+emit(utf8.len("\xff"), #utf8.charpattern)
+local t = {}
+for i = 1, 200 do t[#t + 1] = string.char(32 + (i * 7) % 90) end
+local big = table.concat(t)
+emit(#big, big:sub(1, 40), select(2, big:gsub("%d", "")), big:find("%u%l"))
+emit(("abc"):byte(-1), ("a,b,,c"):find(",", 1, true), ("a.b"):find(".", 1, true), ("a+b"):gsub("%+", "-"))
+emit(#string.format("%099d", 7), string.format("%.3s", "ñandú"))
+T.done()

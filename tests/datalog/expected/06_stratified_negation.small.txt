@@ -1,0 +1,15 @@
+open nodes	6
+steps	3
+reach	3
+has_out	3
+sinks	3
+open list	1 2 4 5 7 8
+sink list	2 5 8
+open after blocking 1	5
+reach after blocking 1	2
+2 is a sink	1
+reach after unblocking 1	3
+not equal to constant via negation	5
+low open nodes	1 2 4
+negation cycle	error
+rejected rule left program intact	9

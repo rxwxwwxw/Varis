@@ -1,0 +1,13 @@
+open nodes	2000
+steps	1000
+reach	1000
+has_out	1000
+sinks	1000
+open after blocking 1	1999
+reach after blocking 1	999
+2 is a sink	1
+reach after unblocking 1	1000
+not equal to constant via negation	1999
+low open nodes	1 2 4
+negation cycle	error
+rejected rule left program intact	3000

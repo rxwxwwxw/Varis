@@ -1,0 +1,6 @@
+links	870
+triangles	4060
+triangles via query	4060
+ordered triangles	24360
+triangles with even sum	2030
+distinct smallest corners	28

@@ -1,0 +1,7 @@
+nodes	7
+same-generation pairs	21
+peers of the first leaf	4
+peers of the root	1
+root and leaf	0
+peers of 2	2
+peers of 4	4

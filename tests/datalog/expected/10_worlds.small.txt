@@ -1,0 +1,28 @@
+child inherits facts	1
+child inherits derived	1
+global sees :c	b c
+child sees :d	b d
+child lacks later rule	false
+global lacks child rule	false
+child rule works	a b
+child mark	1
+global mark	2
+empty world has no edge	error
+fact into empty world	1
+grandchild from child	b d
+child moved on	b d e
+field-chain qualifier	1
+logic.add	2
+logic.retract	1
+inner block world	2
+outer block world	1
+closure keeps its block world	1
+global default restored	2
+world expression evaluated once	1
+facts went to picked world	4
+tables shared across worlds	true
+global big	3 4
+inherited guard keeps capture	3 4 5
+base chain pairs	10
+sum over children	39
+base unchanged	10

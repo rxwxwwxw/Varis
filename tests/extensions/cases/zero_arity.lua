@@ -1,0 +1,12 @@
+-- Extension regression: zero_arity
+relation ready(0) relation blocked(0) relation go(0)
+fact ready() fact ready()
+rule go() :- ready(), not blocked()
+assert(count(query go()) == 1)
+local old = query go()
+fact blocked()
+assert(count(query go()) == 0 and count(old) == 1)
+retract blocked() retract ready()
+assert(count(query go()) == 0)
+fact ready()
+assert(count(query go()) == 1)

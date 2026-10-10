@@ -1,0 +1,22 @@
+redeclare with other arity	error
+implicit relation size	1
+fact with too few arguments	error
+fact with too many arguments	error
+duplicate fact stored once	1
+retract absent tuple	1
+retract present tuple	0
+empty declared relation	0
+unknown relation	error
+1 and 1.0 are one tuple	1
+string and symbol differ	2
+tables compare by identity	2
+nil and false are values	2
+loop-inserted facts	5
+call truncated to one value	:left
+call is not expanded	error
+zero-arity relation	1
+distinct slots	700
+pairs	60000
+pairs after retracting evens	30000
+pair lookup of an odd i	1
+pair lookup of an even i	0

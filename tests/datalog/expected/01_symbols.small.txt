@@ -1,0 +1,26 @@
+same name equal	true
+different name unequal	true
+type	symbol
+symbol vs string	false
+string vs symbol	false
+symbol() equals literal	true
+logic.symbol() equals literal	true
+symbol(symbol) is identity	true
+symbolname	lava
+tostring identifier	:lava
+tostring quoted	:"two words"
+binary name 1 round trip	true
+binary name 2 round trip	true
+binary name 3 round trip	true
+binary name 4 round trip	true
+NUL names differ after NUL	true
+key :red	1
+key 'red'	2
+symbol < symbol	error
+symbol(1)	error
+symbolname(string)	error
+method call	7
+symbol named like the method	get
+label and goto	3
+distinct symbols	4
+uses of :sym0	3

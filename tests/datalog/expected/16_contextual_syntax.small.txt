@@ -1,0 +1,20 @@
+local named fact	12
+local named rule	r
+function named query	42
+function named retract	1
+local named where	true
+fields named like keywords	10
+method named where	1
+declarations beside same-named locals	1
+call syntax still a call	8
+method call and symbol	10
+symbol is not the method	double
+label and goto	4
+everything on one line	3
+with semicolons	4
+multi-line rule body	6
+closure of the five-node chain	10
+repeated variable means equal	0
+each ?_ is distinct	1
+repeated variable finds the loop	1
+generated program result	2

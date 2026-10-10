@@ -1,0 +1,11 @@
+-- Extension regression: base_derived_overlap
+relation seed(1) relation out(1)
+fact seed(1) fact out(1)
+rule out(?x) :- seed(?x)
+assert(count(query out(?x)) == 1)
+retract out(1)
+assert(count(query out(?x)) == 1, "retraction must only remove base membership")
+fact out(1) retract seed(1)
+assert(count(query out(?x)) == 1)
+retract out(1)
+assert(count(query out(?x)) == 0)

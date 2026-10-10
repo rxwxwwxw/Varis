@@ -1,0 +1,21 @@
+fact evaluates once	1
+loop executes the statement 3 times	4
+rule evaluates constant once	1
+rule result	3
+querying does not re-evaluate	1
+query evaluates at construction	1
+iteration does not re-evaluate	1
+query captured room=1	2
+new query sees room=3	4
+one rule per invocation	2 4
+multi-result in query	3
+multi-result in fact	2
+final call is not expanded	error
+rule kept target=4	3
+NaN fact	error
+NaN query constant	error
+NaN rule constant	error
+union of captured origins	1500
+smallest hit	1
+largest hit	1
+origin itself not hit	0

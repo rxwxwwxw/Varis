@@ -1,0 +1,64 @@
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local emit, try = T.emit, T.try
+-- sort with several comparators; result is hashed element by element
+local function lcg(seed) local x = seed; return function() x = (x * 1103515245 + 12345) & 0x7fffffff; return x end end
+local rnd = lcg(42)
+local a = {}
+for i = 1, 500 do a[i] = rnd() % 1000 end
+table.sort(a)
+local h = 0
+for i, v in ipairs(a) do h = (h * 31 + v) & 0xffffffff end
+emit("sorted", #a, a[1], a[500], h)
+table.sort(a, function(x, y) return x > y end)
+emit("desc", a[1], a[500])
+local words = {"pear", "apple", "fig", "banana", "kiwi", "cherry"}
+table.sort(words, function(x, y) if #x ~= #y then return #x < #y end return x < y end)
+emit(table.concat(words, " "))
+try(table.sort, {3, 2, 1, "x"})
+try(table.sort, {1, 2, 3}, function() return true end)
+-- insert / remove / move / unpack
+local t = {10, 20, 30}
+table.insert(t, 40); table.insert(t, 1, 5); table.insert(t, 3, 15)
+emit(table.concat(t, ","), table.remove(t), table.remove(t, 1), table.remove(t, #t + 1), #t)
+try(table.insert, t, 10, 1)
+try(table.insert, t, 1, 2, 3)
+emit(table.unpack({1, 2, 3}, 2), table.unpack({1, 2, 3}, 2, 5))
+emit(select("#", table.unpack({}, 1, 3)), table.pack(nil, nil).n)
+local m = table.move({1, 2, 3, 4, 5}, 2, 5, 1)
+emit(table.concat(m, ","), #table.move({1, 2, 3}, 1, 3, 3, {}))
+-- length borders and holes through the array/hash boundary
+local h2 = {}
+for i = 1, 10 do h2[i] = i end
+h2[5] = nil
+emit(#h2 == 10 or #h2 == 4)
+h2[11] = 11; h2[10] = nil
+emit(#h2 == 11 or #h2 == 4 or #h2 == 9)
+local g = {}
+for i = 100, 1, -1 do g[i] = i end
+emit(#g)
+for i = 1, 100 do g[i] = nil end
+emit(#g, next(g))
+-- next/pairs after removing during traversal
+local big = {}
+for i = 1, 100 do big["k" .. i] = i; big[i] = i end
+local c, s = 0, 0
+for k, v in pairs(big) do c = c + 1; s = s + v; big[k] = nil end
+emit(c, s, next(big))
+-- keys of every type, float normalization
+local keys = {}
+keys[1.0] = "a"; keys[2] = "b"; keys[2^53] = "c"; keys["1"] = "d"; keys[true] = "e"
+emit(keys[1], keys[2.0], keys[2^53], keys["1"], keys[true], #keys)
+try(function() keys[nil] = 1 end)
+try(function() keys[0/0] = 1 end)
+emit(rawlen({1, 2}), rawlen("abc"), rawequal("a", "a"), rawget(setmetatable({}, {__index = function() return 1 end}), "x"))
+-- ipairs stops at nil, respects __index
+local p = setmetatable({}, {__index = function(_, i) if i <= 3 then return i * 10 end end})
+local n = 0
+for i, v in ipairs(p) do n = n + v end
+emit(n)
+local q = {n = 0}
+for i = 1, 1000 do q[i] = i * i end
+local acc = 0
+for i = #q, 1, -1 do acc = (acc + q[i]) % 1000003 end
+emit(acc)
+T.done()

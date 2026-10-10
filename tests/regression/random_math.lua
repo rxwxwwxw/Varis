@@ -1,0 +1,27 @@
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local emit, try = T.emit, T.try
+-- math.random is a seeded xoshiro256**: sequences must match the reference exactly
+math.randomseed(42)
+local a = {}
+for i = 1, 10 do a[i] = math.random(1000) end
+emit(table.concat(a, ","))
+math.randomseed(42)
+emit(math.random(1000) == a[1], math.random(), math.random(5, 7), math.random(-3, 3))
+math.randomseed(123, 456)
+emit(math.random(0) ~= nil, math.random(math.mininteger, math.maxinteger) ~= nil)
+math.randomseed(7)
+emit(math.random(10), math.random(10), math.random(10), math.random(), math.random(1 << 40))
+math.randomseed(0)
+local sum = 0
+for i = 1, 1000 do sum = sum + math.random(100) end
+emit(sum)
+try(math.random, 2, 1)
+try(math.random, 1, 2, 3)
+try(math.random, 0.5)
+emit(select("#", math.randomseed(5)))
+-- other math functions with exact outputs
+emit(math.sqrt(2), math.exp(1), math.log(10), math.log(8, 2), math.log(100, 10), math.sin(1), math.cos(1), math.tan(1))
+emit(math.atan(1, 2), math.atan(-1, -1), math.asin(0.5), math.acos(0.5), math.pi, math.huge, -math.huge)
+emit(math.floor(1e100) == 1e100, math.ceil(-0.5), math.fmod(5.5, 2), math.modf(-3.7), math.modf(math.huge))
+emit(math.ult(-1, 1), math.abs(-0.0), math.max(3, 1, 2), math.min(3, 1, 2), 5 // 0.3, 2^0.5, 10^-2)
+T.done()

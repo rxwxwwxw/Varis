@@ -1,0 +1,7 @@
+lab workers with active colleague	3
+matching people	2 6 8
+distinct places of work	2
+two-step acquaintances	8
+a < 4 and odd	1 3
+impossible conjunction	0
+ground conjunction	1

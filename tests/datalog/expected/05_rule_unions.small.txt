@@ -1,0 +1,16 @@
+undirected pairs	10
+neighbours of 2	1 3
+odd-length pairs	9
+even-length pairs	6
+no pair is both	0
+1 to 2 is odd	1
+1 to 3 is even	1
+duplicate derivations	5
+rule registered repeatedly	5
+categorized nodes	5
+distinct categories	chain
+constant is captured	0
+rule persists after function returns	5
+rule absent before registration	2
+unregistered relation unknown	error
+rule present after registration	2

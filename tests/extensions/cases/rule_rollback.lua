@@ -1,0 +1,10 @@
+-- Extension regression: rule_rollback
+relation seed(1) fact seed(1)
+reject(function() rule newhead(?missing) :- newbody(?x) end, "not bound")
+relation newhead(2) relation newbody(2)
+relation a(1) relation b(1)
+rule a(?x) :- seed(?x), not b(?x)
+reject(function() rule b(?x) :- a(?x) end, "negation cycle")
+assert(count(query a(?x)) == 1 and count(query b(?x)) == 0)
+fact b(1)
+assert(count(query a(?x)) == 0)

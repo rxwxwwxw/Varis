@@ -1,0 +1,22 @@
+a <  b	15
+a <= b	21
+a >  b	15
+a >= b	21
+a == b	6
+a ~= b	30
+a <= 3	1 2 3
+a > 3	3
+integer equals float	1
+string ordering	apple apple fig
+symbol equality	1
+symbol ordering	error
+number vs string ordering	error
+primes up to 30	10
+prime list	11 13 17 19 2 23 29 3 5 7
+first result false	0
+zero is truthy	6
+empty string is truthy	6
+nil fails	0
+false fails	0
+captured limit	3
+guard with string library	1

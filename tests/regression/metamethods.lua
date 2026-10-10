@@ -1,0 +1,82 @@
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local emit, try = T.emit, T.try
+local log = {}
+local function note(...) log[#log + 1] = table.concat({...}, ":") end
+local V = {}
+V.__index = V
+local function vec(x, y) return setmetatable({x = x, y = y}, V) end
+V.__add = function(a, b) return vec(a.x + b.x, a.y + b.y) end
+V.__sub = function(a, b) return vec(a.x - b.x, a.y - b.y) end
+V.__mul = function(a, b)
+  if type(a) == "number" then return vec(a * b.x, a * b.y) end
+  if type(b) == "number" then return vec(a.x * b, a.y * b) end
+  return a.x * b.x + a.y * b.y
+end
+V.__unm = function(a) return vec(-a.x, -a.y) end
+V.__eq = function(a, b) note("eq"); return a.x == b.x and a.y == b.y end
+V.__lt = function(a, b) note("lt"); return a.x < b.x end
+V.__le = function(a, b) note("le"); return a.x <= b.x end
+V.__len = function(a) return 2 end
+V.__concat = function(a, b) return tostring(a) .. "|" .. tostring(b) end
+V.__tostring = function(a) return "(" .. a.x .. "," .. a.y .. ")" end
+V.__call = function(self, k) return self[k] end
+V.__idiv = function(a, b) return "idiv" end
+V.__mod = function() return "mod" end
+V.__band = function() return "band" end
+V.__shl = function() return "shl" end
+V.__bnot = function() return "bnot" end
+local a, b = vec(1, 2), vec(3, 4)
+emit(tostring(a + b), tostring(a - b), a * b, tostring(2 * a), tostring(a * 2), tostring(-a))
+emit(a == b, a == vec(1, 2), a ~= b, a < b, a <= b, a > b, a >= b, #a, a .. b, a .. "s", 1 .. a)
+emit(a("x"), a("y"), a // 1, a % 1, a & 1, 1 << a, ~a)
+emit(table.concat(log, ","))
+-- __index / __newindex chains and rawset
+local base = {greet = function() return "hi" end}
+local mid = setmetatable({}, {__index = base})
+local top = setmetatable({}, {__index = mid})
+emit(top.greet(), top.missing, rawget(top, "greet"))
+local store = {}
+local proxy = setmetatable({}, {__newindex = store, __index = store})
+proxy.a = 1
+emit(rawget(proxy, "a"), store.a, proxy.a)
+local ro = setmetatable({}, {__newindex = function(t, k, v) error("read-only: " .. k, 2) end})
+try(function() ro.x = 1 end)
+-- __index on strings, numbers have no metatable
+emit(("abc"):len(), #"abc", ("x").len)
+try(function() return (5).x end)
+try(function() local n = 5; n.x = 1 end)
+-- __metatable protection
+local locked = setmetatable({}, {__metatable = "locked"})
+emit(getmetatable(locked))
+try(setmetatable, locked, {})
+-- __pairs and __close ordering
+local pp = setmetatable({}, {__pairs = function(t) return function(_, k) if not k then return 1, "one" end end, t, nil end})
+for k, v in pairs(pp) do emit("pairs", k, v) end
+do
+  local order = {}
+  do
+    local x <close> = setmetatable({}, {__close = function(_, e) order[#order + 1] = "x" end})
+    local y <close> = setmetatable({}, {__close = function(_, e) order[#order + 1] = "y" end})
+    order[#order + 1] = "body"
+  end
+  emit(table.concat(order, ","))
+  local ok, err = pcall(function()
+    local z <close> = setmetatable({}, {__close = function(_, e) order[#order + 1] = "z:" .. tostring(e) end})
+    error("boom", 0)
+  end)
+  emit(ok, err, order[#order])
+end
+-- __gc runs on collection (reverse order of marking) and finalizers see the object
+do
+  local out = {}
+  for i = 1, 3 do setmetatable({}, {__gc = function() out[#out + 1] = i end}) end
+  collectgarbage(); collectgarbage()
+  emit(table.concat(out, ","))
+end
+-- __div, __pow, comparison between mixed types
+try(function() return {} < {} end)
+try(function() return 1 < "2" end)
+try(function() return {} .. "x" end)
+try(function() return #5 end)
+try(function() return -{} end)
+T.done()

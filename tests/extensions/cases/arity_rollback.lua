@@ -1,0 +1,10 @@
+-- Extension regression: arity_rollback
+relation p(1) fact p(1)
+reject(function() fact p(2, 3) end, "arity")
+reject(function() retract p(1, 2) end, "arity")
+reject(function() relation p(2) end, "arity")
+reject(function() local q = query p(?x, ?y) end, "arity")
+reject(function() logic.add(logic.global, "p", 2, 3) end, "arity")
+assert(count(query p(?x)) == 1)
+retract nonexistent(1)
+relation nonexistent(2)

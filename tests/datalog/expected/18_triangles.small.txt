@@ -1,0 +1,7 @@
+links	20
+triangles	10
+triangles via query	10
+ordered triangles	60
+triangles with even sum	6
+distinct smallest corners	3
+triangles through 1 as smallest	6

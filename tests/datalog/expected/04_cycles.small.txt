@@ -1,0 +1,10 @@
+reachable from a	a b c d
+reachable from c	a b c d
+reachable from d	
+nodes on a cycle	a b c
+all pairs	12
+ring pairs	16
+ring self-reachable	4
+ring from 1	4
+opened ring pairs	6
+opened ring self-reachable	0

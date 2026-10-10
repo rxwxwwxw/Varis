@@ -1,0 +1,34 @@
+arity mismatch in fact	error
+arity mismatch in query	error
+arity mismatch in rule	error
+unsafe head variable	error
+unsafe negated variable	error
+unsafe comparison	error
+unsafe guard	error
+negation cycle	error
+self negation	error
+unknown relation in query	error
+qualifier is not a world	error
+rule on another world	error
+NaN in fact	error
+NaN in query	error
+relation redeclared	error
+world rule on local	error
+failed rules left no relation	false
+first rule of the pair stays	a b
+refused rule left p2 empty	0
+path unchanged	3
+edge unchanged	2
+failed fact inserted nothing	0
+earlier fact survives later failure	1
+closure includes it	1
+guard error at iteration	error
+iterator invalid afterwards	error
+program still queryable	3
+yield inside guard is an error	false
+number against symbol	error
+binding of non-record	error
+add to non-world	error
+world from non-world	error
+path still unchanged	3
+provocations per round	16

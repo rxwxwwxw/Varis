@@ -1,0 +1,31 @@
+-- Random sequences of table-library operations on a small array; checks lengths and contents.
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local emit = T.emit
+local seed = 987654321
+local function rnd(n) seed = (seed * 6364136223846793005 + 1442695040888963407); return ((seed >> 33) % n) + 1 end
+local function snapshot(t)
+  local parts = {}
+  for i = 1, #t do parts[#parts + 1] = tostring(t[i]) end
+  return table.concat(parts, ",")
+end
+for round = 1, 40 do
+  local t = {}
+  for i = 1, rnd(12) do t[i] = rnd(100) end
+  local log = {}
+  for step = 1, 60 do
+    local op = rnd(9)
+    local ok, r
+    if op == 1 then ok, r = pcall(table.insert, t, rnd(100))
+    elseif op == 2 then ok, r = pcall(table.insert, t, rnd(#t + 3) - 1, rnd(100))
+    elseif op == 3 then ok, r = pcall(table.remove, t)
+    elseif op == 4 then ok, r = pcall(table.remove, t, rnd(#t + 3) - 1)
+    elseif op == 5 then ok, r = pcall(table.sort, t)
+    elseif op == 6 then ok, r = pcall(table.move, t, rnd(#t + 1), #t, rnd(#t + 1))
+    elseif op == 7 then ok, r = pcall(table.concat, t, ";", rnd(#t + 1), #t)
+    elseif op == 8 then ok, r = true, select("#", table.unpack(t, 1, rnd(5)))
+    else ok, r = pcall(function() t[#t + 1] = #t; return t[rnd(#t)] end) end
+    log[#log + 1] = tostring(ok) .. ":" .. (type(r) == "table" and "table" or tostring(r):gsub("^[^:]*:%d+: ", ""))
+  end
+  emit(round, #t, snapshot(t), #log, log[#log], log[17])
+end
+T.done()

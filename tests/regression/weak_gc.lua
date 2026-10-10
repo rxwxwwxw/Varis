@@ -1,0 +1,60 @@
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local emit, try = T.emit, T.try
+local function count(t) local n = 0; for _ in pairs(t) do n = n + 1 end; return n end
+-- weak values: entries vanish once nothing else references the value
+local wv = setmetatable({}, {__mode = "v"})
+local keep = {}
+for i = 1, 20 do local o = {i}; wv[i] = o; if i % 4 == 0 then keep[#keep + 1] = o end end
+collectgarbage()
+emit("weak values", count(wv), #keep)
+-- weak keys, with strong values that do not refer to the key
+local wk = setmetatable({}, {__mode = "k"})
+local alive = {}
+for i = 1, 20 do local k = {}; wk[k] = i; if i <= 5 then alive[i] = k end end
+collectgarbage()
+emit("weak keys", count(wk))
+alive = nil
+collectgarbage()
+emit("weak keys after release", count(wk))
+-- ephemeron: the value refers to its own key, which must not keep it alive
+local eph = setmetatable({}, {__mode = "k"})
+do
+  local k = {}
+  eph[k] = {ref = k}
+end
+collectgarbage()
+emit("ephemeron", count(eph))
+-- strings and numbers are never collected from weak tables
+local ws = setmetatable({}, {__mode = "kv"})
+ws.a = "string value"; ws[1] = 42; ws[2.5] = true
+collectgarbage()
+emit("values kept", ws.a, ws[1], ws[2.5])
+-- finalizers: called once, objects see their own state, resurrection keeps the object
+local order = {}
+for i = 1, 4 do
+  setmetatable({id = i}, {__gc = function(o) order[#order + 1] = o.id end})
+end
+collectgarbage()
+emit("gc order", table.concat(order, ","))
+local resurrected
+do
+  local o = setmetatable({name = "phoenix"}, {__gc = function(self) resurrected = self end})
+end
+collectgarbage()
+emit("resurrected", resurrected and resurrected.name)
+-- collectgarbage options
+emit(collectgarbage("isrunning"), type(collectgarbage("count")), collectgarbage("incremental"), collectgarbage("generational"),
+     collectgarbage("incremental"))
+emit(collectgarbage("stop"), collectgarbage("isrunning"), collectgarbage("restart"), collectgarbage("isrunning"))
+emit(type(collectgarbage("step")), collectgarbage("collect"))
+try(collectgarbage, "nonsense")
+-- memory goes down after releasing a big structure
+local before = collectgarbage("count")
+local big = {}
+for i = 1, 20000 do big[i] = {i, tostring(i)} end
+local during = collectgarbage("count")
+big = nil
+collectgarbage()
+local after = collectgarbage("count")
+emit(during > before, after < during)
+T.done()

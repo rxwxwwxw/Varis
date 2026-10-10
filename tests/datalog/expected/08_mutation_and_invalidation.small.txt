@@ -1,0 +1,12 @@
+closure of full chain	15
+closure after cut	6
+1 no longer reaches N	0
+closure after restore	15
+base+derived tuple counted once	1
+still derivable after retract	1
+retract does not remove derivations	1
+available initially	6
+available after blocking two	4
+available after unblocking one	5
+rounds verified	5
+closure at the end	15

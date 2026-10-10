@@ -1,0 +1,11 @@
+right pairs	2415
+left pairs	2415
+right from 1	69
+right into N	69
+left from 1	69
+no path backwards	0
+path 1 to N exists	1
+no self paths	0
+left but not right	0
+right but not left	0
+doubly recursive pairs	435

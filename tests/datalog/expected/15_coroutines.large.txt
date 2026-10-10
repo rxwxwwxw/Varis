@@ -1,0 +1,7 @@
+consumer saw its snapshot	40000
+world has moved on	40000
+coroutine-built world, at first yield	40001
+after coroutine finished	40003
+global untouched by that world	40000
+interleaved consumers	1600200000
+first consumer exhausted	nil

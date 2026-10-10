@@ -1,0 +1,10 @@
+-- A rejected rule must not poison the existing valid stratification.
+relation seed(1) relation a(1) relation b(1)
+fact seed(1)
+rule a(?x) :- seed(?x), not b(?x)
+reject(function() rule b(?x) :- a(?x) end, "negation cycle")
+assert(count(query a(?x)) == 1 and count(query b(?x)) == 0)
+fact b(1)
+assert(count(query a(?x)) == 0)
+retract b(1)
+assert(count(query a(?x)) == 1)

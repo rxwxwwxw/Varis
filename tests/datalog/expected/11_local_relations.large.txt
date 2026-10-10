@@ -1,0 +1,20 @@
+from 1	119
+from M-1	1
+local relation not global	error
+held iterator keeps snapshot	119
+new call sees new fact	120
+relation of the call from M-2	2
+relation of the call from M-3	3
+local uses local	3
+local shadows world	2
+qualified name bypasses local	global
+world relation after block	global
+lua local does not shadow	global
+new declaration starts empty	0
+new relation sees new fact	new
+old query keeps old relation	old
+local relation keeps its world	p q
+world rule on local relation	error
+failed rule left no relation	error
+local mutual recursion	60
+total reachable over starts	5370
