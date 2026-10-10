@@ -48,11 +48,13 @@ class BindingRecord {
 
     override string toString() const {
         import std.array : appender;
+
         auto app = appender!string();
         app.put("{");
         size_t idx = 0;
         foreach (k, v; fields) {
-            if (idx > 0) app.put(", ");
+            if (idx > 0)
+                app.put(", ");
             app.put(format("%s = %s", k, toLuaString(v)));
             idx++;
         }
@@ -65,42 +67,44 @@ class BindingRecord {
 private LuaTable g_bindingRecordMetatable = null;
 
 LuaTable getBindingRecordMetatable(LuaState state) {
-    if (g_bindingRecordMetatable !is null) return g_bindingRecordMetatable;
+    if (g_bindingRecordMetatable !is null)
+        return g_bindingRecordMetatable;
 
     auto mt = new LuaTable();
     mt.rawset(LuaValue("__name"), LuaValue("binding_record"));
 
     // __index: function(rec, key)
     mt.rawset(LuaValue("__index"), LuaValue(new LuaNativeFunction((void* s, LuaValue[] args) {
-        if (args.length < 2) return [luaNil()];
-        auto ud = args[0].match!((LuaUserData u) => u, _ => null);
-        if (ud !is null && ud.payload !is null) {
-            if (auto rec = cast(BindingRecord)ud.payload) {
-                string key = args[1].match!((string s) => s, _ => toLuaString(args[1]));
-                return [rec.getField(key)];
-            }
-        }
-        return [luaNil()];
-    }, "__index")));
+                if (args.length < 2)
+                    return [luaNil()];
+                auto ud = args[0].match!((LuaUserData u) => u, _ => null);
+                if (ud !is null && ud.payload !is null) {
+                    if (auto rec = cast(BindingRecord) ud.payload) {
+                        string key = args[1].match!((string s) => s, _ => toLuaString(args[1]));
+                        return [rec.getField(key)];
+                    }
+                }
+                return [luaNil()];
+            }, "__index")));
 
     // __newindex: reject modification
     mt.rawset(LuaValue("__newindex"), LuaValue(new LuaNativeFunction((void* s, LuaValue[] args) {
-        throw new LuaException("cannot modify immutable binding record");
-        return cast(LuaValue[])[];
-    }, "__newindex")));
+                throw new LuaException("cannot modify immutable binding record");
+                return cast(LuaValue[])[];
+            }, "__newindex")));
 
     // __tostring
     mt.rawset(LuaValue("__tostring"), LuaValue(new LuaNativeFunction((void* s, LuaValue[] args) {
-        if (args.length > 0) {
-            auto ud = args[0].match!((LuaUserData u) => u, _ => null);
-            if (ud !is null && ud.payload !is null) {
-                if (auto rec = cast(BindingRecord)ud.payload) {
-                    return [LuaValue(rec.toString())];
+                if (args.length > 0) {
+                    auto ud = args[0].match!((LuaUserData u) => u, _ => null);
+                    if (ud !is null && ud.payload !is null) {
+                        if (auto rec = cast(BindingRecord) ud.payload) {
+                            return [LuaValue(rec.toString())];
+                        }
+                    }
                 }
-            }
-        }
-        return [LuaValue("binding_record")];
-    }, "__tostring")));
+                return [LuaValue("binding_record")];
+            }, "__tostring")));
 
     g_bindingRecordMetatable = mt;
     return mt;
@@ -118,7 +122,7 @@ BindingRecord unwrapBindingRecord(LuaValue val) {
     if (val.typeOf() == LuaType.UserData) {
         auto ud = val.match!((LuaUserData u) => u, _ => null);
         if (ud !is null && ud.payload !is null) {
-            if (auto rec = cast(BindingRecord)ud.payload) {
+            if (auto rec = cast(BindingRecord) ud.payload) {
                 return rec;
             }
         }
@@ -142,11 +146,11 @@ class QueryIterator {
     BindingRecord[] resultRecords;
 
     this(
-        LuaState state,
-        Goal[] goals,
-        string[] returnedVarNames,
-        Relation[size_t] closureRels,
-        Rule[] closureRules
+            LuaState state,
+            Goal[] goals,
+            string[] returnedVarNames,
+            Relation[size_t] closureRels,
+            Rule[] closureRules
     ) {
         if (auto transaction = currentTransaction()) {
             transaction.invalidateIterators ~= { this.isInvalid = true; };
@@ -159,7 +163,8 @@ class QueryIterator {
         // relations even after the declaring stack frame has gone away.
         bool[Rule] seenRules;
         void snapshot(RelationRef reference) {
-            if (reference.relId in this.snapshotRels) return;
+            if (reference.relId in this.snapshotRels)
+                return;
             auto rel = closureRels.get(reference.relId, reference.resolvedRelation);
             if (rel is null) {
                 throw new LuaException(format("missing query dependency relation '%s'", reference.name));
@@ -172,22 +177,29 @@ class QueryIterator {
             this.snapshotRels[rel.id] = clonedRel;
 
             void includeRule(Rule rule) {
-                if (rule in seenRules) return;
+                if (rule in seenRules)
+                    return;
                 seenRules[rule] = true;
                 clonedRel.rules ~= rule;
                 this.snapshotRules ~= rule;
                 foreach (goal; flattenGoals(rule.bodyGoals)) {
-                    if (goal.relRef !is null) snapshot(goal.relRef);
+                    if (goal.relRef !is null)
+                        snapshot(goal.relRef);
                 }
             }
-            foreach (rule; rel.rules) includeRule(rule);
+
+            foreach (rule; rel.rules)
+                includeRule(rule);
             // Direct engine callers may supply rules separately from Relation.rules.
             foreach (rule; closureRules) {
-                if (rule.headRel.relId == rel.id) includeRule(rule);
+                if (rule.headRel.relId == rel.id)
+                    includeRule(rule);
             }
         }
+
         foreach (goal; flattenGoals(goals)) {
-            if (goal.relRef !is null) snapshot(goal.relRef);
+            if (goal.relRef !is null)
+                snapshot(goal.relRef);
         }
     }
 

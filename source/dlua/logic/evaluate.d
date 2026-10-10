@@ -20,36 +20,41 @@ import dlua.logic.validate;
 import std.format : format;
 import std.algorithm : canFind, sort;
 
-bool numLt(LuaValue a, LuaValue b) { return luaNumberLess(a, b); }
-bool numLe(LuaValue a, LuaValue b) { return luaNumberLessEqual(a, b); }
+bool numLt(LuaValue a, LuaValue b) {
+    return luaNumberLess(a, b);
+}
+
+bool numLe(LuaValue a, LuaValue b) {
+    return luaNumberLessEqual(a, b);
+}
 
 /// Evaluates comparisons according to §8.4
 bool evalComparison(LuaValue left, CompareOp op, LuaValue right) {
     final switch (op) {
-        case CompareOp.Eq:
-            return luaRawEqual(left, right);
-        case CompareOp.Neq:
-            return !luaRawEqual(left, right);
-        case CompareOp.Lt:
-            if (isNumber(left) && isNumber(right)) {
-                return numLt(left, right);
-            }
-            if (isString(left) && isString(right)) {
-                return left.match!((string a) => a, _ => "") < right.match!((string b) => b, _ => "");
-            }
-            throw new LuaException(format("attempt to compare %s with %s", typeName(left), typeName(right)));
-        case CompareOp.Le:
-            if (isNumber(left) && isNumber(right)) {
-                return numLe(left, right);
-            }
-            if (isString(left) && isString(right)) {
-                return left.match!((string a) => a, _ => "") <= right.match!((string b) => b, _ => "");
-            }
-            throw new LuaException(format("attempt to compare %s with %s", typeName(left), typeName(right)));
-        case CompareOp.Gt:
-            return evalComparison(right, CompareOp.Lt, left);
-        case CompareOp.Ge:
-            return evalComparison(right, CompareOp.Le, left);
+    case CompareOp.Eq:
+        return luaRawEqual(left, right);
+    case CompareOp.Neq:
+        return !luaRawEqual(left, right);
+    case CompareOp.Lt:
+        if (isNumber(left) && isNumber(right)) {
+            return numLt(left, right);
+        }
+        if (isString(left) && isString(right)) {
+            return left.match!((string a) => a, _ => "") < right.match!((string b) => b, _ => "");
+        }
+        throw new LuaException(format("attempt to compare %s with %s", typeName(left), typeName(right)));
+    case CompareOp.Le:
+        if (isNumber(left) && isNumber(right)) {
+            return numLe(left, right);
+        }
+        if (isString(left) && isString(right)) {
+            return left.match!((string a) => a, _ => "") <= right.match!((string b) => b, _ => "");
+        }
+        throw new LuaException(format("attempt to compare %s with %s", typeName(left), typeName(right)));
+    case CompareOp.Gt:
+        return evalComparison(right, CompareOp.Lt, left);
+    case CompareOp.Ge:
+        return evalComparison(right, CompareOp.Le, left);
     }
 }
 
@@ -63,25 +68,27 @@ struct Evaluator {
 
     /// Evaluates query goals against a dependency closure of relations and rules
     LuaValue[string][] evaluateQuery(
-        Goal[] queryGoals,
-        Relation[size_t] closureRels,
-        Rule[] closureRules,
-        string[] returnedVarNames,
-        LuaValue[string] initialBindings = null
+            Goal[] queryGoals,
+            Relation[size_t] closureRels,
+            Rule[] closureRules,
+            string[] returnedVarNames,
+            LuaValue[string] initialBindings = null
     ) {
         import dlua.fiber : DluaFiber, currentLuaFiber;
         import core.thread : Fiber;
 
         beginNoYieldScope();
-        scope(exit) endNoYieldScope();
+        scope (exit)
+            endNoYieldScope();
         auto curFib = currentLuaFiber();
         bool prevYield = true;
         if (curFib !is null) {
             prevYield = curFib.isYieldAllowed;
             curFib.isYieldAllowed = false;
         }
-        scope(exit) {
-            if (curFib !is null) curFib.isYieldAllowed = prevYield;
+        scope (exit) {
+            if (curFib !is null)
+                curFib.isYieldAllowed = prevYield;
         }
 
         // 1. Stratify relations
@@ -90,7 +97,8 @@ struct Evaluator {
         // 2. Group relations into strata
         int maxStratum = 0;
         foreach (_, s; nodeStratum) {
-            if (s > maxStratum) maxStratum = s;
+            if (s > maxStratum)
+                maxStratum = s;
         }
 
         // 3. Initialize visible and derived facts
@@ -177,10 +185,10 @@ struct Evaluator {
 
     /// Match a conjunction of goals against currently visible facts
     LuaValue[string][] matchGoals(
-        Goal[] goals,
-        ref bool[RelTuple][size_t] visibleFacts,
-        ref Relation[size_t] closureRels,
-        LuaValue[string] initialBindings = null
+            Goal[] goals,
+            ref bool[RelTuple][size_t] visibleFacts,
+            ref Relation[size_t] closureRels,
+            LuaValue[string] initialBindings = null
     ) {
         Goal[] posGoals;
         Goal[] compGoals;
@@ -189,11 +197,16 @@ struct Evaluator {
         Goal[] aggregateGoals;
 
         foreach (g; goals) {
-            if (g.kind == GoalKind.PositiveAtom) posGoals ~= g;
-            else if (g.kind == GoalKind.Comparison) compGoals ~= g;
-            else if (g.kind == GoalKind.Guard) guardGoals ~= g;
-            else if (g.kind == GoalKind.NegatedAtom) negGoals ~= g;
-            else if (g.kind == GoalKind.Aggregate) aggregateGoals ~= g;
+            if (g.kind == GoalKind.PositiveAtom)
+                posGoals ~= g;
+            else if (g.kind == GoalKind.Comparison)
+                compGoals ~= g;
+            else if (g.kind == GoalKind.Guard)
+                guardGoals ~= g;
+            else if (g.kind == GoalKind.NegatedAtom)
+                negGoals ~= g;
+            else if (g.kind == GoalKind.Aggregate)
+                aggregateGoals ~= g;
         }
 
         // Start with one empty candidate assignment
@@ -228,13 +241,14 @@ struct Evaluator {
                                 // Repeated variables in this atom must also agree.
                                 foreach (j; 0 .. i) {
                                     if (g.terms[j].kind == TermKind.Variable &&
-                                        g.terms[j].varName == term.varName &&
-                                        !luaRawEqual(tuple.values[j], tupleVal)) {
+                                            g.terms[j].varName == term.varName &&
+                                            !luaRawEqual(tuple.values[j], tupleVal)) {
                                         matches = false;
                                         break;
                                     }
                                 }
-                                if (!matches) break;
+                                if (!matches)
+                                    break;
                             }
                         } else if (term.kind == TermKind.Anonymous) {
                             // Matches any value
@@ -253,7 +267,8 @@ struct Evaluator {
                 }
             }
             candidates = nextCandidates;
-            if (candidates.length == 0) return [];
+            if (candidates.length == 0)
+                return [];
         }
 
         // Aggregate results ground variables before ordinary filters.
@@ -261,43 +276,54 @@ struct Evaluator {
             LuaValue[string][] nextCandidates;
             foreach (environment; candidates) {
                 LuaValue[string] inputs;
-                foreach (name; aggregate.aggregateInputs) inputs[name] = environment[name];
+                foreach (name; aggregate.aggregateInputs)
+                    inputs[name] = environment[name];
                 auto assignments = matchGoals(aggregate.aggregateGoals, visibleFacts, closureRels, inputs);
                 bool[RelTuple] distinct;
                 LuaValue result = LuaValue(0L);
                 size_t count;
                 foreach (assignment; assignments) {
                     LuaValue[] values;
-                    foreach (name; aggregate.aggregateLocals) values ~= assignment.get(name, luaNil());
+                    foreach (name; aggregate.aggregateLocals)
+                        values ~= assignment.get(name, luaNil());
                     auto identity = RelTuple(values);
-                    if (identity in distinct) continue;
+                    if (identity in distinct)
+                        continue;
                     distinct[identity] = true;
                     LuaValue value;
                     if (aggregate.aggregateOp != "count") {
                         LuaValue[] arguments;
-                        foreach (name; aggregate.aggregateExpressionVariables) arguments ~= assignment[name];
+                        foreach (name; aggregate.aggregateExpressionVariables)
+                            arguments ~= assignment[name];
                         auto returned = VM.callValue(state, aggregate.aggregateExpression, arguments);
                         value = returned.length ? returned[0] : luaNil();
                     }
                     if (aggregate.aggregateOp == "sum") {
-                        if (!isNumber(value)) throw new LuaException("sum aggregate requires numeric values");
+                        if (!isNumber(value))
+                            throw new LuaException("sum aggregate requires numeric values");
                         result = VM.opAdd(state, result, value);
                         // Reject NaN before it reaches a result binding.
                         RelTuple([result]);
                     } else if (aggregate.aggregateOp == "min" || aggregate.aggregateOp == "max") {
-                        if (!isNumber(value) && !isString(value)) throw new LuaException("min/max aggregate requires numbers or strings");
-                        if (count == 0 || evalComparison(value, aggregate.aggregateOp == "min" ? CompareOp.Lt : CompareOp.Gt, result)) result = value;
+                        if (!isNumber(value) && !isString(value))
+                            throw new LuaException("min/max aggregate requires numbers or strings");
+                        if (count == 0 || evalComparison(value, aggregate.aggregateOp == "min" ? CompareOp.Lt
+                                : CompareOp.Gt, result))
+                            result = value;
                     }
                     count++;
                 }
-                if (aggregate.aggregateOp == "count") result = LuaValue(cast(long)count);
-                if (count == 0 && (aggregate.aggregateOp == "min" || aggregate.aggregateOp == "max")) continue;
+                if (aggregate.aggregateOp == "count")
+                    result = LuaValue(cast(long) count);
+                if (count == 0 && (aggregate.aggregateOp == "min" || aggregate.aggregateOp == "max"))
+                    continue;
                 auto output = environment.dup;
                 output[aggregate.resultVariable] = result;
                 nextCandidates ~= output;
             }
             candidates = nextCandidates;
-            if (!candidates.length) return [];
+            if (!candidates.length)
+                return [];
         }
 
         // 2. Filter with comparisons
@@ -306,17 +332,21 @@ struct Evaluator {
             foreach (env; candidates) {
                 bool pass = true;
                 foreach (g; compGoals) {
-                    LuaValue lval = (g.leftTerm.kind == TermKind.Constant) ? g.leftTerm.constantValue : env.get(g.leftTerm.varName, luaNil());
-                    LuaValue rval = (g.rightTerm.kind == TermKind.Constant) ? g.rightTerm.constantValue : env.get(g.rightTerm.varName, luaNil());
+                    LuaValue lval = (g.leftTerm.kind == TermKind.Constant) ? g.leftTerm.constantValue
+                        : env.get(g.leftTerm.varName, luaNil());
+                    LuaValue rval = (g.rightTerm.kind == TermKind.Constant) ? g.rightTerm.constantValue
+                        : env.get(g.rightTerm.varName, luaNil());
                     if (!evalComparison(lval, g.compOp, rval)) {
                         pass = false;
                         break;
                     }
                 }
-                if (pass) nextCandidates ~= env;
+                if (pass)
+                    nextCandidates ~= env;
             }
             candidates = nextCandidates;
-            if (candidates.length == 0) return [];
+            if (candidates.length == 0)
+                return [];
         }
 
         // 3. Filter with procedural guards
@@ -335,10 +365,12 @@ struct Evaluator {
                         break;
                     }
                 }
-                if (pass) nextCandidates ~= env;
+                if (pass)
+                    nextCandidates ~= env;
             }
             candidates = nextCandidates;
-            if (candidates.length == 0) return [];
+            if (candidates.length == 0)
+                return [];
         }
 
         // 4. Filter with negated atoms
@@ -364,7 +396,8 @@ struct Evaluator {
                         break;
                     }
                 }
-                if (pass) nextCandidates ~= env;
+                if (pass)
+                    nextCandidates ~= env;
             }
             candidates = nextCandidates;
         }

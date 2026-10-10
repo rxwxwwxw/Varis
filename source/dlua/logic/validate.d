@@ -24,57 +24,79 @@ private size_t nextAnonymousVariable;
 private bool[string] validateGoals(Goal[] goals, bool[string] seed = null) {
     auto bound = seed.dup;
     bool[string] outerNames;
-    foreach (name, _; seed) outerNames[name] = true;
+    foreach (name, _; seed)
+        outerNames[name] = true;
     foreach (goal; goals) {
-        foreach (name; goalVariables(goal)) outerNames[name] = true;
+        foreach (name; goalVariables(goal))
+            outerNames[name] = true;
         if (goal.kind == GoalKind.PositiveAtom)
-            foreach (term; goal.terms) if (term.kind == TermKind.Variable) bound[term.varName] = true;
+            foreach (term; goal.terms)
+                if (term.kind == TermKind.Variable)
+                    bound[term.varName] = true;
     }
 
-    foreach (goal; goals) if (goal.kind == GoalKind.Aggregate) {
-        if (goal.resultVariable in bound)
-            throw new LuaException(format("aggregate result '?%s' must be newly bound", goal.resultVariable));
-        bool[string] innerNames;
-        // Anonymous occurrences still contribute distinct local assignments.
-        foreach (inner; goal.aggregateGoals) {
-            if (inner.kind == GoalKind.PositiveAtom) foreach (ref term; inner.terms) {
-                if (term.kind == TermKind.Anonymous)
-                    term = Term.makeVariable(format("@anonymous%d", nextAnonymousVariable++));
+    foreach (goal; goals)
+        if (goal.kind == GoalKind.Aggregate) {
+            if (goal.resultVariable in bound)
+                throw new LuaException(format("aggregate result '?%s' must be newly bound", goal.resultVariable));
+            bool[string] innerNames;
+            // Anonymous occurrences still contribute distinct local assignments.
+            foreach (inner; goal.aggregateGoals) {
+                if (inner.kind == GoalKind.PositiveAtom)
+                    foreach (ref term; inner.terms) {
+                        if (term.kind == TermKind.Anonymous)
+                            term = Term.makeVariable(format("@anonymous%d", nextAnonymousVariable++));
+                    }
+                foreach (name; goalVariables(inner))
+                    innerNames[name] = true;
             }
-            foreach (name; goalVariables(inner)) innerNames[name] = true;
+            foreach (name; goal.aggregateExpressionVariables)
+                innerNames[name] = true;
+            bool[string] inputs;
+            goal.aggregateInputs = [];
+            goal.aggregateLocals = [];
+            foreach (name, _; innerNames) {
+                if (name in outerNames) {
+                    if (name !in bound)
+                        throw new LuaException(format(
+                                "aggregate correlated input '?%s' is not grounded outside aggregate", name));
+                    inputs[name] = true;
+                    goal.aggregateInputs ~= name;
+                } else
+                    goal.aggregateLocals ~= name;
+            }
+            auto innerBound = validateGoals(goal.aggregateGoals, inputs);
+            foreach (name; goal.aggregateExpressionVariables)
+                if (name !in innerBound)
+                    throw new LuaException(format("aggregate expression variable '?%s' is not grounded", name));
+            bound[goal.resultVariable] = true;
         }
-        foreach (name; goal.aggregateExpressionVariables) innerNames[name] = true;
-        bool[string] inputs;
-        goal.aggregateInputs = [];
-        goal.aggregateLocals = [];
-        foreach (name, _; innerNames) {
-            if (name in outerNames) {
-                if (name !in bound) throw new LuaException(format("aggregate correlated input '?%s' is not grounded outside aggregate", name));
-                inputs[name] = true;
-                goal.aggregateInputs ~= name;
-            } else goal.aggregateLocals ~= name;
-        }
-        auto innerBound = validateGoals(goal.aggregateGoals, inputs);
-        foreach (name; goal.aggregateExpressionVariables)
-            if (name !in innerBound) throw new LuaException(format("aggregate expression variable '?%s' is not grounded", name));
-        bound[goal.resultVariable] = true;
-    }
 
     foreach (goal; goals) {
         void requireBound(string name, string context) {
-            if (name !in bound) throw new LuaException(format("variable '?%s' in %s is not bound by a positive relation atom or aggregate", name, context));
+            if (name !in bound)
+                throw new LuaException(format(
+                        "variable '?%s' in %s is not bound by a positive relation atom or aggregate", name, context));
         }
-        if (goal.kind == GoalKind.NegatedAtom) foreach (term; goal.terms) {
-            if (term.kind == TermKind.Anonymous) throw new LuaException("anonymous variable '?_' not permitted in negated atom");
-            if (term.kind == TermKind.Variable) requireBound(term.varName, "negated atom");
-        }
+
+        if (goal.kind == GoalKind.NegatedAtom)
+            foreach (term; goal.terms) {
+                if (term.kind == TermKind.Anonymous)
+                    throw new LuaException("anonymous variable '?_' not permitted in negated atom");
+                if (term.kind == TermKind.Variable)
+                    requireBound(term.varName, "negated atom");
+            }
         if (goal.kind == GoalKind.Comparison) {
             if (goal.leftTerm.kind == TermKind.Anonymous || goal.rightTerm.kind == TermKind.Anonymous)
                 throw new LuaException("anonymous variable '?_' not permitted in comparison");
-            if (goal.leftTerm.kind == TermKind.Variable) requireBound(goal.leftTerm.varName, "comparison");
-            if (goal.rightTerm.kind == TermKind.Variable) requireBound(goal.rightTerm.varName, "comparison");
+            if (goal.leftTerm.kind == TermKind.Variable)
+                requireBound(goal.leftTerm.varName, "comparison");
+            if (goal.rightTerm.kind == TermKind.Variable)
+                requireBound(goal.rightTerm.varName, "comparison");
         }
-        if (goal.kind == GoalKind.Guard) foreach (name; goal.guardVarNames) requireBound(name, "guard");
+        if (goal.kind == GoalKind.Guard)
+            foreach (name; goal.guardVarNames)
+                requireBound(name, "guard");
     }
     return bound;
 }
@@ -87,14 +109,19 @@ void validateRuleSafety(Rule rule) {
         throw new LuaException(format("keyed relation '%s' cannot be a rule head", rule.headRel.name));
     bool[string] bound;
     foreach (goal; rule.bodyGoals) {
-        if (goal.kind == GoalKind.PositiveAtom) foreach (term; goal.terms)
-            if (term.kind == TermKind.Variable) bound[term.varName] = true;
-        if (goal.kind == GoalKind.Aggregate) bound[goal.resultVariable] = true;
+        if (goal.kind == GoalKind.PositiveAtom)
+            foreach (term; goal.terms)
+                if (term.kind == TermKind.Variable)
+                    bound[term.varName] = true;
+        if (goal.kind == GoalKind.Aggregate)
+            bound[goal.resultVariable] = true;
     }
     foreach (term; rule.headTerms) {
-        if (term.kind == TermKind.Anonymous) throw new LuaException("anonymous variable '?_' not permitted in rule head");
+        if (term.kind == TermKind.Anonymous)
+            throw new LuaException("anonymous variable '?_' not permitted in rule head");
         if (term.kind == TermKind.Variable && term.varName !in bound)
-            throw new LuaException(format("variable '?%s' in rule head is not bound by any positive relation atom or aggregate", term.varName));
+            throw new LuaException(format(
+                    "variable '?%s' in rule head is not bound by any positive relation atom or aggregate", term.varName));
     }
     validateGoals(rule.bodyGoals);
 }
@@ -138,13 +165,15 @@ int[size_t] computeStratification(Relation[size_t] relMap, Rule[] allRules) {
         string headName = rule.headRel.name;
         void dependencies(Goal[] goals, bool throughAggregate = false) {
             foreach (goal; goals) {
-                if (goal.kind == GoalKind.Aggregate) dependencies(goal.aggregateGoals, true);
+                if (goal.kind == GoalKind.Aggregate)
+                    dependencies(goal.aggregateGoals, true);
                 if (goal.relRef !is null) {
                     bool strict = throughAggregate || goal.kind == GoalKind.NegatedAtom;
                     edges ~= DepEdge(headId, goal.relRef.relId, strict, headName, goal.relRef.name);
                 }
             }
         }
+
         dependencies(rule.bodyGoals);
     }
 
@@ -179,9 +208,11 @@ int[size_t] computeStratification(Relation[size_t] relMap, Rule[] allRules) {
                 if (w !in indexMap) {
                     strongConnect(w);
                     import std.algorithm : min;
+
                     lowlinkMap[v] = min(lowlinkMap[v], lowlinkMap[w]);
                 } else if (w in onStack && onStack[w]) {
                     import std.algorithm : min;
+
                     lowlinkMap[v] = min(lowlinkMap[v], indexMap[w]);
                 }
             }
@@ -194,7 +225,8 @@ int[size_t] computeStratification(Relation[size_t] relMap, Rule[] allRules) {
                 stack = stack[0 .. $ - 1];
                 onStack[w] = false;
                 scc ~= w;
-                if (w == v) break;
+                if (w == v)
+                    break;
             }
             sccs ~= scc;
         }
@@ -220,14 +252,17 @@ int[size_t] computeStratification(Relation[size_t] relMap, Rule[] allRules) {
             auto fromScc = nodeToScc.get(edge.fromId, size_t.max);
             auto toScc = nodeToScc.get(edge.toId, size_t.max);
             if (fromScc == toScc) {
-                throw new LuaException(format("negation cycle or aggregate cycle detected involving relation '%s' and '%s'", edge.fromName, edge.toName));
+                throw new LuaException(format(
+                        "negation cycle or aggregate cycle detected involving relation '%s' and '%s'", edge.fromName, edge
+                        .toName));
             }
         }
     }
 
     // Assign strata to SCCs (bottom-up / topological)
     int[] sccStratum = new int[sccs.length];
-    foreach (ref s; sccStratum) s = 0;
+    foreach (ref s; sccStratum)
+        s = 0;
 
     // Relax strata until convergence (at most |SCCs| passes)
     bool updated = true;
@@ -238,7 +273,8 @@ int[size_t] computeStratification(Relation[size_t] relMap, Rule[] allRules) {
         foreach (edge; edges) {
             auto uScc = nodeToScc.get(edge.fromId, size_t.max);
             auto vScc = nodeToScc.get(edge.toId, size_t.max);
-            if (uScc == size_t.max || vScc == size_t.max) continue;
+            if (uScc == size_t.max || vScc == size_t.max)
+                continue;
 
             int required = edge.isNegative ? (sccStratum[vScc] + 1) : sccStratum[vScc];
             if (sccStratum[uScc] < required) {

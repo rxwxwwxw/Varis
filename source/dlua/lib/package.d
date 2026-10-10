@@ -54,7 +54,10 @@ void openLibs(LuaState state) {
             auto loadedTbl = loadedVal.match!((LuaTable t) => t, _ => null);
             loadedTbl.rawset(LuaValue("_G"), LuaValue(state.globals));
             loadedTbl.rawset(LuaValue("package"), pkgVal);
-            foreach (name; ["math", "string", "table", "coroutine", "os", "io", "utf8", "debug", "logic", "narrative", "quality"]) {
+            foreach (name; [
+                "math", "string", "table", "coroutine", "os", "io", "utf8", "debug", "logic",
+                "narrative", "quality"
+            ]) {
                 auto g = state.getGlobal(name);
                 if (!isNil(g)) {
                     loadedTbl.rawset(LuaValue(name), g);
@@ -65,16 +68,27 @@ void openLibs(LuaState state) {
     // Capture identities before authored code can replace or alias built-ins.
     void remember(string path, LuaValue value) {
         auto function_ = value.match!((LuaFunction f) => f, _ => null);
-        if (cast(LuaNativeFunction)function_ !is null) {
+        if (cast(LuaNativeFunction) function_ !is null) {
             state.standardNativePaths[function_] = path;
             state.standardNativeFunctions[path] = function_;
         }
     }
-    foreach (entry; state.globals.hashEntries) with (entry) if (isString(key)) remember(key.match!((string s) => s, _ => ""), value);
-    foreach (name; ["math", "string", "table", "coroutine", "os", "io", "utf8", "debug", "logic", "narrative", "quality", "package"]) {
+
+    foreach (entry; state.globals.hashEntries)
+        with (entry)
+            if (isString(key))
+                remember(key.match!((string s) => s, _ => ""), value);
+    foreach (name; [
+        "math", "string", "table", "coroutine", "os", "io", "utf8", "debug", "logic", "narrative",
+        "quality", "package"
+    ]) {
         auto library = state.getGlobal(name).match!((LuaTable t) => t, _ => null);
-        if (library is null) continue;
-        foreach (entry; library.hashEntries) with (entry) if (isString(key)) remember(name ~ "." ~ key.match!((string s) => s, _ => ""), value);
+        if (library is null)
+            continue;
+        foreach (entry; library.hashEntries)
+            with (entry)
+                if (isString(key))
+                    remember(name ~ "." ~ key.match!((string s) => s, _ => ""), value);
     }
     installFastCalls(state);
 

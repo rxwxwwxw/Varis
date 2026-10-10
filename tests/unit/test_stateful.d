@@ -17,9 +17,11 @@ import std.stdio : writeln;
 
 void rejects(void delegate() operation, string diagnostic) {
     import std.string : indexOf;
+
     bool rejected;
-    try { operation(); }
-    catch (LuaException e) {
+    try {
+        operation();
+    } catch (LuaException e) {
         assert(e.msg.indexOf(diagnostic) >= 0, e.msg);
         rejected = true;
     }
@@ -73,8 +75,10 @@ void testTentativeSnapshots() {
     assert(RelTuple([LuaValue("p"), LuaValue(2L)]) in visibleRelation(r).baseFacts);
     auto reference = new RelationRef("value", 2, "", r.id);
     reference.resolvedRelation = r;
-    auto goals = [Goal.makePositiveAtom(reference, [Term.makeConstant(LuaValue("p")), Term.makeVariable("n")])];
-    auto iterator = new QueryIterator(s, goals, ["n"], [r.id:r], []);
+    auto goals = [
+        Goal.makePositiveAtom(reference, [Term.makeConstant(LuaValue("p")), Term.makeVariable("n")])
+    ];
+    auto iterator = new QueryIterator(s, goals, ["n"], [r.id: r], []);
     auto nested = new Transaction(w);
     w.updateFact("value", RelTuple([LuaValue("p"), LuaValue(3L)]), "set");
     nested.finish(true);
@@ -85,7 +89,7 @@ void testTentativeSnapshots() {
     assert(w.version_ == initialVersion && RelTuple([LuaValue("p"), LuaValue(1L)]) in r.baseFacts);
     auto committing = new Transaction(w);
     w.updateFact("value", RelTuple([LuaValue("p"), LuaValue(4L)]), "set");
-    auto retained = new QueryIterator(s, goals, ["n"], [r.id:r], []);
+    auto retained = new QueryIterator(s, goals, ["n"], [r.id: r], []);
     committing.finish(true);
     assert(w.version_ == initialVersion + 1);
     assert(unwrapBindingRecord(retained.next()).getBinding("n") == LuaValue(4L));

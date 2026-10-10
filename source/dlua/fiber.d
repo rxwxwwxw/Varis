@@ -22,7 +22,9 @@ class CoroutineClose : Throwable {
     LuaValue errorObject;
     bool failed;
     this(LuaValue error = LuaValue.init, bool failed = false) {
-        super("coroutine close"); this.errorObject = error; this.failed = failed;
+        super("coroutine close");
+        this.errorObject = error;
+        this.failed = failed;
     }
 }
 
@@ -31,13 +33,16 @@ class CoroutineClose : Throwable {
 __gshared DluaFiber activeLuaFiber;
 
 pragma(inline, true)
-DluaFiber currentLuaFiber() { return activeLuaFiber; }
+DluaFiber currentLuaFiber() {
+    return activeLuaFiber;
+}
 
 /// Runs `fiber` until it yields or finishes, tracking it as the active Lua coroutine.
 void callFiber(DluaFiber fiber) {
     auto previous = activeLuaFiber;
     activeLuaFiber = fiber;
-    scope(exit) activeLuaFiber = previous;
+    scope (exit)
+        activeLuaFiber = previous;
     fiber.call();
 }
 
@@ -47,7 +52,7 @@ class DluaFiber : Fiber {
     LuaThread thread;
     CallInfo[] callStack;
     CallInfo[] callStackStorage; // capacity retained across calls; inactive records are cleared
-    World callWorld;  // lexical world of the call in progress (see VM.doCall)
+    World callWorld; // lexical world of the call in progress (see VM.doCall)
     void* luaStatePtr;
 
     LuaValue[] resumeArgs;
@@ -82,7 +87,8 @@ class DluaFiber : Fiber {
         try {
             import dlua.vm : VM;
             import dlua.state : LuaState;
-            returnResults = VM.callValue(cast(LuaState)luaStatePtr, LuaValue(targetFunction), resumeArgs, false, "", "", true);
+
+            returnResults = VM.callValue(cast(LuaState) luaStatePtr, LuaValue(targetFunction), resumeArgs, false, "", "", true);
         } catch (CoroutineClose signal) {
             hasError = signal.failed;
             errorObject = signal.errorObject;
@@ -90,31 +96,41 @@ class DluaFiber : Fiber {
             hasError = true;
             errorMessage = e.msg;
             errorObject = e.errorObject;
-            if (!closing) Fiber.yield();
+            if (!closing)
+                Fiber.yield();
         } catch (Exception e) {
             hasError = true;
             errorMessage = e.msg;
             errorObject = LuaValue(e.msg);
-            if (!closing) Fiber.yield();
+            if (!closing)
+                Fiber.yield();
         }
     }
 
     // Keep an unprotected Lua error's frames live until explicit close.
     void suspendError(LuaValue error) {
-        hasError = true; errorObject = error;
+        hasError = true;
+        errorObject = error;
         Fiber.yield();
     }
 
     LuaValue[] closeThread() {
         closing = true;
         isYieldAllowed = false;
-        if (thread !is null) thread.status = "running";
-        if (started && state != Fiber.State.TERM) callFiber(this);
-        if (thread !is null) thread.status = "dead";
+        if (thread !is null)
+            thread.status = "running";
+        if (started && state != Fiber.State.TERM)
+            callFiber(this);
+        if (thread !is null)
+            thread.status = "dead";
         auto result = hasError ? [LuaValue(false), errorObject] : [LuaValue(true)];
-        hasError = false; errorObject = luaNil();
-        resumeArgs = []; yieldResults = []; returnResults = [];
-        closing = false; isYieldAllowed = true;
+        hasError = false;
+        errorObject = luaNil();
+        resumeArgs = [];
+        yieldResults = [];
+        returnResults = [];
+        closing = false;
+        isYieldAllowed = true;
         return result;
     }
 
@@ -125,6 +141,7 @@ class DluaFiber : Fiber {
         }
         this.yieldResults = results;
         Fiber.yield();
-        if (closing) throw new CoroutineClose();
+        if (closing)
+            throw new CoroutineClose();
     }
 }

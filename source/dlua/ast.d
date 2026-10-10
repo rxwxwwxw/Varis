@@ -17,6 +17,7 @@ struct SourceLoc {
 
     string toString() const @safe pure {
         import std.format : format;
+
         return format("%d:%d", line, column);
     }
 }
@@ -26,7 +27,7 @@ struct SourceLoc {
 /// runtime type replaces the checked class cast (a function call per test).
 pragma(inline, true)
 T as(T : AstNode)(AstNode node) @trusted {
-    return node !is null && typeid(node) is typeid(T) ? cast(T)cast(void*)node : null;
+    return node !is null && typeid(node) is typeid(T) ? cast(T) cast(void*) node : null;
 }
 
 abstract class AstNode {
@@ -43,7 +44,7 @@ abstract class AstNode {
 
 abstract class Expr : AstNode {
     bool parenthesized;
-    int lastTokenLine;  // line of the last token of the expression (instruction line for indexing)
+    int lastTokenLine; // line of the last token of the expression (instruction line for indexing)
     this(SourceLoc loc = SourceLoc.init) {
         super(loc);
     }
@@ -138,7 +139,7 @@ final class QueryExpr : Expr {
 }
 
 struct TableField {
-    Expr key;   // null if list element
+    Expr key; // null if list element
     Expr value;
 }
 
@@ -185,8 +186,8 @@ final class CallExpr : Expr {
 }
 
 final class MethodCallExpr : Expr {
-    int nameLine;   // line of the method name (OP_SELF)
-    int argsLine;   // line of the call arguments (OP_CALL)
+    int nameLine; // line of the method name (OP_SELF)
+    int argsLine; // line of the call arguments (OP_CALL)
     Expr receiver;
     string method;
     Expr[] args;
@@ -200,10 +201,10 @@ final class MethodCallExpr : Expr {
 }
 
 enum UnaryOp {
-    Neg,    // -
-    Not,    // not
+    Neg, // -
+    Not, // not
     BitNot, // ~
-    Len     // #
+    Len // #
 }
 
 final class UnaryExpr : Expr {
@@ -218,27 +219,27 @@ final class UnaryExpr : Expr {
 }
 
 enum BinaryOp {
-    Add,    // +
-    Sub,    // -
-    Mul,    // *
-    Mod,    // %
-    Pow,    // ^
-    Div,    // /
-    IDiv,   // //
-    BAnd,   // &
-    BOr,    // |
-    BXor,   // ~
-    Shl,    // <<
-    Shr,    // >>
+    Add, // +
+    Sub, // -
+    Mul, // *
+    Mod, // %
+    Pow, // ^
+    Div, // /
+    IDiv, // //
+    BAnd, // &
+    BOr, // |
+    BXor, // ~
+    Shl, // <<
+    Shr, // >>
     Concat, // ..
-    Eq,     // ==
-    Ne,     // ~=
-    Lt,     // <
-    Le,     // <=
-    Gt,     // >
-    Ge,     // >=
-    And,    // and
-    Or      // or
+    Eq, // ==
+    Ne, // ~=
+    Lt, // <
+    Le, // <=
+    Gt, // >
+    Ge, // >=
+    And, // and
+    Or // or
 }
 
 final class BinaryExpr : Expr {
@@ -280,7 +281,7 @@ abstract class Stmt : AstNode {
 
 final class BlockStmt : Stmt {
     Stmt[] statements;
-    int endLine;  // line of the last token of the block (chunks only)
+    int endLine; // line of the last token of the block (chunks only)
 
     this(Stmt[] statements = null, SourceLoc loc = SourceLoc.init) {
         super(loc);
@@ -361,7 +362,7 @@ struct IfBranch {
     Expr condition;
     BlockStmt body;
     SourceLoc loc;
-    int thenLine;  // line of the 'then' token
+    int thenLine; // line of the 'then' token
 }
 
 final class IfStmt : Stmt {
@@ -406,7 +407,7 @@ final class ForGenericStmt : Stmt {
 }
 
 final class FunctionDeclStmt : Stmt {
-    Expr target;            // e.g. VariableExpr, FieldExpr, IndexExpr
+    Expr target; // e.g. VariableExpr, FieldExpr, IndexExpr
     FunctionDefExpr def;
     bool isLocal;
     string localName;
@@ -508,8 +509,11 @@ final class AstAggregateGoal : AstGoal {
     Expr expression;
     AstGoal[] goals;
     this(string resultVariable, string operation, Expr expression, AstGoal[] goals, SourceLoc loc) {
-        super(loc); this.resultVariable = resultVariable; this.operation = operation;
-        this.expression = expression; this.goals = goals;
+        super(loc);
+        this.resultVariable = resultVariable;
+        this.operation = operation;
+        this.expression = expression;
+        this.goals = goals;
     }
 }
 
@@ -553,25 +557,37 @@ final class NarrativeDefinitionStmt : Stmt {
     Expr[] fieldValues;
     NarrativeDefinitionStmt[] choices;
     BlockStmt effect;
-    this(string kind, string name, SourceLoc loc) { super(loc); this.kind = kind; this.name = name; }
+    this(string kind, string name, SourceLoc loc) {
+        super(loc);
+        this.kind = kind;
+        this.name = name;
+    }
 }
 
 final class NarrativeDeckStmt : Stmt {
     string name;
     Expr options;
-    this(string name, Expr options, SourceLoc loc) { super(loc); this.name = name; this.options = options; }
+    this(string name, Expr options, SourceLoc loc) {
+        super(loc);
+        this.name = name;
+        this.options = options;
+    }
 }
 
 final class TransactionStmt : Stmt {
     Expr worldExpr;
     BlockStmt body;
     this(Expr worldExpr, BlockStmt body, SourceLoc loc) {
-        super(loc); this.worldExpr = worldExpr; this.body = body;
+        super(loc);
+        this.worldExpr = worldExpr;
+        this.body = body;
     }
 }
 
 final class RollbackStmt : Stmt {
-    this(SourceLoc loc) { super(loc); }
+    this(SourceLoc loc) {
+        super(loc);
+    }
 }
 
 final class UpdateStmt : Stmt {
@@ -580,7 +596,11 @@ final class UpdateStmt : Stmt {
     Expr[] args;
     Expr delta;
     this(string operation, AstRelRef relRef, Expr[] args, Expr delta, SourceLoc loc) {
-        super(loc); this.operation = operation; this.relRef = relRef; this.args = args; this.delta = delta;
+        super(loc);
+        this.operation = operation;
+        this.relRef = relRef;
+        this.args = args;
+        this.delta = delta;
     }
 }
 

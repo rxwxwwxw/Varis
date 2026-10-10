@@ -29,40 +29,69 @@ size_t getNextRuleId() {
 
 /// Transaction state is coroutine-specific; overlays never modify committed relations.
 private Transaction[Fiber] activeTransactions;
-private __gshared size_t readOnlyEvaluations;  // one interpreter thread; thread-local access is slow on macOS
-private __gshared size_t notificationDepth;  // one interpreter thread; thread-local access is slow on macOS
+private __gshared size_t readOnlyEvaluations; // one interpreter thread; thread-local access is slow on macOS
+private __gshared size_t notificationDepth; // one interpreter thread; thread-local access is slow on macOS
 // Dynamic no-yield scopes include helpers and synchronously resumed coroutines.
-private __gshared size_t noYieldDepth;  // one interpreter thread; thread-local access is slow on macOS
-void beginNoYieldScope() { noYieldDepth++; }
-void endNoYieldScope() { assert(noYieldDepth); noYieldDepth--; }
-bool isNoYieldScope() { return noYieldDepth != 0; }
-void beginNotificationDispatch() { notificationDepth++; }
-void endNotificationDispatch() { assert(notificationDepth); notificationDepth--; }
-bool isNotificationDispatch() { return notificationDepth != 0; }
+private __gshared size_t noYieldDepth; // one interpreter thread; thread-local access is slow on macOS
+void beginNoYieldScope() {
+    noYieldDepth++;
+}
 
-void beginReadOnlyEvaluation() { readOnlyEvaluations++; }
+void endNoYieldScope() {
+    assert(noYieldDepth);
+    noYieldDepth--;
+}
+
+bool isNoYieldScope() {
+    return noYieldDepth != 0;
+}
+
+void beginNotificationDispatch() {
+    notificationDepth++;
+}
+
+void endNotificationDispatch() {
+    assert(notificationDepth);
+    notificationDepth--;
+}
+
+bool isNotificationDispatch() {
+    return notificationDepth != 0;
+}
+
+void beginReadOnlyEvaluation() {
+    readOnlyEvaluations++;
+}
+
 void endReadOnlyEvaluation() {
     assert(readOnlyEvaluations > 0);
     readOnlyEvaluations--;
 }
-bool isReadOnlyEvaluation() { return readOnlyEvaluations != 0; }
+
+bool isReadOnlyEvaluation() {
+    return readOnlyEvaluations != 0;
+}
 
 Transaction currentTransaction() {
     return activeTransactions.get(Fiber.getThis(), null);
 }
 
 void checkMutationWorld(World world) {
-    if (world.notifyingDepth) throw new LuaException("cannot mutate notifying world from an observer callback");
-    if (world.readOnlyDepth || isReadOnlyEvaluation()) throw new LuaException("world mutation prohibited during read-only narrative evaluation");
+    if (world.notifyingDepth)
+        throw new LuaException("cannot mutate notifying world from an observer callback");
+    if (world.readOnlyDepth || isReadOnlyEvaluation())
+        throw new LuaException("world mutation prohibited during read-only narrative evaluation");
     auto transaction = currentTransaction();
-    if (world.transactionOwner !is null && world.transactionOwner !is transaction && (transaction is null || transaction.world !is world))
+    if (world.transactionOwner !is null && world.transactionOwner !is transaction && (transaction is null || transaction
+            .world !is world))
         throw new LuaException("world is locked by another transaction");
     if (transaction !is null && transaction.world !is world)
         throw new LuaException("cross-world mutation during a transaction");
 }
 
 void prohibitProgramChange() {
-    if (isReadOnlyEvaluation()) throw new LuaException("program registration prohibited during read-only narrative evaluation");
+    if (isReadOnlyEvaluation())
+        throw new LuaException("program registration prohibited during read-only narrative evaluation");
     if (currentTransaction() !is null)
         throw new LuaException("schema and rule registration prohibited during a transaction");
 }
@@ -94,7 +123,8 @@ class Transaction {
         if (world.transactionOwner !is null && parent is null)
             throw new LuaException("world is locked by another transaction");
         this.world = world;
-        if (parent is null) world.transactionOwner = this;
+        if (parent is null)
+            world.transactionOwner = this;
         fiber = currentLuaFiber();
         if (fiber !is null) {
             previousYieldAllowed = fiber.isYieldAllowed;
@@ -105,12 +135,14 @@ class Transaction {
     }
 
     Relation read(Relation original) {
-        if (auto entry = original in overlays) return *entry;
+        if (auto entry = original in overlays)
+            return *entry;
         return parent !is null ? parent.read(original) : original;
     }
 
     Relation write(Relation original) {
-        if (auto entry = original in overlays) return *entry;
+        if (auto entry = original in overlays)
+            return *entry;
         auto source = read(original);
         auto copy = new Relation(original.id, original.name, original.arity);
         copy.protectedRelation = source.protectedRelation;
@@ -126,12 +158,14 @@ class Transaction {
     }
 
     Object readParticipant(TransactionParticipant participant) {
-        if (auto state = participant in participants) return *state;
+        if (auto state = participant in participants)
+            return *state;
         return parent !is null ? parent.readParticipant(participant) : participant.committedState();
     }
 
     Object writeParticipant(TransactionParticipant participant) {
-        if (auto state = participant in participants) return *state;
+        if (auto state = participant in participants)
+            return *state;
         auto copy = participant.copyState(readParticipant(participant));
         participants[participant] = copy;
         return copy;
@@ -139,49 +173,77 @@ class Transaction {
 
     void finish(bool commit) {
         bool publishedFacts;
-        if (finished) return;
+        if (finished)
+            return;
         assert(currentTransaction() is this);
         if (commit) {
             if (parent !is null) {
-                foreach (original, copy; overlays) parent.overlays[original] = copy;
+                foreach (original, copy; overlays)
+                    parent.overlays[original] = copy;
                 parent.invalidateIterators ~= invalidateIterators;
-                foreach (participant, value; participants) parent.participants[participant] = value;
+                foreach (participant, value; participants)
+                    parent.participants[participant] = value;
                 parent.afterCommit ~= afterCommit;
             } else {
                 // Prepare all participants before any state is published.
-                foreach (participant, value; participants) participant.prepareCommit(this, value);
+                foreach (participant, value; participants)
+                    participant.prepareCommit(this, value);
                 bool changed;
                 foreach (original, copy; overlays) {
-                    if (original.version_ == copy.version_) continue;
+                    if (original.version_ == copy.version_)
+                        continue;
                     original.baseFacts = copy.baseFacts;
                     original.keyIndex = copy.keyIndex;
                     original.version_ = copy.version_;
                     changed = true;
                 }
-                if (changed) { world.version_++; publishedFacts = true; }
-                foreach (participant, value; participants) participant.publishState(value);
+                if (changed) {
+                    world.version_++;
+                    publishedFacts = true;
+                }
+                foreach (participant, value; participants)
+                    participant.publishState(value);
             }
-        } else foreach (invalidate; invalidateIterators) invalidate();
-        if (parent is null) world.transactionOwner = null;
-        if (parent is null) activeTransactions.remove(Fiber.getThis());
-        else activeTransactions[Fiber.getThis()] = parent;
-        if (fiber !is null) fiber.isYieldAllowed = previousYieldAllowed;
+        } else
+            foreach (invalidate; invalidateIterators)
+                invalidate();
+        if (parent is null)
+            world.transactionOwner = null;
+        if (parent is null)
+            activeTransactions.remove(Fiber.getThis());
+        else
+            activeTransactions[Fiber.getThis()] = parent;
+        if (fiber !is null)
+            fiber.isYieldAllowed = previousYieldAllowed;
         finished = true;
         endNoYieldScope();
         if (commit && parent is null) {
             // Observers and deferred callbacks see the fully published state.
             // Finish all callbacks even if one fails; report the first error.
             Exception firstError;
-            if (publishedFacts) try { world.notifyCommittedChange(); } catch (Exception error) { firstError = error; }
-            foreach (callback; afterCommit) try { callback(); } catch (Exception error) { if (firstError is null) firstError = error; }
-            if (firstError !is null) throw firstError;
+            if (publishedFacts)
+                try {
+                    world.notifyCommittedChange();
+                } catch (Exception error) {
+                    firstError = error;
+                }
+            foreach (callback; afterCommit)
+                try {
+                    callback();
+                } catch (Exception error) {
+                    if (firstError is null)
+                        firstError = error;
+                }
+            if (firstError !is null)
+                throw firstError;
         }
     }
 }
 
 Relation visibleRelation(Relation relation) {
     auto transaction = currentTransaction();
-    if (transaction !is null && relation.ownerWorld is transaction.world) return transaction.read(relation);
+    if (transaction !is null && relation.ownerWorld is transaction.world)
+        return transaction.read(relation);
     return relation;
 }
 
@@ -212,31 +274,38 @@ class Relation {
 
     RelTuple tupleKey(RelTuple tuple) {
         LuaValue[] values;
-        foreach (column; keyColumns) values ~= tuple.values[column];
+        foreach (column; keyColumns)
+            values ~= tuple.values[column];
         return RelTuple(values);
     }
 
     void requireKey(RelTuple key) {
-        if (keyColumns.length == 0) throw new LuaException(format("relation '%s' is not keyed", name));
+        if (keyColumns.length == 0)
+            throw new LuaException(format("relation '%s' is not keyed", name));
         if (key.length != keyColumns.length)
-            throw new LuaException(format("relation '%s' expects %d key arguments, got %d", name, keyColumns.length, key.length));
+            throw new LuaException(format("relation '%s' expects %d key arguments, got %d", name, keyColumns.length, key
+                    .length));
     }
 
     bool setFact(RelTuple tuple) {
-        if (protectedRelation) throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
+        if (protectedRelation)
+            throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
         if (ownerWorld !is null) {
             checkMutationWorld(ownerWorld);
-            if (auto transaction = currentTransaction()) return transaction.write(this).setFact(tuple);
+            if (auto transaction = currentTransaction())
+                return transaction.write(this).setFact(tuple);
         } else if (isLocal && currentTransaction() !is null) {
             throw new LuaException("local relation mutation prohibited during a transaction");
         }
-        if (tuple.length != cast(size_t)arity)
+        if (tuple.length != cast(size_t) arity)
             throw new LuaException(format("relation '%s' expects arity %d, got %d", name, arity, tuple.length));
-        if (validateTuple !is null) validateTuple(tuple);
+        if (validateTuple !is null)
+            validateTuple(tuple);
         auto key = tupleKey(tuple);
         requireKey(key);
         if (auto old = key in keyIndex) {
-            if (*old == tuple) return false;
+            if (*old == tuple)
+                return false;
             baseFacts.remove(*old);
         }
         keyIndex[key] = tuple;
@@ -246,23 +315,28 @@ class Relation {
     }
 
     bool deleteKey(RelTuple key) {
-        if (protectedRelation) throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
+        if (protectedRelation)
+            throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
         if (ownerWorld !is null) {
             checkMutationWorld(ownerWorld);
-            if (auto transaction = currentTransaction()) return transaction.write(this).deleteKey(key);
+            if (auto transaction = currentTransaction())
+                return transaction.write(this).deleteKey(key);
         } else if (isLocal && currentTransaction() !is null) {
             throw new LuaException("local relation mutation prohibited during a transaction");
         }
         requireKey(key);
-        if (auto old = key in keyIndex) return retractFact(*old);
+        if (auto old = key in keyIndex)
+            return retractFact(*old);
         return false;
     }
 
     bool adjustKey(RelTuple key, LuaValue delta) {
-        if (protectedRelation) throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
+        if (protectedRelation)
+            throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
         if (ownerWorld !is null) {
             checkMutationWorld(ownerWorld);
-            if (auto transaction = currentTransaction()) return transaction.write(this).adjustKey(key, delta);
+            if (auto transaction = currentTransaction())
+                return transaction.write(this).adjustKey(key, delta);
         } else if (isLocal && currentTransaction() !is null) {
             throw new LuaException("local relation mutation prohibited during a transaction");
         }
@@ -270,12 +344,16 @@ class Relation {
         if (arity != keyColumns.length + 1)
             throw new LuaException(format("relation '%s' requires exactly one non-key column for adjust", name));
         auto old = key in keyIndex;
-        if (old is null) throw new LuaException(format("relation '%s': adjust key is absent", name));
+        if (old is null)
+            throw new LuaException(format("relation '%s': adjust key is absent", name));
         size_t valueColumn;
-        foreach (i; 0 .. cast(size_t)arity) {
+        foreach (i; 0 .. cast(size_t) arity) {
             bool isKey;
-            foreach (k; keyColumns) if (k == i) isKey = true;
-            if (!isKey) valueColumn = i;
+            foreach (k; keyColumns)
+                if (k == i)
+                    isKey = true;
+            if (!isKey)
+                valueColumn = i;
         }
         auto value = old.values[valueColumn];
         if ((!isInteger(value) && !isFloat(value)) || (!isInteger(delta) && !isFloat(delta)))
@@ -285,8 +363,9 @@ class Relation {
             values[valueColumn] = LuaValue(value.match!((long x) => x, _ => 0L) + delta.match!((long x) => x, _ => 0L));
         } else {
             double number(LuaValue v) {
-                return v.match!((long x) => cast(double)x, (double x) => x, _ => 0.0);
+                return v.match!((long x) => cast(double) x, (double x) => x, _ => 0.0);
             }
+
             values[valueColumn] = LuaValue(number(value) + number(delta));
         }
         return setFact(RelTuple(values));
@@ -294,23 +373,27 @@ class Relation {
 
     /// Add a base fact. Returns true if newly inserted, false if duplicate.
     bool addFact(RelTuple tuple) {
-        if (protectedRelation) throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
+        if (protectedRelation)
+            throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
         if (ownerWorld !is null) {
             checkMutationWorld(ownerWorld);
-            if (auto transaction = currentTransaction()) return transaction.write(this).addFact(tuple);
+            if (auto transaction = currentTransaction())
+                return transaction.write(this).addFact(tuple);
         } else if (isLocal && currentTransaction() !is null) {
             throw new LuaException("local relation mutation prohibited during a transaction");
         }
-        if (tuple.length != cast(size_t)arity) {
+        if (tuple.length != cast(size_t) arity) {
             throw new LuaException(format("relation '%s' expects arity %d, got %d", name, arity, tuple.length));
         }
-        if (validateTuple !is null) validateTuple(tuple);
+        if (validateTuple !is null)
+            validateTuple(tuple);
         if (tuple in baseFacts) {
             return false;
         }
         if (keyColumns.length) {
             auto key = tupleKey(tuple);
-            if (key in keyIndex) throw new LuaException(format("relation '%s': conflicting fact for existing key", name));
+            if (key in keyIndex)
+                throw new LuaException(format("relation '%s': conflicting fact for existing key", name));
             keyIndex[key] = tuple;
         }
         baseFacts[tuple] = true;
@@ -320,18 +403,21 @@ class Relation {
 
     /// Retract a base fact. Returns true if removed, false if not found.
     bool retractFact(RelTuple tuple) {
-        if (protectedRelation) throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
+        if (protectedRelation)
+            throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
         if (ownerWorld !is null) {
             checkMutationWorld(ownerWorld);
-            if (auto transaction = currentTransaction()) return transaction.write(this).retractFact(tuple);
+            if (auto transaction = currentTransaction())
+                return transaction.write(this).retractFact(tuple);
         } else if (isLocal && currentTransaction() !is null) {
             throw new LuaException("local relation mutation prohibited during a transaction");
         }
-        if (tuple.length != cast(size_t)arity) {
+        if (tuple.length != cast(size_t) arity) {
             throw new LuaException(format("relation '%s' expects arity %d, got %d", name, arity, tuple.length));
         }
         if (tuple in baseFacts) {
-            if (keyColumns.length) keyIndex.remove(tupleKey(tuple));
+            if (keyColumns.length)
+                keyIndex.remove(tupleKey(tuple));
             baseFacts.remove(tuple);
             version_++;
             return true;
@@ -341,20 +427,30 @@ class Relation {
 
     /// Engine-only append used by committed session history publication.
     void appendSystemFact(RelTuple tuple) {
-        if (tuple.length != arity) throw new LuaException("invalid system tuple arity");
+        if (tuple.length != arity)
+            throw new LuaException("invalid system tuple arity");
         if (ownerWorld !is null) {
             checkMutationWorld(ownerWorld);
-            if (auto transaction = currentTransaction()) { transaction.write(this).appendSystemFact(tuple); return; }
+            if (auto transaction = currentTransaction()) {
+                transaction.write(this).appendSystemFact(tuple);
+                return;
+            }
         }
-        if (tuple !in baseFacts) { baseFacts[tuple] = true; version_++; }
+        if (tuple !in baseFacts) {
+            baseFacts[tuple] = true;
+            version_++;
+        }
     }
 
     /// Add a rule definition
     void addRule(Rule r) {
-        if (ownerWorld !is null) checkMutationWorld(ownerWorld);
+        if (ownerWorld !is null)
+            checkMutationWorld(ownerWorld);
         prohibitProgramChange();
-        if (protectedRelation) throw new LuaException("read-only relation cannot be a rule head: " ~ name);
-        if (keyColumns.length) throw new LuaException(format("keyed relation '%s' cannot be a rule head", name));
+        if (protectedRelation)
+            throw new LuaException("read-only relation cannot be a rule head: " ~ name);
+        if (keyColumns.length)
+            throw new LuaException(format("keyed relation '%s' cannot be a rule head", name));
         rules ~= r;
         version_++;
     }
@@ -381,7 +477,11 @@ class World {
     size_t notifyingDepth;
     void delegate() committedChange;
     Object observerState;
-    void notifyCommittedChange() { if (committedChange !is null) committedChange(); }
+    void notifyCommittedChange() {
+        if (committedChange !is null)
+            committedChange();
+    }
+
     Transaction transactionOwner;
     Object narrativeOwner;
     string persistentIdentity;
@@ -421,24 +521,31 @@ class World {
         prohibitProgramChange();
         bool[string] seen;
         foreach (column; columns) {
-            if (column in seen) throw new LuaException(format("relation '%s': duplicate column '%s'", name, column));
+            if (column in seen)
+                throw new LuaException(format("relation '%s': duplicate column '%s'", name, column));
             seen[column] = true;
         }
         size_t[] indices;
         bool[string] seenKeys;
         foreach (key; keys) {
-            if (key in seenKeys) throw new LuaException(format("relation '%s': duplicate key column '%s'", name, key));
+            if (key in seenKeys)
+                throw new LuaException(format("relation '%s': duplicate key column '%s'", name, key));
             seenKeys[key] = true;
             bool found;
-            foreach (i, column; columns) if (column == key) { indices ~= i; found = true; }
-            if (!found) throw new LuaException(format("relation '%s': unknown key column '%s'", name, key));
+            foreach (i, column; columns)
+                if (column == key) {
+                    indices ~= i;
+                    found = true;
+                }
+            if (!found)
+                throw new LuaException(format("relation '%s': unknown key column '%s'", name, key));
         }
         if (auto existing = getRelation(name)) {
-            if (existing.arity != cast(int)columns.length || existing.columns != columns || existing.keyColumns != indices)
+            if (existing.arity != cast(int) columns.length || existing.columns != columns || existing.keyColumns != indices)
                 throw new LuaException(format("relation '%s': conflicting schema redeclaration", name));
             return existing;
         }
-        auto relation = new Relation(g_nextRelId++, name, cast(int)columns.length, this);
+        auto relation = new Relation(g_nextRelId++, name, cast(int) columns.length, this);
         relation.columns = columns.dup;
         relation.keyColumns = indices;
         relations[name] = relation;
@@ -449,15 +556,26 @@ class World {
     bool updateFact(string name, RelTuple arguments, string operation, LuaValue delta = LuaValue.init) {
         checkMutationWorld(this);
         auto relation = getRelation(name);
-        if (relation is null) throw new LuaException(format("unknown relation '%s'", name));
+        if (relation is null)
+            throw new LuaException(format("unknown relation '%s'", name));
         bool changed;
         switch (operation) {
-            case "set": changed = relation.setFact(arguments); break;
-            case "delete": changed = relation.deleteKey(arguments); break;
-            case "adjust": changed = relation.adjustKey(arguments, delta); break;
-            default: throw new LuaException("unknown relation update");
+        case "set":
+            changed = relation.setFact(arguments);
+            break;
+        case "delete":
+            changed = relation.deleteKey(arguments);
+            break;
+        case "adjust":
+            changed = relation.adjustKey(arguments, delta);
+            break;
+        default:
+            throw new LuaException("unknown relation update");
         }
-        if (changed && currentTransaction() is null) { version_++; notifyCommittedChange(); }
+        if (changed && currentTransaction() is null) {
+            version_++;
+            notifyCommittedChange();
+        }
         return changed;
     }
 
@@ -483,9 +601,12 @@ class World {
     /// Insert a base fact atomically
     bool addFact(string name, RelTuple tuple) {
         checkMutationWorld(this);
-        auto rel = getOrCreateRelation(name, cast(int)tuple.length);
+        auto rel = getOrCreateRelation(name, cast(int) tuple.length);
         if (rel.addFact(tuple)) {
-            if (currentTransaction() is null) { version_++; notifyCommittedChange(); }
+            if (currentTransaction() is null) {
+                version_++;
+                notifyCommittedChange();
+            }
             return true;
         }
         return false;
@@ -500,7 +621,10 @@ class World {
             return false;
         }
         if (rel.retractFact(tuple)) {
-            if (currentTransaction() is null) { version_++; notifyCommittedChange(); }
+            if (currentTransaction() is null) {
+                version_++;
+                notifyCommittedChange();
+            }
             return true;
         }
         return false;
@@ -512,8 +636,10 @@ class World {
         prohibitProgramChange();
         // Ensure head relation exists
         auto head = getOrCreateRelation(rule.headRel.name, rule.headRel.arity);
-        if (head.keyColumns.length) throw new LuaException(format("keyed relation '%s' cannot be a rule head", head.name));
-        if (head.protectedRelation) throw new LuaException("read-only relation cannot be a rule head: " ~ head.name);
+        if (head.keyColumns.length)
+            throw new LuaException(format("keyed relation '%s' cannot be a rule head", head.name));
+        if (head.protectedRelation)
+            throw new LuaException("read-only relation cannot be a rule head: " ~ head.name);
         rules ~= rule;
         rule.headRel.relId = head.id;
         head.addRule(rule);
@@ -534,43 +660,46 @@ class World {
         // Rebind and clone rules
         foreach (rule; rules) {
             auto headCloneRel = child.relations.get(rule.headRel.name, null);
-            if (headCloneRel is null) continue;
+            if (headCloneRel is null)
+                continue;
 
-            auto reboundHeadRef = new RelationRef(rule.headRel.name, rule.headRel.arity, child.id.to!string, headCloneRel.id);
+            auto reboundHeadRef = new RelationRef(rule.headRel.name, rule.headRel.arity, child.id.to!string, headCloneRel
+                    .id);
             reboundHeadRef.resolvedRelation = headCloneRel;
 
             Goal[] rebound(Goal[] goals) {
-            Goal[] reboundGoals;
-            foreach (g; goals) {
-                auto newGoal = new Goal(g.kind);
-                if (g.relRef !is null) {
-                    auto targetRel = child.relations.get(g.relRef.name, null);
-                    size_t targetId = targetRel ? targetRel.id : g.relRef.relId;
-                    newGoal.relRef = new RelationRef(g.relRef.name, g.relRef.arity, child.id.to!string, targetId);
-                    newGoal.relRef.resolvedRelation = targetRel;
-                    newGoal.terms = g.terms.dup;
-                } else if (g.kind == GoalKind.Comparison) {
-                    newGoal.leftTerm = g.leftTerm;
-                    newGoal.compOp = g.compOp;
-                    newGoal.rightTerm = g.rightTerm;
-                } else if (g.kind == GoalKind.Aggregate) {
-                    newGoal.aggregateOp = g.aggregateOp;
-                    newGoal.resultVariable = g.resultVariable;
-                    newGoal.aggregateGoals = rebound(g.aggregateGoals);
-                    newGoal.aggregateInputs = g.aggregateInputs.dup;
-                    newGoal.aggregateLocals = g.aggregateLocals.dup;
-                    newGoal.aggregateExpression = g.aggregateExpression;
-                    newGoal.aggregateExpressionVariables = g.aggregateExpressionVariables.dup;
-                } else if (g.kind == GoalKind.Guard) {
-                    newGoal.guardFn = g.guardFn;
-                    newGoal.guardVarNames = g.guardVarNames.dup;
-                    newGoal.guardVarIds = g.guardVarIds.dup;
+                Goal[] reboundGoals;
+                foreach (g; goals) {
+                    auto newGoal = new Goal(g.kind);
+                    if (g.relRef !is null) {
+                        auto targetRel = child.relations.get(g.relRef.name, null);
+                        size_t targetId = targetRel ? targetRel.id : g.relRef.relId;
+                        newGoal.relRef = new RelationRef(g.relRef.name, g.relRef.arity, child.id.to!string, targetId);
+                        newGoal.relRef.resolvedRelation = targetRel;
+                        newGoal.terms = g.terms.dup;
+                    } else if (g.kind == GoalKind.Comparison) {
+                        newGoal.leftTerm = g.leftTerm;
+                        newGoal.compOp = g.compOp;
+                        newGoal.rightTerm = g.rightTerm;
+                    } else if (g.kind == GoalKind.Aggregate) {
+                        newGoal.aggregateOp = g.aggregateOp;
+                        newGoal.resultVariable = g.resultVariable;
+                        newGoal.aggregateGoals = rebound(g.aggregateGoals);
+                        newGoal.aggregateInputs = g.aggregateInputs.dup;
+                        newGoal.aggregateLocals = g.aggregateLocals.dup;
+                        newGoal.aggregateExpression = g.aggregateExpression;
+                        newGoal.aggregateExpressionVariables = g.aggregateExpressionVariables.dup;
+                    } else if (g.kind == GoalKind.Guard) {
+                        newGoal.guardFn = g.guardFn;
+                        newGoal.guardVarNames = g.guardVarNames.dup;
+                        newGoal.guardVarIds = g.guardVarIds.dup;
+                    }
+                    reboundGoals ~= newGoal;
                 }
-                reboundGoals ~= newGoal;
+
+                return reboundGoals;
             }
 
-            return reboundGoals;
-            }
             auto reboundGoals = rebound(rule.bodyGoals);
 
             auto reboundRule = new Rule(reboundHeadRef, rule.headTerms.dup, reboundGoals, g_nextRuleId++);
@@ -595,7 +724,8 @@ class RuleRegistration {
     Relation resolve(World world, string name, int arity) {
         prohibitProgramChange();
         auto relation = world.getRelation(name);
-        if (relation is null) relation = pending.get(world, null).get(name, null);
+        if (relation is null)
+            relation = pending.get(world, null).get(name, null);
         if (relation !is null) {
             if (relation.arity != arity) {
                 throw new LuaException(format("relation '%s' expects arity %d, got %d", name, relation.arity, arity));
@@ -609,7 +739,8 @@ class RuleRegistration {
 
     void commit() {
         prohibitProgramChange();
-        foreach (world, declarations; pending) checkMutationWorld(world);
+        foreach (world, declarations; pending)
+            checkMutationWorld(world);
         foreach (world, declarations; pending) {
             foreach (name, relation; declarations) {
                 world.relations[name] = relation;
@@ -622,7 +753,8 @@ class RuleRegistration {
 /// Include live rule dependencies when validating a local relation graph.
 /// The relation map doubles as the visited set for recursive references.
 void collectRuleDependencies(Relation relation, ref Relation[size_t] relations, ref Rule[] rules) {
-    if (relation is null || relation.id in relations) return;
+    if (relation is null || relation.id in relations)
+        return;
     relations[relation.id] = relation;
     foreach (rule; relation.rules) {
         rules ~= rule;
@@ -687,7 +819,7 @@ World unwrapWorld(LuaValue val) {
     if (val.typeOf() == LuaType.UserData) {
         auto ud = val.match!((LuaUserData u) => u, _ => null);
         if (ud !is null && ud.payload !is null) {
-            if (auto w = cast(World)ud.payload) {
+            if (auto w = cast(World) ud.payload) {
                 return w;
             }
         }
@@ -700,7 +832,7 @@ bool isWorld(LuaValue val) {
     if (val.typeOf() == LuaType.UserData) {
         auto ud = val.match!((LuaUserData u) => u, _ => null);
         if (ud !is null && ud.payload !is null) {
-            return (cast(World)ud.payload) !is null;
+            return (cast(World) ud.payload) !is null;
         }
     }
     return false;
@@ -717,7 +849,7 @@ LocalRelation unwrapLocalRelation(LuaValue val) {
     if (val.typeOf() == LuaType.UserData) {
         auto ud = val.match!((LuaUserData u) => u, _ => null);
         if (ud !is null && ud.payload !is null) {
-            return cast(LocalRelation)ud.payload;
+            return cast(LocalRelation) ud.payload;
         }
     }
     return null;
@@ -728,7 +860,7 @@ bool isLocalRelation(LuaValue val) {
     if (val.typeOf() == LuaType.UserData) {
         auto ud = val.match!((LuaUserData u) => u, _ => null);
         if (ud !is null && ud.payload !is null) {
-            return (cast(LocalRelation)ud.payload) !is null;
+            return (cast(LocalRelation) ud.payload) !is null;
         }
     }
     return false;

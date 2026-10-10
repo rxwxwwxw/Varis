@@ -29,44 +29,62 @@ import std.math : isFinite;
 /// order uses the same canonical equality encoding as narrative instance keys.
 string observationValueKey(LuaValue value) {
     if (isNumber(value)) {
-        auto number = value.match!((long n) => cast(double)n, (double n) => n, _ => 0.0);
-        if (!isFinite(number)) return number < 0 ? "f-inf" : "f+inf";
+        auto number = value.match!((long n) => cast(double) n, (double n) => n, _ => 0.0);
+        if (!isFinite(number))
+            return number < 0 ? "f-inf" : "f+inf";
     }
-    try { return canonicalScalar(value); } catch (LuaException error) {}
+    try {
+        return canonicalScalar(value);
+    } catch (LuaException error) {
+    }
     auto identity = value.match!(
-        (LuaTable object) => cast(size_t)cast(void*)object,
-        (LuaFunction object) => cast(size_t)cast(void*)object,
-        (LuaUserData object) => cast(size_t)cast(void*)object,
-        (LuaThread object) => cast(size_t)cast(void*)object,
-        (LightUserData pointer) => cast(size_t)pointer.ptr,
-        _ => cast(size_t)0);
+            (LuaTable object) => cast(size_t) cast(void*) object,
+            (LuaFunction object) => cast(size_t) cast(void*) object,
+            (LuaUserData object) => cast(size_t) cast(void*) object,
+            (LuaThread object) => cast(size_t) cast(void*) object,
+            (LightUserData pointer) => cast(size_t) pointer.ptr,
+            _ => cast(size_t) 0);
     return "r" ~ value.typeOf().to!string ~ format("%016x", identity);
 }
 
 string observationTupleKey(RelTuple tuple) {
     string result;
-    foreach (value; tuple.values) { auto encoded = observationValueKey(value); result ~= encoded.length.to!string ~ ":" ~ encoded; }
+    foreach (value; tuple.values) {
+        auto encoded = observationValueKey(value);
+        result ~= encoded.length.to!string ~ ":" ~ encoded;
+    }
     return result;
 }
 
 bool[RelTuple] committedVisibleSet(LuaState state, World world, string name) {
     auto relation = world.getRelation(name);
-    if (relation is null) throw new LuaException("unknown observed relation '" ~ name ~ "'");
-    auto reference = new RelationRef(name, relation.arity, "", relation.id); reference.resolvedRelation = relation;
-    Term[] terms; string[] names;
+    if (relation is null)
+        throw new LuaException("unknown observed relation '" ~ name ~ "'");
+    auto reference = new RelationRef(name, relation.arity, "", relation.id);
+    reference.resolvedRelation = relation;
+    Term[] terms;
+    string[] names;
     foreach (i; 0 .. relation.arity) {
         auto variable = "column" ~ i.to!string;
-        terms ~= Term.makeVariable(variable, i); names ~= variable;
+        terms ~= Term.makeVariable(variable, i);
+        names ~= variable;
     }
-    auto goal = new Goal(GoalKind.PositiveAtom); goal.relRef = reference; goal.terms = terms;
-    beginReadOnlyEvaluation(); scope(exit) endReadOnlyEvaluation();
+    auto goal = new Goal(GoalKind.PositiveAtom);
+    goal.relRef = reference;
+    goal.terms = terms;
+    beginReadOnlyEvaluation();
+    scope (exit)
+        endReadOnlyEvaluation();
     auto iterator = new QueryIterator(state, [goal], names, null, null);
     bool[RelTuple] result;
     while (true) {
-        auto value = iterator.next(); if (isNil(value)) break;
+        auto value = iterator.next();
+        if (isNil(value))
+            break;
         auto record = unwrapBindingRecord(value);
         LuaValue[] tuple;
-        foreach (variable; names) tuple ~= record.fields[variable];
+        foreach (variable; names)
+            tuple ~= record.fields[variable];
         result[RelTuple(tuple)] = true;
     }
     return result;
@@ -94,7 +112,10 @@ private class ObserverHub {
     LuaValue[] queued;
     bool flushing;
 
-    this(LuaState state, World world) { this.state = state; this.world = world; }
+    this(LuaState state, World world) {
+        this.state = state;
+        this.world = world;
+    }
 
     void requireIdle() {
         if (world.notifyingDepth || currentTransaction() !is null || currentEffectSession() !is null || isReadOnlyEvaluation())
@@ -104,85 +125,131 @@ private class ObserverHub {
     void dispatch() {
         // Compute every new visible set before touching baselines or callbacks.
         bool[RelTuple][string] current;
-        foreach (subscription; subscriptions) if (subscription.active && subscription.name !in current)
-            current[subscription.name] = committedVisibleSet(state, world, subscription.name);
+        foreach (subscription; subscriptions)
+            if (subscription.active && subscription.name !in current)
+                current[subscription.name] = committedVisibleSet(state, world, subscription.name);
         Delta[] deltas;
         bool[RelTuple][string] enters, leaves;
-        foreach (subscription; subscriptions) if (subscription.active) {
-            auto next = current[subscription.name];
-            foreach (tuple; subscription.baseline.keys) if (tuple !in next) leaves[subscription.name][tuple] = true;
-            foreach (tuple; next.keys) if (tuple !in subscription.baseline) enters[subscription.name][tuple] = true;
-        }
-        foreach (name, tuples; leaves) foreach (tuple; tuples.keys) deltas ~= Delta(name, tuple, false, observationTupleKey(tuple));
-        foreach (name, tuples; enters) foreach (tuple; tuples.keys) deltas ~= Delta(name, tuple, true, observationTupleKey(tuple));
+        foreach (subscription; subscriptions)
+            if (subscription.active) {
+                auto next = current[subscription.name];
+                foreach (tuple; subscription.baseline.keys)
+                    if (tuple !in next)
+                        leaves[subscription.name][tuple] = true;
+                foreach (tuple; next.keys)
+                    if (tuple !in subscription.baseline)
+                        enters[subscription.name][tuple] = true;
+            }
+        foreach (name, tuples; leaves)
+            foreach (tuple; tuples.keys)
+                deltas ~= Delta(name, tuple, false, observationTupleKey(tuple));
+        foreach (name, tuples; enters)
+            foreach (tuple; tuples.keys)
+                deltas ~= Delta(name, tuple, true, observationTupleKey(tuple));
         // A second subscription may be installed at a different baseline. Compute
         // its own delivery selection against the delta universe before publishing.
         bool[RelTuple][Subscription] old;
-        foreach (subscription; subscriptions) if (subscription.active) {
-            old[subscription] = subscription.baseline;
-            subscription.baseline = current[subscription.name];
-        }
-        deltas.sort!((a, b) => a.name < b.name || (a.name == b.name && (a.key < b.key || (a.key == b.key && !a.enters && b.enters))));
+        foreach (subscription; subscriptions)
+            if (subscription.active) {
+                old[subscription] = subscription.baseline;
+                subscription.baseline = current[subscription.name];
+            }
+        deltas.sort!((a, b) => a.name < b.name || (a.name == b.name && (a.key < b.key || (a.key == b.key && !a.enters && b
+                .enters))));
         auto previous = currentHub;
-        currentHub = this; world.notifyingDepth++; beginNotificationDispatch();
-        scope(exit) { endNotificationDispatch(); world.notifyingDepth--; currentHub = previous; }
-        Exception firstError;
-        foreach (delta; deltas) foreach (subscription; subscriptions) if (subscription.active && subscription.name == delta.name) {
-            bool existed = (delta.tuple in old[subscription]) !is null;
-            if (delta.enters == existed) continue;
-            auto callback = delta.enters ? subscription.onEnter : subscription.onLeave;
-            if (!isFunction(callback)) continue;
-            try { VM.callValue(state, callback, [immutableSequence(delta.tuple.values)]); }
-            catch (Exception error) { if (firstError is null) firstError = error; }
+        currentHub = this;
+        world.notifyingDepth++;
+        beginNotificationDispatch();
+        scope (exit) {
+            endNotificationDispatch();
+            world.notifyingDepth--;
+            currentHub = previous;
         }
-        if (firstError !is null) throw firstError;
+        Exception firstError;
+        foreach (delta; deltas)
+            foreach (subscription; subscriptions)
+                if (subscription.active && subscription.name == delta.name) {
+                    bool existed = (delta.tuple in old[subscription]) !is null;
+                    if (delta.enters == existed)
+                        continue;
+                    auto callback = delta.enters ? subscription.onEnter : subscription.onLeave;
+                    if (!isFunction(callback))
+                        continue;
+                    try {
+                        VM.callValue(state, callback, [immutableSequence(delta.tuple.values)]);
+                    } catch (Exception error) {
+                        if (firstError is null)
+                            firstError = error;
+                    }
+                }
+        if (firstError !is null)
+            throw firstError;
     }
 
     void flush(size_t limit) {
         requireIdle();
-        if (flushing) throw new LuaException("recursive observer queue flush");
-        flushing = true; scope(exit) flushing = false;
+        if (flushing)
+            throw new LuaException("recursive observer queue flush");
+        flushing = true;
+        scope (exit)
+            flushing = false;
         size_t count;
         while (queued.length) {
-            if (count >= limit) throw new LuaException("OBSERVER_QUEUE_LIMIT: queued observer command budget exhausted");
-            auto callback = queued[0]; queued = queued[1 .. $];
-            VM.callValue(state, callback, []); count++;
+            if (count >= limit)
+                throw new LuaException("OBSERVER_QUEUE_LIMIT: queued observer command budget exhausted");
+            auto callback = queued[0];
+            queued = queued[1 .. $];
+            VM.callValue(state, callback, []);
+            count++;
         }
     }
 }
 
 private ObserverHub currentHub;
 
-
 LuaValue observeRelation(LuaState state, World world, string name, LuaValue callbacks) {
-    if (world.transactionOwner !is null) throw new LuaException("cannot observe world with an active transaction");
+    if (world.transactionOwner !is null)
+        throw new LuaException("cannot observe world with an active transaction");
     auto table = callbacks.match!((LuaTable table) => table, _ => null);
-    if (table is null) throw new LuaException("observer callbacks must be a table");
-    auto subscription = new Subscription(); subscription.name = name;
-    subscription.onEnter = table.rawget(LuaValue("on_enter")); subscription.onLeave = table.rawget(LuaValue("on_leave"));
+    if (table is null)
+        throw new LuaException("observer callbacks must be a table");
+    auto subscription = new Subscription();
+    subscription.name = name;
+    subscription.onEnter = table.rawget(LuaValue("on_enter"));
+    subscription.onLeave = table.rawget(LuaValue("on_leave"));
     foreach (callback; [subscription.onEnter, subscription.onLeave])
-        if (!isNil(callback) && !isFunction(callback)) throw new LuaException("observer callback must be a function");
-    if (isNil(subscription.onEnter) && isNil(subscription.onLeave)) throw new LuaException("observer requires on_enter or on_leave");
-    auto hub = cast(ObserverHub)world.observerState;
-    if (hub is null) hub = new ObserverHub(state, world);
-    if (hub.state !is state) throw new LuaException("observed world belongs to another Lua state");
+        if (!isNil(callback) && !isFunction(callback))
+            throw new LuaException("observer callback must be a function");
+    if (isNil(subscription.onEnter) && isNil(subscription.onLeave))
+        throw new LuaException("observer requires on_enter or on_leave");
+    auto hub = cast(ObserverHub) world.observerState;
+    if (hub is null)
+        hub = new ObserverHub(state, world);
+    if (hub.state !is state)
+        throw new LuaException("observed world belongs to another Lua state");
     hub.requireIdle();
     subscription.baseline = committedVisibleSet(state, world, name);
     hub.subscriptions ~= subscription;
     world.observerState = hub;
     world.committedChange = &hub.dispatch;
     return LuaValue(new LuaNativeFunction((void* p, LuaValue[] a) {
-        hub.requireIdle(); subscription.active = false; return cast(LuaValue[])[];
-    }, "cancel_observer"));
+            hub.requireIdle();
+            subscription.active = false;
+            return cast(LuaValue[])[];
+        }, "cancel_observer"));
 }
 
 void enqueueObserverCommand(LuaValue callback) {
-    if (currentHub is null) throw new LuaException("enqueue requires an active observer callback");
-    if (!isFunction(callback)) throw new LuaException("queued observer command must be a function");
+    if (currentHub is null)
+        throw new LuaException("enqueue requires an active observer callback");
+    if (!isFunction(callback))
+        throw new LuaException("queued observer command must be a function");
     currentHub.queued ~= callback;
 }
 
 void flushObserverCommands(World world, size_t limit = 1000) {
-    if (!limit) throw new LuaException("observer queue limit must be positive");
-    if (auto hub = cast(ObserverHub)world.observerState) hub.flush(limit);
+    if (!limit)
+        throw new LuaException("observer queue limit must be positive");
+    if (auto hub = cast(ObserverHub) world.observerState)
+        hub.flush(limit);
 }

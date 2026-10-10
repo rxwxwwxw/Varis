@@ -42,7 +42,7 @@ struct LightUserData {
     }
 
     size_t toHash() const @safe pure nothrow {
-        return cast(size_t)ptr;
+        return cast(size_t) ptr;
     }
 
     string toString() const @safe pure nothrow {
@@ -83,25 +83,27 @@ struct Symbol {
 
 /// Internal sumtype payload
 alias LuaSumType = SumType!(
-    Nil,
-    bool,
-    long,
-    double,
-    string,
-    Symbol,
-    LuaTable,
-    LuaFunction,
-    LuaUserData,
-    LightUserData,
-    LuaThread
+        Nil,
+        bool,
+        long,
+        double,
+        string,
+        Symbol,
+        LuaTable,
+        LuaFunction,
+        LuaUserData,
+        LightUserData,
+        LuaThread
 );
 
 /// Try to convert a float to an integer if it represents an exact integer value
 bool floatToInteger(double d, out long i) @safe pure nothrow {
-    if (isNaN(d)) return false;
-    if (d < -9223372036854775808.0 || d >= 9223372036854775808.0) return false;
-    long candidate = cast(long)d;
-    if (cast(double)candidate == d) {
+    if (isNaN(d))
+        return false;
+    if (d < -9223372036854775808.0 || d >= 9223372036854775808.0)
+        return false;
+    long candidate = cast(long) d;
+    if (cast(double) candidate == d) {
         i = candidate;
         return true;
     }
@@ -142,7 +144,7 @@ struct LuaValue {
     }
 
     this(int val) @safe pure nothrow {
-        data = LuaSumType(cast(long)val);
+        data = LuaSumType(cast(long) val);
     }
 
     this(double val) @safe pure nothrow {
@@ -182,13 +184,14 @@ struct LuaValue {
     pragma(inline, true)
     void opAssign(LuaValue rhs) @trusted nothrow @nogc {
         import core.stdc.string : memcpy;
+
         memcpy(cast(void*)&this, cast(const(void)*)&rhs, LuaValue.sizeof);
     }
 
     /// Full Lua-compliant raw equality
     pragma(inline, true)
     bool opEquals(ref const LuaValue rhs) const {
-        return opEquals(cast(LuaValue)rhs);
+        return opEquals(cast(LuaValue) rhs);
     }
 
     pragma(inline, true)
@@ -198,34 +201,36 @@ struct LuaValue {
 
         if (tidA == tidB) {
             switch (tidA) {
-                case TagNil:
-                    return true;
-                case TagBool:
-                    return getVal!(bool, TagBool)(data) == getVal!(bool, TagBool)(rhs.data);
-                case TagLong:
-                    return getVal!(long, TagLong)(data) == getVal!(long, TagLong)(rhs.data);
-                case TagDouble: {
+            case TagNil:
+                return true;
+            case TagBool:
+                return getVal!(bool, TagBool)(data) == getVal!(bool, TagBool)(rhs.data);
+            case TagLong:
+                return getVal!(long, TagLong)(data) == getVal!(long, TagLong)(rhs.data);
+            case TagDouble: {
                     double da = getVal!(double, TagDouble)(data);
                     double db = getVal!(double, TagDouble)(rhs.data);
-                    if (isNaN(da) || isNaN(db)) return false;
+                    if (isNaN(da) || isNaN(db))
+                        return false;
                     return da == db;
                 }
-                case TagString:
-                    return getVal!(string, TagString)(data) == getVal!(string, TagString)(rhs.data);
-                case TagSymbol:
-                    return getVal!(Symbol, TagSymbol)(data) == getVal!(Symbol, TagSymbol)(rhs.data);
-                case TagTable:
-                    return getVal!(LuaTable, TagTable)(data) is getVal!(LuaTable, TagTable)(rhs.data);
-                case TagFunction:
-                    return getVal!(LuaFunction, TagFunction)(data) is getVal!(LuaFunction, TagFunction)(rhs.data);
-                case TagUserData:
-                    return getVal!(LuaUserData, TagUserData)(data) is getVal!(LuaUserData, TagUserData)(rhs.data);
-                case TagLightUserData:
-                    return getVal!(LightUserData, TagLightUserData)(data).ptr == getVal!(LightUserData, TagLightUserData)(rhs.data).ptr;
-                case TagThread:
-                    return getVal!(LuaThread, TagThread)(data) is getVal!(LuaThread, TagThread)(rhs.data);
-                default:
-                    return false;
+            case TagString:
+                return getVal!(string, TagString)(data) == getVal!(string, TagString)(rhs.data);
+            case TagSymbol:
+                return getVal!(Symbol, TagSymbol)(data) == getVal!(Symbol, TagSymbol)(rhs.data);
+            case TagTable:
+                return getVal!(LuaTable, TagTable)(data) is getVal!(LuaTable, TagTable)(rhs.data);
+            case TagFunction:
+                return getVal!(LuaFunction, TagFunction)(data) is getVal!(LuaFunction, TagFunction)(rhs.data);
+            case TagUserData:
+                return getVal!(LuaUserData, TagUserData)(data) is getVal!(LuaUserData, TagUserData)(rhs.data);
+            case TagLightUserData:
+                return getVal!(LightUserData, TagLightUserData)(data).ptr == getVal!(LightUserData, TagLightUserData)(
+                        rhs.data).ptr;
+            case TagThread:
+                return getVal!(LuaThread, TagThread)(data) is getVal!(LuaThread, TagThread)(rhs.data);
+            default:
+                return false;
             }
         }
 
@@ -254,36 +259,36 @@ struct LuaValue {
     pragma(inline, true)
     size_t toHash() const nothrow @trusted {
         switch (data.typeIndex) {
-            case TagNil:
-                return 0;
-            case TagBool:
-                return getVal!(bool, TagBool)(data) ? 1231 : 1237;
-            case TagLong:
-                return cast(size_t)getVal!(long, TagLong)(data);
-            case TagDouble: {
+        case TagNil:
+            return 0;
+        case TagBool:
+            return getVal!(bool, TagBool)(data) ? 1231 : 1237;
+        case TagLong:
+            return cast(size_t) getVal!(long, TagLong)(data);
+        case TagDouble: {
                 double d = getVal!(double, TagDouble)(data);
                 long i;
                 if (floatToInteger(d, i)) {
-                    return cast(size_t)i;
+                    return cast(size_t) i;
                 }
                 return hashOf(d);
             }
-            case TagString:
-                return hashOf(getVal!(string, TagString)(data));
-            case TagSymbol:
-                return getVal!(Symbol, TagSymbol)(data).toHash();
-            case TagTable:
-                return cast(size_t)cast(void*)getVal!(LuaTable, TagTable)(data);
-            case TagFunction:
-                return cast(size_t)cast(void*)getVal!(LuaFunction, TagFunction)(data);
-            case TagUserData:
-                return cast(size_t)cast(void*)getVal!(LuaUserData, TagUserData)(data);
-            case TagLightUserData:
-                return cast(size_t)getVal!(LightUserData, TagLightUserData)(data).ptr;
-            case TagThread:
-                return cast(size_t)cast(void*)getVal!(LuaThread, TagThread)(data);
-            default:
-                return 0;
+        case TagString:
+            return hashOf(getVal!(string, TagString)(data));
+        case TagSymbol:
+            return getVal!(Symbol, TagSymbol)(data).toHash();
+        case TagTable:
+            return cast(size_t) cast(void*) getVal!(LuaTable, TagTable)(data);
+        case TagFunction:
+            return cast(size_t) cast(void*) getVal!(LuaFunction, TagFunction)(data);
+        case TagUserData:
+            return cast(size_t) cast(void*) getVal!(LuaUserData, TagUserData)(data);
+        case TagLightUserData:
+            return cast(size_t) getVal!(LightUserData, TagLightUserData)(data).ptr;
+        case TagThread:
+            return cast(size_t) cast(void*) getVal!(LuaThread, TagThread)(data);
+        default:
+            return 0;
         }
     }
 
@@ -294,51 +299,81 @@ struct LuaValue {
     pragma(inline, true)
     LuaType typeOf() const nothrow @safe {
         switch (data.typeIndex) {
-            case TagNil: return LuaType.Nil;
-            case TagBool: return LuaType.Boolean;
-            case TagLong: case TagDouble: return LuaType.Number;
-            case TagString: return LuaType.String;
-            case TagSymbol: return LuaType.Symbol;
-            case TagTable: return LuaType.Table;
-            case TagFunction: return LuaType.Function;
-            case TagUserData: return LuaType.UserData;
-            case TagLightUserData: return LuaType.LightUserData;
-            case TagThread: return LuaType.Thread;
-            default: return LuaType.Nil;
+        case TagNil:
+            return LuaType.Nil;
+        case TagBool:
+            return LuaType.Boolean;
+        case TagLong:
+        case TagDouble:
+            return LuaType.Number;
+        case TagString:
+            return LuaType.String;
+        case TagSymbol:
+            return LuaType.Symbol;
+        case TagTable:
+            return LuaType.Table;
+        case TagFunction:
+            return LuaType.Function;
+        case TagUserData:
+            return LuaType.UserData;
+        case TagLightUserData:
+            return LuaType.LightUserData;
+        case TagThread:
+            return LuaType.Thread;
+        default:
+            return LuaType.Nil;
         }
     }
 
     string typeName() const {
         final switch (typeOf()) {
-            case LuaType.Nil: return "nil";
-            case LuaType.Boolean: return "boolean";
-            case LuaType.Number: return "number";
-            case LuaType.String: return "string";
-            case LuaType.Symbol: return "symbol";
-            case LuaType.Table: return "table";
-            case LuaType.Function: return "function";
-            case LuaType.UserData: return "userdata";
-            case LuaType.LightUserData: return "userdata";
-            case LuaType.Thread: return "thread";
+        case LuaType.Nil:
+            return "nil";
+        case LuaType.Boolean:
+            return "boolean";
+        case LuaType.Number:
+            return "number";
+        case LuaType.String:
+            return "string";
+        case LuaType.Symbol:
+            return "symbol";
+        case LuaType.Table:
+            return "table";
+        case LuaType.Function:
+            return "function";
+        case LuaType.UserData:
+            return "userdata";
+        case LuaType.LightUserData:
+            return "userdata";
+        case LuaType.Thread:
+            return "thread";
         }
     }
 
     pragma(inline, true)
     bool isTruthy() const nothrow @safe {
         auto tid = data.typeIndex;
-        if (tid == TagNil) return false;
-        if (tid == TagBool) return getVal!(bool, TagBool)(data);
+        if (tid == TagNil)
+            return false;
+        if (tid == TagBool)
+            return getVal!(bool, TagBool)(data);
         return true;
     }
 
     pragma(inline, true)
-    bool isNil() const nothrow @safe { return data.typeIndex == TagNil; }
+    bool isNil() const nothrow @safe {
+        return data.typeIndex == TagNil;
+    }
 
     pragma(inline, true)
-    bool isSymbol() const nothrow @safe { return data.typeIndex == TagSymbol; }
+    bool isSymbol() const nothrow @safe {
+        return data.typeIndex == TagSymbol;
+    }
 
     pragma(inline, true)
-    bool isBoolean() const nothrow @safe { return data.typeIndex == TagBool; }
+    bool isBoolean() const nothrow @safe {
+        return data.typeIndex == TagBool;
+    }
 
     pragma(inline, true)
     bool isNumber() const nothrow @safe {
@@ -347,13 +382,19 @@ struct LuaValue {
     }
 
     pragma(inline, true)
-    bool isInteger() const nothrow @safe { return data.typeIndex == TagLong; }
+    bool isInteger() const nothrow @safe {
+        return data.typeIndex == TagLong;
+    }
 
     pragma(inline, true)
-    bool isFloat() const nothrow @safe { return data.typeIndex == TagDouble; }
+    bool isFloat() const nothrow @safe {
+        return data.typeIndex == TagDouble;
+    }
 
     pragma(inline, true)
-    bool isString() const nothrow @safe { return data.typeIndex == TagString; }
+    bool isString() const nothrow @safe {
+        return data.typeIndex == TagString;
+    }
 
     pragma(inline, true)
     bool isTable() const nothrow @safe {
@@ -382,12 +423,12 @@ struct LuaValue {
 
     pragma(inline, true)
     LuaTable asTable() const nothrow @trusted {
-        return cast(LuaTable)getVal!(LuaTable, TagTable)(data);
+        return cast(LuaTable) getVal!(LuaTable, TagTable)(data);
     }
 
     pragma(inline, true)
     LuaFunction asFunction() const nothrow @trusted {
-        return cast(LuaFunction)getVal!(LuaFunction, TagFunction)(data);
+        return cast(LuaFunction) getVal!(LuaFunction, TagFunction)(data);
     }
 
     pragma(inline, true)
@@ -402,23 +443,23 @@ struct LuaValue {
 
     pragma(inline, true)
     LuaUserData asUserData() const nothrow @trusted {
-        return cast(LuaUserData)getVal!(LuaUserData, TagUserData)(data);
+        return cast(LuaUserData) getVal!(LuaUserData, TagUserData)(data);
     }
 
     pragma(inline, true)
     LightUserData asLightUserData() const nothrow @trusted {
-        return cast(LightUserData)getVal!(LightUserData, TagLightUserData)(data);
+        return cast(LightUserData) getVal!(LightUserData, TagLightUserData)(data);
     }
 
     pragma(inline, true)
     LuaThread asThread() const nothrow @trusted {
-        return cast(LuaThread)getVal!(LuaThread, TagThread)(data);
+        return cast(LuaThread) getVal!(LuaThread, TagThread)(data);
     }
 }
 
 /// Free function UFCS pattern matching for LuaValue
 auto match(Handlers...)(auto ref LuaValue val) {
-    return sumtypeMatch!Handlers(cast()val.data);
+    return sumtypeMatch!Handlers(cast() val.data);
 }
 
 /// Helper constructor functions
@@ -467,26 +508,65 @@ LuaValue luaValue(LuaThread th) @safe pure nothrow {
 }
 
 /// Free function helpers forwarding to LuaValue methods
-pragma(inline, true) LuaType typeOf(LuaValue val) { return val.typeOf(); }
-pragma(inline, true) string typeName(LuaValue val) { return val.typeName(); }
-pragma(inline, true) bool isTruthy(LuaValue val) { return val.isTruthy(); }
-pragma(inline, true) bool isNil(LuaValue val) { return val.isNil(); }
-pragma(inline, true) bool isBoolean(LuaValue val) { return val.isBoolean(); }
-pragma(inline, true) bool isNumber(LuaValue val) { return val.isNumber(); }
-pragma(inline, true) bool isInteger(LuaValue val) { return val.isInteger(); }
-pragma(inline, true) bool isFloat(LuaValue val) { return val.isFloat(); }
-pragma(inline, true) bool isString(LuaValue val) { return val.isString(); }
-pragma(inline, true) bool isSymbol(LuaValue val) { return val.isSymbol(); }
-pragma(inline, true) bool isTable(LuaValue val) { return val.isTable(); }
-pragma(inline, true) bool isFunction(LuaValue val) { return val.isFunction(); }
+pragma(inline, true) LuaType typeOf(LuaValue val) {
+    return val.typeOf();
+}
+
+pragma(inline, true) string typeName(LuaValue val) {
+    return val.typeName();
+}
+
+pragma(inline, true) bool isTruthy(LuaValue val) {
+    return val.isTruthy();
+}
+
+pragma(inline, true) bool isNil(LuaValue val) {
+    return val.isNil();
+}
+
+pragma(inline, true) bool isBoolean(LuaValue val) {
+    return val.isBoolean();
+}
+
+pragma(inline, true) bool isNumber(LuaValue val) {
+    return val.isNumber();
+}
+
+pragma(inline, true) bool isInteger(LuaValue val) {
+    return val.isInteger();
+}
+
+pragma(inline, true) bool isFloat(LuaValue val) {
+    return val.isFloat();
+}
+
+pragma(inline, true) bool isString(LuaValue val) {
+    return val.isString();
+}
+
+pragma(inline, true) bool isSymbol(LuaValue val) {
+    return val.isSymbol();
+}
+
+pragma(inline, true) bool isTable(LuaValue val) {
+    return val.isTable();
+}
+
+pragma(inline, true) bool isFunction(LuaValue val) {
+    return val.isFunction();
+}
 
 /// Check if string is a valid Lua identifier
 bool isValidLuaIdentifier(string s) @safe pure nothrow {
-    if (s.length == 0) return false;
+    if (s.length == 0)
+        return false;
     import std.ascii : isAlpha, isAlphaNum;
-    if (s[0] != '_' && !isAlpha(s[0])) return false;
+
+    if (s[0] != '_' && !isAlpha(s[0]))
+        return false;
     foreach (c; s[1 .. $]) {
-        if (c != '_' && !isAlphaNum(c)) return false;
+        if (c != '_' && !isAlphaNum(c))
+            return false;
     }
     return true;
 }
@@ -495,25 +575,44 @@ bool isValidLuaIdentifier(string s) @safe pure nothrow {
 string escapeLuaString(string s) @safe pure {
     import std.array : appender;
     import std.format : formattedWrite;
+
     auto app = appender!string();
     foreach (char c; s) {
         switch (c) {
-            case '\"': app.put(`\"`); break;
-            case '\\': app.put(`\\`); break;
-            case '\a': app.put(`\a`); break;
-            case '\b': app.put(`\b`); break;
-            case '\f': app.put(`\f`); break;
-            case '\n': app.put(`\n`); break;
-            case '\r': app.put(`\r`); break;
-            case '\t': app.put(`\t`); break;
-            case '\v': app.put(`\v`); break;
-            default:
-                if (c < 32 || c >= 127) {
-                    formattedWrite(app, `\%03d`, cast(ubyte)c);
-                } else {
-                    app.put(c);
-                }
-                break;
+        case '\"':
+            app.put(`\"`);
+            break;
+        case '\\':
+            app.put(`\\`);
+            break;
+        case '\a':
+            app.put(`\a`);
+            break;
+        case '\b':
+            app.put(`\b`);
+            break;
+        case '\f':
+            app.put(`\f`);
+            break;
+        case '\n':
+            app.put(`\n`);
+            break;
+        case '\r':
+            app.put(`\r`);
+            break;
+        case '\t':
+            app.put(`\t`);
+            break;
+        case '\v':
+            app.put(`\v`);
+            break;
+        default:
+            if (c < 32 || c >= 127) {
+                formattedWrite(app, `\%03d`, cast(ubyte) c);
+            } else {
+                app.put(c);
+            }
+            break;
         }
     }
     return app.data;
@@ -525,7 +624,8 @@ LuaValue normalizeKey(LuaValue key) {
     if (key.isFloat()) {
         double d = key.asFloat;
         long i;
-        if (floatToInteger(d, i)) return LuaValue(i);
+        if (floatToInteger(d, i))
+            return LuaValue(i);
     }
     return key;
 }
@@ -545,12 +645,16 @@ bool luaNumberLess(LuaValue left, LuaValue right) {
     bool integerFirst = left.isInteger;
     long integer = integerFirst ? left.asInteger : right.asInteger;
     double number = integerFirst ? right.asFloat : left.asFloat;
-    if (isNaN(number)) return false;
-    if (number >= 0x1p63) return integerFirst;
-    if (number < -0x1p63) return !integerFirst;
-    long truncated = cast(long)number;
-    if (integer != truncated) return integerFirst ? integer < truncated : truncated < integer;
-    return integerFirst ? cast(double)truncated < number : number < cast(double)truncated;
+    if (isNaN(number))
+        return false;
+    if (number >= 0x1p63)
+        return integerFirst;
+    if (number < -0x1p63)
+        return !integerFirst;
+    long truncated = cast(long) number;
+    if (integer != truncated)
+        return integerFirst ? integer < truncated : truncated < integer;
+    return integerFirst ? cast(double) truncated < number : number < cast(double) truncated;
 }
 
 bool luaNumberLessEqual(LuaValue left, LuaValue right) {
@@ -562,33 +666,45 @@ bool parseLuaNumber(string input, out LuaValue number) {
     import std.ascii : isWhite, isDigit;
     import std.string : toStringz;
     import core.stdc.stdlib : strtod;
+
     size_t first, last = input.length;
-    while (first < last && isWhite(input[first])) ++first;
-    while (last > first && isWhite(input[last - 1])) --last;
+    while (first < last && isWhite(input[first]))
+        ++first;
+    while (last > first && isWhite(input[last - 1]))
+        --last;
     auto text = input[first .. last];
-    if (!text.length) return false;
+    if (!text.length)
+        return false;
     size_t index;
     bool negative;
     if (text[index] == '+' || text[index] == '-') {
         negative = text[index] == '-';
-        if (++index == text.length) return false;
+        if (++index == text.length)
+            return false;
     }
-    if (!isDigit(text[index]) && text[index] != '.') return false;
+    if (!isDigit(text[index]) && text[index] != '.')
+        return false;
     bool hexadecimal = text.length - index >= 2 && text[index] == '0' &&
         (text[index + 1] == 'x' || text[index + 1] == 'X');
     size_t digits = index + (hexadecimal ? 2 : 0);
     ulong value;
     bool integral = digits < text.length;
-    ulong limit = negative ? 1UL << 63 : cast(ulong)long.max;
+    ulong limit = negative ? 1UL << 63 : cast(ulong) long.max;
     for (size_t position = digits; integral && position < text.length; ++position) {
         char ch = text[position];
-        int digit = ch >= '0' && ch <= '9' ? ch - '0' :
-            hexadecimal && ch >= 'a' && ch <= 'f' ? ch - 'a' + 10 :
-            hexadecimal && ch >= 'A' && ch <= 'F' ? ch - 'A' + 10 : -1;
-        if (digit < 0) { integral = false; break; }
-        if (hexadecimal) value = value * 16 + digit; // Lua wraps hex integers.
+        int digit = ch >= '0' && ch <= '9' ? ch - '0' : hexadecimal && ch >= 'a' && ch <= 'f' ? ch - 'a' + 10
+            : hexadecimal && ch >= 'A' && ch <= 'F' ? ch - 'A' + 10 : -1;
+        if (digit < 0) {
+            integral = false;
+            break;
+        }
+        if (hexadecimal)
+            value = value * 16 + digit; // Lua wraps hex integers.
         else {
-            if (value > (limit - digit) / 10) { integral = false; break; }
+            if (value > (limit - digit) / 10) {
+                integral = false;
+                break;
+            }
             value = value * 10 + digit;
         }
     }
@@ -602,12 +718,15 @@ bool parseLuaNumber(string input, out LuaValue number) {
     if (end == ctext || end - ctext != text.length) {
         import core.stdc.locale : localeconv;
         import std.array : replace;
+
         char decimalPoint = localeconv().decimal_point[0];
-        if (decimalPoint == '.') return false;
+        if (decimalPoint == '.')
+            return false;
         auto localized = text.replace(".", [decimalPoint]);
         ctext = localized.toStringz;
         floating = strtod(ctext, &end);
-        if (end == ctext || end - ctext != localized.length) return false;
+        if (end == ctext || end - ctext != localized.length)
+            return false;
     }
     number = LuaValue(floating);
     return true;
@@ -617,33 +736,47 @@ bool parseLuaNumber(string input, out LuaValue number) {
 /// Formats a float like lua_Number2str ("%.14g") plus a ".0" suffix when it reads as an integer.
 string luaFloatToString(double d) {
     import core.stdc.stdio : snprintf;
+
     char[64] buffer;
     auto length = snprintf(buffer.ptr, buffer.length, "%.14g", d);
     string text = buffer[0 .. length].idup;
-    foreach (ch; text) if (!(ch == '-' || (ch >= '0' && ch <= '9'))) return text;
+    foreach (ch; text)
+        if (!(ch == '-' || (ch >= '0' && ch <= '9')))
+            return text;
     return text ~ ".0";
 }
 
 string toLuaString(LuaValue val) {
     switch (val.data.typeIndex) {
-        case TagNil: return "nil";
-        case TagBool: return val.asBool ? "true" : "false";
-        case TagLong: return val.asInteger.to!string;
-        case TagDouble: return luaFloatToString(val.asFloat);
-        case TagString: return val.asString;
-        case TagSymbol: {
+    case TagNil:
+        return "nil";
+    case TagBool:
+        return val.asBool ? "true" : "false";
+    case TagLong:
+        return val.asInteger.to!string;
+    case TagDouble:
+        return luaFloatToString(val.asFloat);
+    case TagString:
+        return val.asString;
+    case TagSymbol: {
             auto s = val.asSymbol;
             if (isValidLuaIdentifier(s.name)) {
                 return ":" ~ s.name;
             }
             return ":\"" ~ escapeLuaString(s.name) ~ "\"";
         }
-        case TagTable: return format("table: 0x%x", cast(size_t)cast(void*)val.asTable);
-        case TagFunction: return format("function: 0x%x", cast(size_t)cast(void*)val.asFunction);
-        case TagUserData: return format("userdata: 0x%x", cast(size_t)cast(void*)val.asUserData);
-        case TagLightUserData: return format("userdata: %s", val.asLightUserData.ptr);
-        case TagThread: return format("thread: 0x%x", cast(size_t)cast(void*)val.asThread);
-        default: return "nil";
+    case TagTable:
+        return format("table: 0x%x", cast(size_t) cast(void*) val.asTable);
+    case TagFunction:
+        return format("function: 0x%x", cast(size_t) cast(void*) val.asFunction);
+    case TagUserData:
+        return format("userdata: 0x%x", cast(size_t) cast(void*) val.asUserData);
+    case TagLightUserData:
+        return format("userdata: %s", val.asLightUserData.ptr);
+    case TagThread:
+        return format("thread: 0x%x", cast(size_t) cast(void*) val.asThread);
+    default:
+        return "nil";
     }
 }
 
@@ -669,7 +802,7 @@ class LuaFunction {
 
 /// Native D function callable from Lua
 class LuaNativeFunction : LuaFunction {
-    alias NativeDelegate = LuaValue[] delegate(void* state, LuaValue[] args);
+    alias NativeDelegate = LuaValue[]delegate(void* state, LuaValue[] args);
     NativeDelegate fn;
     bool nonYielding;
     LuaValue[] debugUpvalues; // C closures expose their upvalues (named "") to debug.getupvalue
@@ -685,10 +818,14 @@ class LuaNativeFunction : LuaFunction {
     override LuaValue[] call(void* state, LuaValue[] args) {
         import dlua.fiber : DluaFiber, currentLuaFiber;
         import core.thread : Fiber;
+
         auto fiber = currentLuaFiber();
         bool previous = fiber !is null && fiber.isYieldAllowed;
-        if (fiber !is null && nonYielding) fiber.isYieldAllowed = false;
-        scope(exit) if (fiber !is null && nonYielding) fiber.isYieldAllowed = previous && !fiber.closing;
+        if (fiber !is null && nonYielding)
+            fiber.isYieldAllowed = false;
+        scope (exit)
+            if (fiber !is null && nonYielding)
+                fiber.isYieldAllowed = previous && !fiber.closing;
         return fn(state, args);
     }
 }
@@ -715,7 +852,10 @@ class ErrorBoundary {
     LuaValue handler;
     bool handlesErrors;
     bool active;
-    this(bool handlesErrors, LuaValue handler = LuaValue.init) { this.handlesErrors = handlesErrors; this.handler = handler; }
+    this(bool handlesErrors, LuaValue handler = LuaValue.init) {
+        this.handlesErrors = handlesErrors;
+        this.handler = handler;
+    }
 }
 
 /// Thread / Coroutine representation
@@ -725,16 +865,22 @@ class LuaThread {
     string status; // "suspended", "running", "normal", "dead"
     Object fiber;
     int closeDepth;
-    ErrorBoundary[] errorBoundaries;   // the active boundaries: a prefix of boundaryStore
+    ErrorBoundary[] errorBoundaries; // the active boundaries: a prefix of boundaryStore
     private ErrorBoundary[] boundaryStore;
 
     /// Enters a protected call. Boundary objects are reused, so a pcall allocates none.
     ErrorBoundary pushBoundary(bool handlesErrors, LuaValue handler = LuaValue.init) {
         size_t depth = errorBoundaries.length;
-        if (depth == boundaryStore.length) boundaryStore.length = depth * 2 + 8;
+        if (depth == boundaryStore.length)
+            boundaryStore.length = depth * 2 + 8;
         auto boundary = boundaryStore[depth];
-        if (boundary is null) boundary = boundaryStore[depth] = new ErrorBoundary(handlesErrors, handler);
-        else { boundary.handlesErrors = handlesErrors; boundary.handler = handler; boundary.active = false; }
+        if (boundary is null)
+            boundary = boundaryStore[depth] = new ErrorBoundary(handlesErrors, handler);
+        else {
+            boundary.handlesErrors = handlesErrors;
+            boundary.handler = handler;
+            boundary.active = false;
+        }
         errorBoundaries = boundaryStore[0 .. depth + 1];
         return boundary;
     }
@@ -744,6 +890,7 @@ class LuaThread {
         boundaryStore[depth].handler = LuaValue.init;
         errorBoundaries = boundaryStore[0 .. depth];
     }
+
     LuaFunction hookFunction;
     int hookMask;
     int hookCount;
@@ -767,11 +914,11 @@ class LuaThread {
     LuaValue tailCallee;
     LuaValue[] tailArguments;
     Object tailWorld;
-    int cCalls;               // nested VM re-entries from native code (emulates nCcalls)
-    size_t stackSlots;        // Lua stack slots in use (emulates LUAI_MAXSTACK)
-    bool overflowed;          // a stack overflow error is being handled
-    size_t nativeStackLimit;  // lowest usable native stack address (0 = unchecked)
-    size_t nativeSoftLimit;   // raises "stack overflow" here; the rest is reserved for error handling
+    int cCalls; // nested VM re-entries from native code (emulates nCcalls)
+    size_t stackSlots; // Lua stack slots in use (emulates LUAI_MAXSTACK)
+    bool overflowed; // a stack overflow error is being handled
+    size_t nativeStackLimit; // lowest usable native stack address (0 = unchecked)
+    size_t nativeSoftLimit; // raises "stack overflow" here; the rest is reserved for error handling
 
     this(LuaFunction entry = null) {
         this.entryFunction = entry;

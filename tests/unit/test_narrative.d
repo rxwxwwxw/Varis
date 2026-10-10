@@ -23,13 +23,22 @@ import std.json;
 
 void rejects(void delegate() operation, string message) {
     import std.string : indexOf;
+
     bool rejected;
-    try { operation(); } catch (LuaException e) { assert(e.msg.indexOf(message) >= 0, e.msg); rejected = true; }
+    try {
+        operation();
+    } catch (LuaException e) {
+        assert(e.msg.indexOf(message) >= 0, e.msg);
+        rejected = true;
+    }
     assert(rejected, message);
 }
 
 void testCodec() {
-    LuaValue[] values = [luaNil(), LuaValue(true), LuaValue(long.max), LuaValue(long.min), LuaValue(1.25), LuaValue(1.0), LuaValue(-0.0), LuaValue("binary\0value"), LuaValue(Symbol("binary\0symbol"))];
+    LuaValue[] values = [
+        luaNil(), LuaValue(true), LuaValue(long.max), LuaValue(long.min), LuaValue(1.25),
+        LuaValue(1.0), LuaValue(-0.0), LuaValue("binary\0value"), LuaValue(Symbol("binary\0symbol"))
+    ];
     foreach (value; values) {
         auto decoded = decodeValue(parseJSON(encodeValue(value).toString));
         assert(luaRawEqual(value, decoded));
@@ -39,7 +48,7 @@ void testCodec() {
     assert(canonicalScalar(LuaValue(-0.0)) == canonicalScalar(LuaValue(0L)));
     rejects({ canonicalScalar(LuaValue(double.infinity)); }, "nonfinite");
     rejects({ encodeValue(LuaValue(new LuaTable())); }, "unsupported save value");
-    auto nested = immutableRecord(["values":immutableSequence(values)]);
+    auto nested = immutableRecord(["values": immutableSequence(values)]);
     auto decoded = decodeValue(parseJSON(encodeValue(nested).toString));
     auto state = new LuaState();
     auto sequence = VM.getTable(state, decoded, LuaValue("values"));
@@ -49,7 +58,8 @@ void testCodec() {
 }
 
 void testRegistryFailures() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         relation source(1)
         storylet unsafe(?missing)
@@ -60,7 +70,8 @@ void testRegistryFailures() {
     }");
     rejects({ state.narrativeRegistry.seal(); }, "unbound storylet parameter");
     assert(!state.narrativeRegistry.sealed());
-    auto unknown = new LuaState(); openLibs(unknown);
+    auto unknown = new LuaState();
+    openLibs(unknown);
     unknown.doString(q"{
         relation source(1)
         storylet unknown(?value)
@@ -71,7 +82,8 @@ void testRegistryFailures() {
         end
     }");
     rejects({ unknown.narrativeRegistry.seal(); }, "unknown narrative deck");
-    auto badTemplate = new LuaState(); openLibs(badTemplate);
+    auto badTemplate = new LuaState();
+    openLibs(badTemplate);
     badTemplate.doString(q"{
         relation source(1)
         storylet unknown(?value)
@@ -81,7 +93,8 @@ void testRegistryFailures() {
         end
     }");
     rejects({ badTemplate.narrativeRegistry.seal(); }, "unknown narrative template placeholder");
-    auto readonly = new LuaState(); openLibs(readonly);
+    auto readonly = new LuaState();
+    openLibs(readonly);
     rejects({ readonly.doString(q"{
         relation source(1)
         storylet readonly(?value)
@@ -90,7 +103,8 @@ void testRegistryFailures() {
             choice continue effect do value = 2 end end
         end
     }"); }, "read-only narrative parameter");
-    auto runtimeReadonly = new LuaState(); openLibs(runtimeReadonly);
+    auto runtimeReadonly = new LuaState();
+    openLibs(runtimeReadonly);
     runtimeReadonly.doString(q"{
         relation source(1) fact source(:p)
         storylet readonly(?value) when {source(?value)} title "Readonly"
@@ -99,12 +113,21 @@ void testRegistryFailures() {
     }");
     runtimeReadonly.narrativeRegistry.seal();
     auto readonlyEffect = runtimeReadonly.narrativeRegistry.storylet("readonly").choices[0].effect;
-    rejects({ VM.callValue(runtimeReadonly, readonlyEffect, [wrapWorld(runtimeReadonly.globalWorld), LuaValue(Symbol("p"))]); }, "read-only narrative parameter");
+    rejects({
+        VM.callValue(runtimeReadonly, readonlyEffect, [
+            wrapWorld(runtimeReadonly.globalWorld), LuaValue(Symbol("p"))
+        ]);
+    }, "read-only narrative parameter");
     writeln("  [PASS] sealing validation and read-only effect parameters");
 }
 
 void testCompanionErrors() {
-    struct Failure { string source; string message; bool seal; }
+    struct Failure {
+        string source;
+        string message;
+        bool seal;
+    }
+
     Failure[] cases = [
         Failure("relation p(1) storylet x(?v) when {p(?v)} title \"X\" title \"Y\" choice go effect do end end end", "duplicate content field", false),
         Failure("relation p(1) storylet x(?v) when {p(?v)} title \"X\" choice go(?missing) effect do end end end", "unbound choice parameter", true),
@@ -118,10 +141,16 @@ void testCompanionErrors() {
         Failure("deck :bad {replacement=1}", "replacement must be Boolean", true)
     ];
     foreach (failure; cases) {
-        auto state = new LuaState(); openLibs(state);
-        rejects({ state.doString(failure.source); if (failure.seal) state.narrativeRegistry.seal(); }, failure.message);
+        auto state = new LuaState();
+        openLibs(state);
+        rejects({
+            state.doString(failure.source);
+            if (failure.seal)
+                state.narrativeRegistry.seal();
+        }, failure.message);
     }
-    auto keys = new LuaState(); openLibs(keys);
+    auto keys = new LuaState();
+    openLibs(keys);
     keys.doString(q"{
         relation item(1) fact item({})
         storylet bad(?id) when {item(?id)} title "Bad" choice go effect do end end end
@@ -135,7 +164,8 @@ void testCompanionErrors() {
 }
 
 void testCompiledContexts() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         relation source(id, value) key(id)
         fact source(:p, 1)
@@ -167,16 +197,18 @@ void testCompiledContexts() {
     assert(RelTuple([id, LuaValue(1L)]) in state.globalWorld.getRelation("source").baseFacts);
     state.doString("relation literal(1) fact literal(\"} -- { literal\")");
     auto template_ = new NarrativeTemplate(
-        "{{outer}} {#if query {literal([=[} -- { literal]=]), -- } ignored\n" ~
-        "where (true --[==[ { } ]==] )}}yes {#if query literal(\"missing\")}bad{#else}nested{/if}{#else}no{/if}", []);
+            "{{outer}} {#if query {literal([=[} -- { literal]=]), -- } ignored\n" ~
+            "where (true --[==[ { } ]==] )}}yes {#if query literal(\"missing\")}bad{#else}nested{/if}{#else}no{/if}", [
+    ]);
     assert(template_.render(state, state.globalWorld.cloneSnapshot(), null,
-        (LuaValue value) => toLuaString(value)) == "{outer} yes nested");
+            (LuaValue value) => toLuaString(value)) == "{outer} yes nested");
     rejects({ new NarrativeTemplate("{#if query literal([=[unterminated)}", []); }, "unterminated long bracket");
     writeln("  [PASS] narrative session-world contexts and correlated choice bindings");
 }
 
 void testSessions() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         relation counter(id, value) key(id)
         fact counter(:p, 0)
@@ -242,7 +274,8 @@ void testSessions() {
 }
 
 void testActionsAndEvents() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         relation counter(id, value) key(id)
         relation seen(1)
@@ -292,7 +325,8 @@ void testActionsAndEvents() {
         session:present()
         assert(callbacks == 1 and (query {counter(:p, 11)})() ~= nil)
     }");
-    auto loop = new LuaState(); openLibs(loop);
+    auto loop = new LuaState();
+    openLibs(loop);
     loop.doString(q"{
         relation counter(id, value) key(id)
         fact counter(:p, 0)
@@ -312,7 +346,8 @@ void testActionsAndEvents() {
 }
 
 void testDeterminismAndBudgets() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         relation candidate(1)
         fact candidate(:a)
@@ -343,7 +378,8 @@ void testDeterminismAndBudgets() {
         left:choose(a.storylets[1].choices[1].token)
         assert(left:turn() == 1 and right:turn() == 0)
     }");
-    auto events = new LuaState(); openLibs(events);
+    auto events = new LuaState();
+    openLibs(events);
     events.doString(q"{
         relation ready(0)
         fact ready()
@@ -367,7 +403,8 @@ void testDeterminismAndBudgets() {
         end
         assert(count == 3 and session:turn() == 0)
     }");
-    auto callback = new LuaState(); openLibs(callback);
+    auto callback = new LuaState();
+    openLibs(callback);
     callback.doString(q"{
         relation ready(0)
         fact ready()
@@ -393,7 +430,8 @@ void testDeterminismAndBudgets() {
 }
 
 void testQualities() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         assert(require("quality") == quality)
         quality.define(:coins, {initial = 0, minimum = 0, maximum = 100, label = "Coins"})
@@ -517,7 +555,9 @@ void testPortableSessions() {
         end
         narrative.seal()
     }";
-    auto state = new LuaState(); openLibs(state); state.doString(authored);
+    auto state = new LuaState();
+    openLibs(state);
+    state.doString(authored);
     state.doString(q"{
         session = narrative.new(make_world())
         session:seed(345)
@@ -574,38 +614,56 @@ void testPortableSessions() {
     replayed["world_identity"] = initial["world_identity"];
     assert(canonicalJSON(replayed) == canonicalJSON(initial), "replaying recorded commands changed committed state");
     auto saved = saveSession(session);
-    auto second = new LuaState(); openLibs(second); second.doString(authored);
+    auto second = new LuaState();
+    openLibs(second);
+    second.doString(authored);
     auto restored = loadSession(second, saved, second.getGlobal("make_world"));
     assert(saved == saveSession(restored), "cross-state canonical roundtrip");
     auto factory = state.getGlobal("make_world");
     auto pristine = unwrapWorld(VM.callValue(state, factory, [])[0]);
     auto unchanged = pristine.version_;
-    auto constantFactory = LuaValue(new LuaNativeFunction((void* p, LuaValue[] a) { return [wrapWorld(pristine)]; }));
-    auto input = parseJSON(saved); input["turn"] = JSONValue("-1");
+    auto constantFactory = LuaValue(new LuaNativeFunction((void* p, LuaValue[] a) {
+            return [wrapWorld(pristine)];
+        }));
+    auto input = parseJSON(saved);
+    input["turn"] = JSONValue("-1");
     rejects({ loadSession(state, input.toString, constantFactory); }, "invalid save counter");
-    input = parseJSON(saved); input["content"] = JSONValue("wrong");
+    input = parseJSON(saved);
+    input["content"] = JSONValue("wrong");
     rejects({ loadSession(state, input.toString, constantFactory); }, "content version");
-    input = parseJSON(saved); input["runtime"] = JSONValue("wrong");
+    input = parseJSON(saved);
+    input["runtime"] = JSONValue("wrong");
     rejects({ loadSession(state, input.toString, constantFactory); }, "runtime version");
     input = parseJSON(saved);
-    foreach (ref relation; input["relations"].array) if (relation["columns"].array.length == 3) {
-        auto columns = relation["columns"].array; auto temporary = columns[0]; columns[0] = columns[1]; columns[1] = temporary; break;
-    }
+    foreach (ref relation; input["relations"].array)
+        if (relation["columns"].array.length == 3) {
+            auto columns = relation["columns"].array;
+            auto temporary = columns[0];
+            columns[0] = columns[1];
+            columns[1] = temporary;
+            break;
+        }
     rejects({ loadSession(state, input.toString, constantFactory); }, "relation schema");
-    input = parseJSON(saved); input["program_fingerprint"] = JSONValue("wrong");
+    input = parseJSON(saved);
+    input["program_fingerprint"] = JSONValue("wrong");
     rejects({ loadSession(state, input.toString, constantFactory); }, "rule program");
-    input = parseJSON(saved); input["events"].array[0]["turn"] = JSONValue("999");
+    input = parseJSON(saved);
+    input["events"].array[0]["turn"] = JSONValue("999");
     rejects({ loadSession(state, input.toString, constantFactory); }, "event history");
     input = parseJSON(saved);
-    foreach (ref relation; input["relations"].array) if (stringValueForTest(relation["name"]) == "quality") {
-        auto facts = relation["facts"].array;
-        facts[0].array[2] = encodeValue(LuaValue(1001L)); break;
-    }
+    foreach (ref relation; input["relations"].array)
+        if (stringValueForTest(relation["name"]) == "quality") {
+            auto facts = relation["facts"].array;
+            facts[0].array[2] = encodeValue(LuaValue(1001L));
+            break;
+        }
     rejects({ loadSession(state, input.toString, constantFactory); }, "above maximum");
-    input = parseJSON(saved); input["events"].array[0]["kind"] = encodeValue(LuaValue(Symbol("changed")));
+    input = parseJSON(saved);
+    input["events"].array[0]["kind"] = encodeValue(LuaValue(Symbol("changed")));
     rejects({ loadSession(state, input.toString, constantFactory); }, "relation/history mismatch");
-    assert(pristine.version_ == unchanged && pristine.narrativeOwner is null && pristine.getRelation("narrative_event") is null,
-        "failed load changed authored destination");
+    assert(pristine.version_ == unchanged && pristine.narrativeOwner is null && pristine.getRelation(
+            "narrative_event") is null,
+            "failed load changed authored destination");
     session.world.addFact("payload", RelTuple([LuaValue("mutable"), LuaValue(new LuaTable())]));
     rejects({ saveSession(session); }, "relation.payload[1]");
     session.world.getRelation("payload").baseFacts = null;
@@ -619,7 +677,8 @@ void testPortableSessions() {
 }
 
 void testPersistenceRejections() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         relation ready(0)
         fact ready()
@@ -641,7 +700,8 @@ void testPersistenceRejections() {
             assert(not ok and string.find(err, "active operation", 1, true))
         end
     }");
-    auto guards = new LuaState(); openLibs(guards);
+    auto guards = new LuaState();
+    openLibs(guards);
     guards.doString(q"{
         relation seed(1)
         fact seed(1)
@@ -649,7 +709,8 @@ void testPersistenceRejections() {
         s = narrative.new(logic.global)
     }");
     rejects({ saveSession(unwrapSession(guards.getGlobal("s"))); }, "non-reconstructible runtime rule guard");
-    auto mutable = new LuaState(); openLibs(mutable);
+    auto mutable = new LuaState();
+    openLibs(mutable);
     mutable.doString(q"{
         relation seed(1)
         fact seed(1)
@@ -662,7 +723,8 @@ void testPersistenceRejections() {
         s = narrative.new(logic.global)
     }");
     rejects({ saveSession(unwrapSession(mutable.getGlobal("s"))); }, "non-reconstructible capture");
-    auto aggregate = new LuaState(); openLibs(aggregate);
+    auto aggregate = new LuaState();
+    openLibs(aggregate);
     aggregate.doString(q"{
         function factory()
             local w = logic.emptyworld()
@@ -681,22 +743,32 @@ void testPersistenceRejections() {
     }");
     auto source = unwrapWorld(VM.callValue(aggregate, aggregate.getGlobal("factory"), [])[0]);
     auto counterBefore = source.version_;
-    auto factory = LuaValue(new LuaNativeFunction((void* p, LuaValue[] a) { return [wrapWorld(source)]; }));
+    auto factory = LuaValue(new LuaNativeFunction((void* p, LuaValue[] a) {
+            return [wrapWorld(source)];
+        }));
     auto saved = aggregate.getGlobal("saved").match!((string s) => s, _ => "");
-    auto incompatible = parseJSON(saved); incompatible["content"] = JSONValue("old-content");
+    auto incompatible = parseJSON(saved);
+    incompatible["content"] = JSONValue("old-content");
     auto library = aggregate.getGlobal("narrative");
     auto load = VM.getTable(aggregate, library, LuaValue("load"));
-    auto migration = LuaValue(new LuaNativeFunction((void* p, LuaValue[] a) { return [LuaValue(saved)]; }));
-    auto restored = VM.callValue(aggregate, load, [LuaValue(incompatible.toString), factory, migration]);
+    auto migration = LuaValue(new LuaNativeFunction((void* p, LuaValue[] a) {
+            return [LuaValue(saved)];
+        }));
+    auto restored = VM.callValue(aggregate, load, [
+        LuaValue(incompatible.toString), factory, migration
+    ]);
     assert(restored.length == 1 && unwrapSession(restored[0]).world !is source);
     auto badMigration = LuaValue(new LuaNativeFunction((void* p, LuaValue[] a) { return [luaNil()]; }));
-    rejects({ VM.callValue(aggregate, load, [LuaValue(incompatible.toString), factory, badMigration]); }, "migration must return");
+    rejects({
+        VM.callValue(aggregate, load, [LuaValue(incompatible.toString), factory, badMigration]);
+    }, "migration must return");
     assert(source.version_ == counterBefore && source.narrativeOwner is null);
     writeln("  [PASS] active-save restrictions, unsupported runtime closures, anonymous aggregate reconstruction and explicit migration");
 }
 
 void testObservers() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         relation seed(1)
         relation blocked(1)
@@ -802,7 +874,8 @@ void testObservers() {
         fact restored_world.other(:restored)
         assert(entered == 2, "saved subscriptions leaked into restored world")
     }");
-    auto queued = new LuaState(); openLibs(queued);
+    auto queued = new LuaState();
+    openLibs(queued);
     queued.doString(q"{
         relation steps(id, value) key(id)
         narrative.observe(logic.global, "steps", {
@@ -819,7 +892,8 @@ void testObservers() {
 }
 
 void testExplanations() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         relation person(1)
         relation value(id, amount) key(id)
@@ -906,11 +980,13 @@ void testExplanations() {
         local ok, err = pcall(function() narrative.explain(session, :gated, {unknown = 1}) end)
         assert(not ok and string.find(err, "unknown explanation parameter", 1, true))
     }");
-    writeln("  [PASS] structured goal explanations, policy exclusions, explicit nil bindings and logical/session/RNG purity");
+    writeln(
+            "  [PASS] structured goal explanations, policy exclusions, explicit nil bindings and logical/session/RNG purity");
 }
 
 void testAnalysis() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         relation location(entity, place) key(entity)
         fact location(:player, :start)
@@ -958,7 +1034,8 @@ void testAnalysis() {
         assert(not report.complete and #report.errors == 1 and string.find(report.errors[1].reason, "OBJECT_LIMIT", 1, true))
         assert(before == live_session:save())
     }");
-    auto cycle = new LuaState(); openLibs(cycle);
+    auto cycle = new LuaState();
+    openLibs(cycle);
     cycle.doString(q"{
         relation ready(0)
         fact ready()
@@ -977,7 +1054,8 @@ void testAnalysis() {
         assert(string.find(report.action_cycles[1].reason, "ACTION_LIMIT", 1, true))
         assert(globalcounter == 0 and before == s:save())
     }");
-    auto infinite = new LuaState(); openLibs(infinite);
+    auto infinite = new LuaState();
+    openLibs(infinite);
     infinite.doString(q"{
         relation ready(0)
         fact ready()
@@ -994,9 +1072,13 @@ void testAnalysis() {
         assert(string.find(report.errors[1].reason, "STEP_LIMIT", 1, true))
         assert(before == s:save())
     }");
-    auto external = new LuaState(); openLibs(external);
+    auto external = new LuaState();
+    openLibs(external);
     size_t writes;
-    external.registerGlobal("host_write", (void* p, LuaValue[] a) { writes++; return cast(LuaValue[])[]; });
+    external.registerGlobal("host_write", (void* p, LuaValue[] a) {
+        writes++;
+        return cast(LuaValue[])[];
+    });
     external.doString(q"{
         relation ready(0)
         fact ready()
@@ -1022,7 +1104,8 @@ void testAnalysis() {
 }
 
 void testFormattersAndVariants() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         -- 1. Formatters
         narrative.name(:library, "the Grand Library")
@@ -1083,10 +1166,13 @@ void testFormattersAndVariants() {
         assert(string.find(story.text, "Dragon", 1, true))
     }");
 
-    auto badState = new LuaState(); openLibs(badState);
+    auto badState = new LuaState();
+    openLibs(badState);
     rejects({ badState.doString(`narrative.formatter(123)`); }, "narrative formatter must be a function");
     rejects({ badState.doString(`narrative.template("Weather: {#variant 0} sunny {/variant}", {})`); }, "variant weight must be positive and finite");
-    rejects({ badState.doString(`narrative.template("Weather: {#variant abc} sunny {/variant}", {})`); }, "variant weight must be numeric");
+    rejects({
+        badState.doString(`narrative.template("Weather: {#variant abc} sunny {/variant}", {})`);
+    }, "variant weight must be numeric");
     rejects({ badState.doString(`narrative.template("Weather: {#variant 2} sunny", {})`); }, "template variant requires {/variant}");
     rejects({ badState.doString(`
         narrative.formatter("nil", function() return "x" end)
@@ -1102,6 +1188,19 @@ void testFormattersAndVariants() {
 
 int main() {
     writeln("Running dlua Narrative Extension Tests...");
-    testCodec(); testRegistryFailures(); testCompanionErrors(); testCompiledContexts(); testSessions(); testActionsAndEvents(); testDeterminismAndBudgets(); testQualities(); testPortableSessions(); testPersistenceRejections(); testObservers(); testExplanations(); testAnalysis(); testFormattersAndVariants();
+    testCodec();
+    testRegistryFailures();
+    testCompanionErrors();
+    testCompiledContexts();
+    testSessions();
+    testActionsAndEvents();
+    testDeterminismAndBudgets();
+    testQualities();
+    testPortableSessions();
+    testPersistenceRejections();
+    testObservers();
+    testExplanations();
+    testAnalysis();
+    testFormattersAndVariants();
     return 0;
 }

@@ -50,6 +50,7 @@ class Compiler {
         LocalVar[] locals;
         int line;
     }
+
     private struct PendingGoto {
         string name;
         int closePc;
@@ -58,21 +59,24 @@ class Compiler {
         size_t visibleLocals;
         int line;
     }
+
     private class LabelBlock {
         LabelBlock parent;
         JumpLabel[string] labels;
         PendingGoto[] pending;
     }
+
     private LabelBlock labelBlock;
 
     private void resolveGoto(PendingGoto jump, JumpLabel label) {
         if (label.locals.length > jump.visibleLocals) {
             throw fail("<goto " ~ jump.name ~ "> at line " ~ jump.line.to!string ~ " jumps into the scope of local '"
-                ~ label.locals[jump.visibleLocals].name ~ "'");
+                    ~ label.locals[jump.visibleLocals].name ~ "'");
         }
         int first = int.max;
         foreach (local; jump.locals[label.locals.length .. $]) {
-            if (local.reg < first) first = local.reg;
+            if (local.reg < first)
+                first = local.reg;
         }
         proto.code[jump.closePc].a = first;
         patchJump(jump.jumpPc, label.pc);
@@ -80,7 +84,8 @@ class Compiler {
 
     this(Compiler parent = null, string functionName = "") {
         this.parent = parent;
-        if (parent !is null) groundedLogicParameters = parent.groundedLogicParameters.dup;
+        if (parent !is null)
+            groundedLogicParameters = parent.groundedLogicParameters.dup;
         this.proto = new Prototype();
         this.proto.functionName = functionName;
         this.freeReg = 0;
@@ -100,7 +105,8 @@ class Compiler {
         instr.c = c;
         instr.sBx = sBx;
         instr.line = (line > 0) ? line : currentLine;
-        bool variableTop = ((op == OpCode.Call || op == OpCode.TailCall || op == OpCode.Return) && b == 0) || op == OpCode.SetList;
+        bool variableTop = ((op == OpCode.Call || op == OpCode.TailCall || op == OpCode.Return) && b == 0) || op == OpCode
+            .SetList;
         proto.pushInstruction(instr, variableTop ? int.max : freeReg);
         return cast(int)(proto.code.length - 1);
     }
@@ -114,11 +120,12 @@ class Compiler {
     }
 
     int currentPc() const {
-        return cast(int)proto.code.length;
+        return cast(int) proto.code.length;
     }
 
     int allocReg() {
-        if (freeReg + 1 >= 255) throw fail("function or expression needs too many registers");
+        if (freeReg + 1 >= 255)
+            throw fail("function or expression needs too many registers");
         int r = freeReg++;
         if (freeReg > proto.maxStackSize) {
             proto.maxStackSize = freeReg;
@@ -128,7 +135,8 @@ class Compiler {
 
     void freeRegs(int count) {
         freeReg -= count;
-        if (freeReg < 0) freeReg = 0;
+        if (freeReg < 0)
+            freeReg = 0;
     }
 
     private static bool sameFloatBits(LuaValue a, LuaValue b) {
@@ -143,26 +151,44 @@ class Compiler {
 
     int addConstant(LuaValue val) {
         int* found;
-        if (isInteger(val)) found = val.match!((long i) => i, _ => 0L) in integerConstants;
+        if (isInteger(val))
+            found = val.match!((long i) => i, _ => 0L) in integerConstants;
         else if (isFloat(val)) {
             double d = val.match!((double x) => x, _ => 0.0);
             found = *cast(ulong*)&d in floatConstants;
-        } else if (isString(val)) found = val.match!((string str) => str, _ => "") in stringConstants;
-        else if (isNil(val)) { if (nilConstant >= 0) return nilConstant; }
-        else if (val.typeOf() == LuaType.Boolean) {
+        } else if (isString(val))
+            found = val.match!((string str) => str, _ => "") in stringConstants;
+        else if (isNil(val)) {
+            if (nilConstant >= 0)
+                return nilConstant;
+        } else if (val.typeOf() == LuaType.Boolean) {
             int cached = isTruthy(val) ? trueConstant : falseConstant;
-            if (cached >= 0) return cached;
+            if (cached >= 0)
+                return cached;
         } else {
-            foreach (size_t idx, constVal; proto.constants) if (constVal.typeOf() == val.typeOf() && luaRawEqual(constVal, val)) return cast(int)idx;
+            foreach (size_t idx, constVal; proto.constants)
+                if (constVal.typeOf() == val.typeOf() && luaRawEqual(constVal, val))
+                    return cast(int) idx;
         }
-        if (found !is null) return *found;
+        if (found !is null)
+            return *found;
         proto.constants ~= val;
         int index = cast(int)(proto.constants.length - 1);
-        if (isInteger(val)) integerConstants[val.match!((long i) => i, _ => 0L)] = index;
-        else if (isFloat(val)) { double d = val.match!((double x) => x, _ => 0.0); floatConstants[*cast(ulong*)&d] = index; }
-        else if (isString(val)) stringConstants[val.match!((string str) => str, _ => "")] = index;
-        else if (isNil(val)) nilConstant = index;
-        else if (val.typeOf() == LuaType.Boolean) { if (isTruthy(val)) trueConstant = index; else falseConstant = index; }
+        if (isInteger(val))
+            integerConstants[val.match!((long i) => i, _ => 0L)] = index;
+        else if (isFloat(val)) {
+            double d = val.match!((double x) => x, _ => 0.0);
+            floatConstants[*cast(ulong*)&d] = index;
+        } else if (isString(val))
+            stringConstants[val.match!((string str) => str, _ => "")] = index;
+        else if (isNil(val))
+            nilConstant = index;
+        else if (val.typeOf() == LuaType.Boolean) {
+            if (isTruthy(val))
+                trueConstant = index;
+            else
+                falseConstant = index;
+        }
         return index;
     }
 
@@ -183,9 +209,11 @@ class Compiler {
                 firstReg = local.reg;
             }
         }
-        if (firstReg >= 0) emit(OpCode.Close, firstReg);
+        if (firstReg >= 0)
+            emit(OpCode.Close, firstReg);
         foreach (ref local; proto.debugLocals) {
-            if (local.depth > currentScopeDepth && local.endPC == int.max) local.endPC = currentPc();
+            if (local.depth > currentScopeDepth && local.endPC == int.max)
+                local.endPC = currentPc();
         }
         while (locals.length > 0 && locals[$ - 1].depth > currentScopeDepth) {
             readOnlyRegisters.remove(locals[$ - 1].reg);
@@ -199,7 +227,8 @@ class Compiler {
     }
 
     int addLocal(string name) {
-        if (locals.length >= 200) throw fail("too many local variables (limit is 200) in " ~ functionDescription());
+        if (locals.length >= 200)
+            throw fail("too many local variables (limit is 200) in " ~ functionDescription());
         int reg = allocReg();
         locals ~= LocalVar(name, reg, currentScopeDepth);
         proto.debugLocals ~= DebugLocal(name, reg, currentPc(), int.max, currentScopeDepth);
@@ -208,13 +237,15 @@ class Compiler {
 
     void markReadOnly(int reg) {
         readOnlyRegisters[reg] = true;
-        foreach (ref local; proto.debugLocals) if (local.register == reg && local.endPC == int.max) local.readOnly = true;
+        foreach (ref local; proto.debugLocals)
+            if (local.register == reg && local.endPC == int.max)
+                local.readOnly = true;
     }
 
     int resolveLocal(string name) {
-        for (long i = cast(long)locals.length - 1; i >= 0; --i) {
-            if (locals[cast(size_t)i].name == name) {
-                return locals[cast(size_t)i].reg;
+        for (long i = cast(long) locals.length - 1; i >= 0; --i) {
+            if (locals[cast(size_t) i].name == name) {
+                return locals[cast(size_t) i].reg;
             }
         }
         return -1;
@@ -222,14 +253,18 @@ class Compiler {
 
     int resolveUpvalue(string name) {
         foreach (index, upvalue; proto.upvalues) {
-            if (upvalue.name == name) return cast(int)index;
+            if (upvalue.name == name)
+                return cast(int) index;
         }
-        if (parent is null) return -1;
+        if (parent is null)
+            return -1;
 
         // Check parent's locals
         int localIdx = parent.resolveLocal(name);
         if (localIdx >= 0) {
-            foreach (ref local; parent.locals) if (local.reg == localIdx) local.isCaptured = true;
+            foreach (ref local; parent.locals)
+                if (local.reg == localIdx)
+                    local.isCaptured = true;
             return addUpvalue(name, true, localIdx);
         }
 
@@ -245,10 +280,11 @@ class Compiler {
     private int addUpvalue(string name, bool inStack, int index) {
         foreach (size_t i, up; proto.upvalues) {
             if (up.inStack == inStack && up.index == index) {
-                return cast(int)i;
+                return cast(int) i;
             }
         }
-        if (proto.upvalues.length >= 255) throw fail("too many upvalues (limit is 255) in " ~ functionDescription());
+        if (proto.upvalues.length >= 255)
+            throw fail("too many upvalues (limit is 255) in " ~ functionDescription());
         proto.upvalues ~= UpvalDesc(name, inStack, index);
         return cast(int)(proto.upvalues.length - 1);
     }
@@ -262,30 +298,35 @@ class Compiler {
         proto.isVararg = true;
         addUpvalue("_ENV", false, 0);
         compileBlock(block);
-        if (block.endLine > 0) currentLine = block.endLine;
+        if (block.endLine > 0)
+            currentLine = block.endLine;
         emit(OpCode.Return, 0, 1); // default return 0 values
         return proto;
     }
 
     private int environmentOperand() {
         int local = resolveLocal("_ENV");
-        if (local >= 0) return local + 1;
+        if (local >= 0)
+            return local + 1;
         int upvalue = resolveUpvalue("_ENV");
         return upvalue >= 0 ? -upvalue - 1 : 0;
     }
 
     void compileBlock(BlockStmt block, bool allowEndLabels = true) {
-        if (block is null) return;
+        if (block is null)
+            return;
         auto outer = labelBlock;
         auto current = new LabelBlock();
         current.parent = outer;
         labelBlock = current;
-        scope(exit) labelBlock = outer;
+        scope (exit)
+            labelBlock = outer;
         auto entryLocals = locals.dup;
         size_t endLabels = block.statements.length;
         if (allowEndLabels) {
             while (endLabels && (as!LabelStmt(block.statements[endLabels - 1])
-                || as!EmptyStmt(block.statements[endLabels - 1]))) --endLabels;
+                    || as!EmptyStmt(block.statements[endLabels - 1])))
+                --endLabels;
         }
         foreach (index, stmt; block.statements) {
             if (auto label = as!LabelStmt(stmt)) {
@@ -294,24 +335,28 @@ class Compiler {
                         throw fail("label '" ~ label.label ~ "' already defined on line " ~ prior.line.to!string);
                 }
                 current.labels[label.label] = JumpLabel(currentPc(),
-                    index >= endLabels ? entryLocals.dup : locals.dup, label.loc.line);
+                        index >= endLabels ? entryLocals.dup : locals.dup, label.loc.line);
                 continue;
             }
             compileStmt(stmt);
         }
         foreach (jump; current.pending) {
-            if (auto label = jump.name in current.labels) resolveGoto(jump, *label);
+            if (auto label = jump.name in current.labels)
+                resolveGoto(jump, *label);
             else if (outer !is null) {
-                if (jump.visibleLocals > entryLocals.length) jump.visibleLocals = entryLocals.length;
+                if (jump.visibleLocals > entryLocals.length)
+                    jump.visibleLocals = entryLocals.length;
                 outer.pending ~= jump;
-            }
-            else throw fail("no visible label '" ~ jump.name ~ "' for <goto> at line " ~ jump.line.to!string);
+            } else
+                throw fail("no visible label '" ~ jump.name ~ "' for <goto> at line " ~ jump.line.to!string);
         }
     }
 
     void compileStmt(Stmt stmt) {
-        if (stmt is null || as!EmptyStmt(stmt)) return;
-        if (stmt.loc.line > 0) currentLine = stmt.loc.line;
+        if (stmt is null || as!EmptyStmt(stmt))
+            return;
+        if (stmt.loc.line > 0)
+            currentLine = stmt.loc.line;
 
         if (auto jump = as!GotoStmt(stmt)) {
             int closePc = emit(OpCode.Close, int.max);
@@ -389,8 +434,8 @@ class Compiler {
         if (auto definition = as!NarrativeDefinitionStmt(stmt)) {
             int[] registers;
             proto.contentTemplates ~= compileContent(definition, [], registers);
-            emit(OpCode.DefineContent, 0, cast(int)proto.contentTemplates.length - 1);
-            freeRegs(cast(int)registers.length);
+            emit(OpCode.DefineContent, 0, cast(int) proto.contentTemplates.length - 1);
+            freeRegs(cast(int) registers.length);
             return;
         }
         if (auto deck = as!NarrativeDeckStmt(stmt)) {
@@ -406,12 +451,16 @@ class Compiler {
             int startRegister = freeReg;
             int world = resolveLocal("@world");
             if (s.worldExpr !is null) {
-                world = allocReg(); compileExpr(s.worldExpr, world, 1);
+                world = allocReg();
+                compileExpr(s.worldExpr, world, 1);
                 locals ~= LocalVar("@world", world, currentScopeDepth);
-        proto.debugLocals ~= DebugLocal("@world", world, currentPc(), int.max, currentScopeDepth);
+                proto.debugLocals ~= DebugLocal("@world", world, currentPc(), int.max, currentScopeDepth);
             } else if (world < 0) {
                 int upvalue = resolveUpvalue("@world");
-                if (upvalue >= 0) { world = allocReg(); emit(OpCode.GetUpval, world, upvalue); }
+                if (upvalue >= 0) {
+                    world = allocReg();
+                    emit(OpCode.GetUpval, world, upvalue);
+                }
             }
             int begin = emit(OpCode.BeginTransaction, world, 0, startRegister);
             transactionDepth++;
@@ -419,18 +468,22 @@ class Compiler {
             transactionDepth--;
             exitScope();
             emit(OpCode.EndTransaction);
-            proto.code[begin].b = cast(int)proto.code.length;
+            proto.code[begin].b = cast(int) proto.code.length;
             return;
         }
         if (as!RollbackStmt(stmt) !is null) {
-            if (transactionDepth == 0) throw new LuaException("rollback outside a transaction");
-            emit(OpCode.Rollback); return;
+            if (transactionDepth == 0)
+                throw new LuaException("rollback outside a transaction");
+            emit(OpCode.Rollback);
+            return;
         }
         if (auto s = as!UpdateStmt(stmt)) {
             auto args = s.args.dup;
-            if (s.delta !is null) args ~= s.delta;
+            if (s.delta !is null)
+                args ~= s.delta;
             compileFactOrRetract(s.relRef, args, true,
-                s.operation == "set" ? OpCode.SetFact : s.operation == "delete" ? OpCode.DeleteKey : OpCode.AdjustKey);
+                    s.operation == "set" ? OpCode.SetFact
+                    : s.operation == "delete" ? OpCode.DeleteKey : OpCode.AdjustKey);
             return;
         }
         if (auto s = as!FactStmt(stmt)) {
@@ -467,11 +520,13 @@ class Compiler {
     }
 
     private bool isVarargOrCall(Expr expr) {
-        if (expr is null) return false;
-        if (expr.parenthesized) return false;
+        if (expr is null)
+            return false;
+        if (expr.parenthesized)
+            return false;
         return (as!CallExpr(expr) !is null) ||
-               (as!MethodCallExpr(expr) !is null) ||
-               (as!VarargExpr(expr) !is null);
+            (as!MethodCallExpr(expr) !is null) ||
+            (as!VarargExpr(expr) !is null);
     }
 
     private void compileLocalDecl(LocalDeclStmt s) {
@@ -520,40 +575,48 @@ class Compiler {
         foreach (i, name; s.names) {
             bool isConst = i < s.attributes.length && s.attributes[i].length > 0;
             locals ~= LocalVar(name, targetRegs[i], currentScopeDepth, isConst,
-                i < s.attributes.length && s.attributes[i] == "close");
+                    i < s.attributes.length && s.attributes[i] == "close");
             proto.debugLocals ~= DebugLocal(name, targetRegs[i], currentPc(), int.max, currentScopeDepth);
-            if (i < s.attributes.length && s.attributes[i] == "close") emit(OpCode.ToClose, targetRegs[i]);
+            if (i < s.attributes.length && s.attributes[i] == "close")
+                emit(OpCode.ToClose, targetRegs[i]);
         }
     }
 
     /// Builds a compile-time error located at this compiler's current line.
     LuaException fail(string message) {
         import dlua.exception : shortSourceName;
-        auto failure = new LuaException(LuaValue(shortSourceName(proto.sourceName) ~ ":" ~ currentLine.to!string ~ ": " ~ message));
+
+        auto failure = new LuaException(
+                LuaValue(shortSourceName(proto.sourceName) ~ ":" ~ currentLine.to!string ~ ": " ~ message));
         failure.needsLocation = false;
         return failure;
     }
 
     private void checkWritable(string name, Compiler origin = null) {
-        if (origin is null) origin = this;
+        if (origin is null)
+            origin = this;
         int register = resolveLocal(name);
         if (register >= 0) {
             foreach_reverse (local; locals) {
                 if (local.reg == register && local.isConst)
                     throw origin.fail("attempt to assign to const variable '" ~ name ~ "'");
             }
-            if (register in readOnlyRegisters) throw origin.fail("cannot assign read-only narrative parameter '" ~ name ~ "'");
-        } else if (parent !is null) parent.checkWritable(name, origin);
+            if (register in readOnlyRegisters)
+                throw origin.fail("cannot assign read-only narrative parameter '" ~ name ~ "'");
+        } else if (parent !is null)
+            parent.checkWritable(name, origin);
     }
 
     /// Compile a function with an implicit world and immutable parameter inputs.
     static Prototype contextPrototype(BlockStmt body, string[] names, string[] groundedNames = []) {
         auto compiler = new Compiler(null, "narrative context");
-        compiler.proto.numParams = cast(int)names.length + 1;
+        compiler.proto.numParams = cast(int) names.length + 1;
         compiler.enterScope();
         compiler.addLocal("@world");
-        foreach (name; names) compiler.markReadOnly(compiler.addLocal(name));
-        foreach (name; groundedNames) compiler.groundedLogicParameters[name] = true;
+        foreach (name; names)
+            compiler.markReadOnly(compiler.addLocal(name));
+        foreach (name; groundedNames)
+            compiler.groundedLogicParameters[name] = true;
         compiler.narrativeContext = true;
         compiler.compileBlock(body);
         compiler.emit(OpCode.Return, 0, 1);
@@ -569,7 +632,8 @@ class Compiler {
     /// (targets are written before the values are evaluated in the bytecode).
     private void touchNames(Expr e) {
         if (auto v = as!VariableExpr(e)) {
-            if (resolveLocal(v.name) < 0) resolveUpvalue(v.name);
+            if (resolveLocal(v.name) < 0)
+                resolveUpvalue(v.name);
         } else if (auto f = as!FieldExpr(e)) {
             touchNames(f.table);
         } else if (auto i = as!IndexExpr(e)) {
@@ -582,13 +646,14 @@ class Compiler {
     private struct RK {
         int idx;
         bool isK;
-        bool temp;   // a register allocated for this operand
+        bool temp; // a register allocated for this operand
     }
 
     /// `v.f1.f2...` where `v` is a plain variable and there is at least one field access.
     private static bool isFieldChainOnVariable(Expr e) {
         auto f = as!FieldExpr(e);
-        if (f is null || e.parenthesized) return false;
+        if (f is null || e.parenthesized)
+            return false;
         return as!VariableExpr(f.table) !is null || isFieldChainOnVariable(f.table);
     }
 
@@ -598,20 +663,26 @@ class Compiler {
     }
 
     private LuaValue constantValue(Expr e) {
-        if (auto i = as!LiteralIntExpr(e)) return LuaValue(i.value);
-        if (auto f = as!LiteralFloatExpr(e)) return LuaValue(f.value);
-        if (auto str = as!LiteralStringExpr(e)) return LuaValue(str.value);
-        if (auto b = as!LiteralBoolExpr(e)) return LuaValue(b.value);
+        if (auto i = as!LiteralIntExpr(e))
+            return LuaValue(i.value);
+        if (auto f = as!LiteralFloatExpr(e))
+            return LuaValue(f.value);
+        if (auto str = as!LiteralStringExpr(e))
+            return LuaValue(str.value);
+        if (auto b = as!LiteralBoolExpr(e))
+            return LuaValue(b.value);
         return luaNil();
     }
 
     /// Compiles an operand: constants become K operands, local variables are used in place,
     /// everything else is evaluated into a fresh temporary.
     private RK compileRK(Expr e, bool allowK = true) {
-        if (allowK && isConstantExpr(e)) return RK(addConstant(constantValue(e)), true, false);
+        if (allowK && isConstantExpr(e))
+            return RK(addConstant(constantValue(e)), true, false);
         if (auto v = as!VariableExpr(e)) {
             int reg = resolveLocal(v.name);
-            if (reg >= 0) return RK(reg, false, false);
+            if (reg >= 0)
+                return RK(reg, false, false);
         }
         int r = allocReg();
         compileExpr(e, r, 1);
@@ -619,28 +690,38 @@ class Compiler {
     }
 
     private void freeRK(RK rk) {
-        if (rk.temp) freeRegs(1);
+        if (rk.temp)
+            freeRegs(1);
     }
 
     private static bool targetsAreSafeLocalDest(Expr value) {
-        if (value.parenthesized) return false;
+        if (value.parenthesized)
+            return false;
         if (isConstantExpr(value) || as!VariableExpr(value) !is null || as!IndexExpr(value) !is null ||
-            as!FieldExpr(value) !is null || as!UnaryExpr(value) !is null || as!FunctionDefExpr(value) !is null) return true;
+                as!FieldExpr(value) !is null || as!UnaryExpr(value) !is null || as!FunctionDefExpr(value) !is null)
+            return true;
         if (auto b = as!BinaryExpr(value)) {
-            if (b.op == BinaryOp.And || b.op == BinaryOp.Or) return false;
+            if (b.op == BinaryOp.And || b.op == BinaryOp.Or)
+                return false;
             // A single operation reads its operands before writing the destination.
-            return cast(BinaryExpr)b.left is null || b.op == BinaryOp.Concat || b.op == BinaryOp.Pow;
+            return cast(BinaryExpr) b.left is null || b.op == BinaryOp.Concat || b.op == BinaryOp.Pow;
         }
         return false;
     }
 
     private struct AssignTarget {
-        enum Kind { local, upvalue, global, index }
+        enum Kind {
+            local,
+            upvalue,
+            global,
+            index
+        }
+
         Kind kind;
-        int reg;       // local register / upvalue index
-        int nameK;     // global name constant
-        RK table;      // index: table register
-        RK key;        // index: key operand
+        int reg; // local register / upvalue index
+        int nameK; // global name constant
+        RK table; // index: table register
+        RK key; // index: key operand
     }
 
     private AssignTarget prepareTarget(Expr target, bool copyLocals) {
@@ -648,9 +729,17 @@ class Compiler {
         if (auto varExpr = as!VariableExpr(target)) {
             checkWritable(varExpr.name);
             int localReg = resolveLocal(varExpr.name);
-            if (localReg >= 0) { t.kind = AssignTarget.Kind.local; t.reg = localReg; return t; }
+            if (localReg >= 0) {
+                t.kind = AssignTarget.Kind.local;
+                t.reg = localReg;
+                return t;
+            }
             int upval = resolveUpvalue(varExpr.name);
-            if (upval >= 0) { t.kind = AssignTarget.Kind.upvalue; t.reg = upval; return t; }
+            if (upval >= 0) {
+                t.kind = AssignTarget.Kind.upvalue;
+                t.reg = upval;
+                return t;
+            }
             t.kind = AssignTarget.Kind.global;
             t.nameK = addConstant(LuaValue(varExpr.name));
             return t;
@@ -658,16 +747,22 @@ class Compiler {
         t.kind = AssignTarget.Kind.index;
         Expr tableExpr, keyExpr = null;
         string fieldName;
-        if (auto indexExpr = as!IndexExpr(target)) { tableExpr = indexExpr.table; keyExpr = indexExpr.key; }
-        else if (auto fieldExpr = as!FieldExpr(target)) { tableExpr = fieldExpr.table; fieldName = fieldExpr.field; }
-        else throw fail("syntax error");
+        if (auto indexExpr = as!IndexExpr(target)) {
+            tableExpr = indexExpr.table;
+            keyExpr = indexExpr.key;
+        } else if (auto fieldExpr = as!FieldExpr(target)) {
+            tableExpr = fieldExpr.table;
+            fieldName = fieldExpr.field;
+        } else
+            throw fail("syntax error");
         t.table = compileRK(tableExpr, false);
         if (copyLocals && !t.table.temp) {
             int copy = allocReg();
             emit(OpCode.Move, copy, t.table.idx);
             t.table = RK(copy, false, true);
         }
-        if (keyExpr is null) t.key = RK(addConstant(LuaValue(fieldName)), true, false);
+        if (keyExpr is null)
+            t.key = RK(addConstant(LuaValue(fieldName)), true, false);
         else {
             t.key = compileRK(keyExpr);
             if (copyLocals && !t.key.isK && !t.key.temp) {
@@ -681,26 +776,32 @@ class Compiler {
 
     private void storeTarget(AssignTarget t, RK value) {
         final switch (t.kind) {
-            case AssignTarget.Kind.local:
-                if (value.isK) {
-                    // Constants are loaded straight into the local.
-                    emitLoadConstant(t.reg, value.idx);
-                } else if (value.idx != t.reg) emit(OpCode.Move, t.reg, value.idx);
-                break;
-            case AssignTarget.Kind.upvalue: {
+        case AssignTarget.Kind.local:
+            if (value.isK) {
+                // Constants are loaded straight into the local.
+                emitLoadConstant(t.reg, value.idx);
+            } else if (value.idx != t.reg)
+                emit(OpCode.Move, t.reg, value.idx);
+            break;
+        case AssignTarget.Kind.upvalue: {
                 int src = value.idx;
                 bool loaded;
-                if (value.isK) { src = allocReg(); emitLoadConstant(src, value.idx); loaded = true; }
+                if (value.isK) {
+                    src = allocReg();
+                    emitLoadConstant(src, value.idx);
+                    loaded = true;
+                }
                 emit(OpCode.SetUpval, src, t.reg);
-                if (loaded) freeRegs(1);
+                if (loaded)
+                    freeRegs(1);
                 break;
             }
-            case AssignTarget.Kind.global: {
+        case AssignTarget.Kind.global: {
                 emit(OpCode.SetGlobal, value.idx, t.nameK, environmentOperand());
                 proto.code[$ - 1].aIsK = value.isK;
                 break;
             }
-            case AssignTarget.Kind.index: {
+        case AssignTarget.Kind.index: {
                 emit(OpCode.SetTable, t.table.idx, t.key.idx, value.idx);
                 proto.code[$ - 1].bIsK = t.key.isK;
                 proto.code[$ - 1].cIsK = value.isK;
@@ -711,17 +812,22 @@ class Compiler {
 
     private void emitLoadConstant(int reg, int constantIndex) {
         auto k = proto.constants[constantIndex];
-        if (isNil(k)) emit(OpCode.LoadNil, reg, 0);
-        else if (k.typeOf() == LuaType.Boolean) emit(OpCode.LoadBool, reg, isTruthy(k) ? 1 : 0, 0);
+        if (isNil(k))
+            emit(OpCode.LoadNil, reg, 0);
+        else if (k.typeOf() == LuaType.Boolean)
+            emit(OpCode.LoadBool, reg, isTruthy(k) ? 1 : 0, 0);
         else if (isInteger(k) && k.match!((long i) => i, _ => 0L) >= -32768 && k.match!((long i) => i, _ => 0L) <= 32767)
-            emit(OpCode.LoadInt, reg, 0, 0, cast(int)k.match!((long i) => i, _ => 0L));
-        else emit(OpCode.LoadK, reg, constantIndex);
+            emit(OpCode.LoadInt, reg, 0, 0, cast(int) k.match!((long i) => i, _ => 0L));
+        else
+            emit(OpCode.LoadK, reg, constantIndex);
     }
 
     private void compileAssign(AssignStmt s) {
-        foreach (target; s.targets) touchNames(target);
+        foreach (target; s.targets)
+            touchNames(target);
         int startFree = freeReg;
-        scope(exit) freeReg = startFree;
+        scope (exit)
+            freeReg = startFree;
 
         // Single assignment: the fast and most common case.
         if (s.targets.length == 1 && s.values.length == 1 && !isVarargOrCall(s.values[0])) {
@@ -733,7 +839,8 @@ class Compiler {
                 return;
             }
             RK rk = compileRK(value);
-            if (value.lastTokenLine > 0) currentLine = value.lastTokenLine;
+            if (value.lastTokenLine > 0)
+                currentLine = value.lastTokenLine;
             storeTarget(prepared, rk);
             return;
         }
@@ -741,9 +848,13 @@ class Compiler {
         // General case: evaluate target operands first, then all values, then store right to left
         // (the order C Lua uses).
         bool anyLocalTarget = false;
-        foreach (target; s.targets) if (auto v = as!VariableExpr(target)) if (resolveLocal(v.name) >= 0) anyLocalTarget = true;
+        foreach (target; s.targets)
+            if (auto v = as!VariableExpr(target))
+                if (resolveLocal(v.name) >= 0)
+                    anyLocalTarget = true;
         AssignTarget[] prepared;
-        foreach (target; s.targets) prepared ~= prepareTarget(target, anyLocalTarget);
+        foreach (target; s.targets)
+            prepared ~= prepareTarget(target, anyLocalTarget);
 
         int[] valRegs;
         if (s.values.length > 0) {
@@ -758,9 +869,11 @@ class Compiler {
             if (lastIdx < s.targets.length && isVarargOrCall(lastVal)) {
                 int needed = cast(int)(s.targets.length - lastIdx);
                 int firstR = allocReg();
-                for (int k = 1; k < needed; ++k) allocReg();
+                for (int k = 1; k < needed; ++k)
+                    allocReg();
                 compileExpr(lastVal, firstR, needed);
-                for (int k = 0; k < needed; ++k) valRegs ~= (firstR + k);
+                for (int k = 0; k < needed; ++k)
+                    valRegs ~= (firstR + k);
             } else {
                 int r = allocReg();
                 compileExpr(lastVal, r, 1);
@@ -768,11 +881,13 @@ class Compiler {
             }
         }
 
-        if (s.values.length && s.values[$ - 1].lastTokenLine > 0) currentLine = s.values[$ - 1].lastTokenLine;
+        if (s.values.length && s.values[$ - 1].lastTokenLine > 0)
+            currentLine = s.values[$ - 1].lastTokenLine;
         // Values beyond the targets were evaluated for their side effects; missing values are nil.
         foreach_reverse (i, target; prepared) {
             int rVal;
-            if (i < valRegs.length) rVal = valRegs[i];
+            if (i < valRegs.length)
+                rVal = valRegs[i];
             else {
                 rVal = allocReg();
                 emit(OpCode.LoadNil, rVal, 0);
@@ -783,16 +898,20 @@ class Compiler {
 
     private void compileReturn(ReturnStmt s) {
         bool canTailCall = transactionDepth == 0;
-        foreach (local; locals) if (local.isClose) canTailCall = false;
+        foreach (local; locals)
+            if (local.isClose)
+                canTailCall = false;
         if (canTailCall && s.values.length == 1 && !s.values[0].parenthesized &&
-            (as!CallExpr(s.values[0]) !is null || as!MethodCallExpr(s.values[0]) !is null)) {
+                (as!CallExpr(s.values[0]) !is null || as!MethodCallExpr(s.values[0]) !is null)) {
             compileExpr(s.values[0], freeReg, -1);
             assert(proto.code[$ - 1].op == OpCode.Call);
             proto.code[$ - 1].op = OpCode.TailCall;
             return;
         }
-        if (s.values.length == 1 && as!VariableExpr(s.values[0]) !is null && resolveLocal((as!VariableExpr(s.values[0])).name) >= 0) {
-            if (s.values[0].lastTokenLine > 0) currentLine = s.values[0].lastTokenLine;
+        if (s.values.length == 1 && as!VariableExpr(s.values[0]) !is null && resolveLocal(
+                (as!VariableExpr(s.values[0])).name) >= 0) {
+            if (s.values[0].lastTokenLine > 0)
+                currentLine = s.values[0].lastTokenLine;
             emit(OpCode.Return, resolveLocal((as!VariableExpr(s.values[0])).name), 2);
         } else if (s.values.length == 0) {
             emit(OpCode.Return, 0, 1); // 0 values
@@ -811,8 +930,8 @@ class Compiler {
             } else {
                 int r = allocReg();
                 compileExpr(lastVal, r, 1);
-                emit(OpCode.Return, startReg, cast(int)s.values.length + 1);
-                freeRegs(cast(int)s.values.length);
+                emit(OpCode.Return, startReg, cast(int) s.values.length + 1);
+                freeRegs(cast(int) s.values.length);
             }
         }
     }
@@ -821,7 +940,8 @@ class Compiler {
     /// and falls through otherwise. Returns the jumps to patch.
     private int[] condJump(Expr e, bool jumpIf) {
         if (auto u = as!UnaryExpr(e)) {
-            if (u.op == UnaryOp.Not) return condJump(u.expr, !jumpIf);
+            if (u.op == UnaryOp.Not)
+                return condJump(u.expr, !jumpIf);
         }
         if (auto b = as!BinaryExpr(e)) {
             if (b.op == BinaryOp.And || b.op == BinaryOp.Or) {
@@ -835,18 +955,21 @@ class Compiler {
                 // "a and b" jumping when true: skip over when a is false, jump when b is true.
                 auto skip = condJump(b.left, !jumpIf);
                 auto result = condJump(b.right, jumpIf);
-                foreach (j; skip) patchJump(j, currentPc());
+                foreach (j; skip)
+                    patchJump(j, currentPc());
                 return result;
             }
             if (b.op == BinaryOp.Eq || b.op == BinaryOp.Ne || b.op == BinaryOp.Lt || b.op == BinaryOp.Le ||
-                b.op == BinaryOp.Gt || b.op == BinaryOp.Ge) {
+                    b.op == BinaryOp.Gt || b.op == BinaryOp.Ge) {
                 return compileComparisonJump(b, jumpIf);
             }
         }
         // Constants decide at compile time.
         if (as!LiteralNilExpr(e) !is null || as!LiteralBoolExpr(e) !is null || isConstantExpr(e)) {
-            bool truthy = !(as!LiteralNilExpr(e) !is null) && !(as!LiteralBoolExpr(e) !is null && !(as!LiteralBoolExpr(e)).value);
-            if (truthy == jumpIf) return [emitJump()];
+            bool truthy = !(as!LiteralNilExpr(e) !is null) && !(as!LiteralBoolExpr(e) !is null && !(
+                    as!LiteralBoolExpr(e)).value);
+            if (truthy == jumpIf)
+                return [emitJump()];
             return [];
         }
         RK rk = compileRK(e, false);
@@ -859,18 +982,35 @@ class Compiler {
     private int[] compileComparisonJump(BinaryExpr b, bool jumpIf) {
         RK left = compileRK(b.left);
         RK right = compileRK(b.right);
-        if (b.loc.line > 0) currentLine = b.loc.line;
+        if (b.loc.line > 0)
+            currentLine = b.loc.line;
         OpCode op = OpCode.Eq;
         bool swap = false;
         bool negate = false;
         switch (b.op) {
-            case BinaryOp.Eq: op = OpCode.Eq; break;
-            case BinaryOp.Ne: op = OpCode.Eq; negate = true; break;
-            case BinaryOp.Lt: op = OpCode.Lt; break;
-            case BinaryOp.Le: op = OpCode.Le; break;
-            case BinaryOp.Gt: op = OpCode.Lt; swap = true; break;
-            case BinaryOp.Ge: op = OpCode.Le; swap = true; break;
-            default: break;
+        case BinaryOp.Eq:
+            op = OpCode.Eq;
+            break;
+        case BinaryOp.Ne:
+            op = OpCode.Eq;
+            negate = true;
+            break;
+        case BinaryOp.Lt:
+            op = OpCode.Lt;
+            break;
+        case BinaryOp.Le:
+            op = OpCode.Le;
+            break;
+        case BinaryOp.Gt:
+            op = OpCode.Lt;
+            swap = true;
+            break;
+        case BinaryOp.Ge:
+            op = OpCode.Le;
+            swap = true;
+            break;
+        default:
+            break;
         }
         RK first = swap ? right : left;
         RK second = swap ? left : right;
@@ -885,7 +1025,8 @@ class Compiler {
     }
 
     private void patchAll(int[] jumps, int target) {
-        foreach (j; jumps) patchJump(j, target);
+        foreach (j; jumps)
+            patchJump(j, target);
     }
 
     private void compileIf(IfStmt s) {
@@ -899,7 +1040,8 @@ class Compiler {
             exitScope();
 
             bool last = branchIndex + 1 == s.branches.length && s.elseBody is null;
-            if (!last) endJumps ~= emitJump(OpCode.Jmp);
+            if (!last)
+                endJumps ~= emitJump(OpCode.Jmp);
             patchAll(falseJumps, currentPc());
         }
 
@@ -932,7 +1074,8 @@ class Compiler {
 
     private void compileWhile(WhileStmt s) {
         loopCloseRegisters ~= freeReg;
-        scope(exit) loopCloseRegisters.length--;
+        scope (exit)
+            loopCloseRegisters.length--;
         loopDepth++;
         size_t prevBreaks = loopBreakJumps.length;
 
@@ -957,7 +1100,8 @@ class Compiler {
 
     private void compileRepeat(RepeatStmt s) {
         loopCloseRegisters ~= freeReg;
-        scope(exit) loopCloseRegisters.length--;
+        scope (exit)
+            loopCloseRegisters.length--;
         loopDepth++;
         size_t prevBreaks = loopBreakJumps.length;
 
@@ -987,7 +1131,8 @@ class Compiler {
 
     private void compileForNumeric(ForNumericStmt s) {
         loopCloseRegisters ~= freeReg;
-        scope(exit) loopCloseRegisters.length--;
+        scope (exit)
+            loopCloseRegisters.length--;
         loopDepth++;
         size_t prevBreaks = loopBreakJumps.length;
 
@@ -1012,7 +1157,8 @@ class Compiler {
         // Visible loop variable
         int rVar = addLocal(s.varName);
 
-        if (s.loc.line > 0) currentLine = s.loc.line;
+        if (s.loc.line > 0)
+            currentLine = s.loc.line;
         int prepPc = emit(OpCode.ForPrep, rBase);
         int loopBodyPc = currentPc();
         proto.debugLocals[$ - 1].startPC = loopBodyPc;
@@ -1020,7 +1166,8 @@ class Compiler {
         compileBlock(s.body);
         exitScope();
 
-        if (s.loc.line > 0) currentLine = s.loc.line;
+        if (s.loc.line > 0)
+            currentLine = s.loc.line;
         int loopPc = emit(OpCode.ForLoop, rBase);
         patchJump(loopPc, loopBodyPc);
         patchJump(prepPc, loopPc + 1);
@@ -1038,21 +1185,26 @@ class Compiler {
 
     private void compileForGeneric(ForGenericStmt s) {
         loopCloseRegisters ~= freeReg;
-        scope(exit) loopCloseRegisters.length--;
+        scope (exit)
+            loopCloseRegisters.length--;
         loopDepth++;
         size_t prevBreaks = loopBreakJumps.length;
 
         enterScope();
         // Lua 5.4 iterator tuple: generator, state, control, closing value.
         int rBase = allocReg();
-        allocReg(); allocReg(); allocReg();
+        allocReg();
+        allocReg();
+        allocReg();
         emit(OpCode.LoadNil, rBase, 3);
         foreach (i, expression; s.iterators) {
             if (i < 4) {
-                int wanted = i + 1 == s.iterators.length && isVarargOrCall(expression) ? 4 - cast(int)i : 1;
-                compileExpr(expression, rBase + cast(int)i, wanted);
+                int wanted = i + 1 == s.iterators.length && isVarargOrCall(expression) ? 4 - cast(int) i : 1;
+                compileExpr(expression, rBase + cast(int) i, wanted);
             } else {
-                int discarded = allocReg(); compileExpr(expression, discarded, 0); freeRegs(1);
+                int discarded = allocReg();
+                compileExpr(expression, discarded, 0);
+                freeRegs(1);
             }
         }
         foreach (reg; rBase .. rBase + 4) {
@@ -1069,14 +1221,17 @@ class Compiler {
 
         int jmpStart = emitJump(OpCode.Jmp);
         int loopBodyPc = currentPc();
-        foreach (ref local; proto.debugLocals) if (local.depth == currentScopeDepth && local.endPC == int.max) local.startPC = loopBodyPc;
+        foreach (ref local; proto.debugLocals)
+            if (local.depth == currentScopeDepth && local.endPC == int.max)
+                local.startPC = loopBodyPc;
 
         compileBlock(s.body);
         exitScope();
 
         patchJump(jmpStart, currentPc());
-        if (s.iterators.length && s.iterators[0].loc.line > 0) currentLine = s.iterators[0].loc.line;
-        emit(OpCode.TForCall, rBase, 0, cast(int)varRegs.length);
+        if (s.iterators.length && s.iterators[0].loc.line > 0)
+            currentLine = s.iterators[0].loc.line;
+        emit(OpCode.TForCall, rBase, 0, cast(int) varRegs.length);
         int tforLoopPc = emit(OpCode.TForLoop, rBase + 2);
         patchJump(tforLoopPc, loopBodyPc);
 
@@ -1133,8 +1288,10 @@ class Compiler {
     // -------------------------------------------------------------------------
 
     void compileExpr(Expr expr, int targetReg, int numResults = 1) {
-        if (expr is null) return;
-        if (expr.loc.line > 0) currentLine = expr.loc.line;
+        if (expr is null)
+            return;
+        if (expr.loc.line > 0)
+            currentLine = expr.loc.line;
 
         if (as!LiteralNilExpr(expr)) {
             emit(OpCode.LoadNil, targetReg, 0);
@@ -1148,7 +1305,7 @@ class Compiler {
 
         if (auto i = as!LiteralIntExpr(expr)) {
             if (i.value >= -32768 && i.value <= 32767) {
-                emit(OpCode.LoadInt, targetReg, 0, 0, cast(int)i.value);
+                emit(OpCode.LoadInt, targetReg, 0, 0, cast(int) i.value);
             } else {
                 int k = addConstant(LuaValue(i.value));
                 emit(OpCode.LoadK, targetReg, k);
@@ -1194,12 +1351,17 @@ class Compiler {
             {
                 int listItems, keyedFields;
                 foreach (fi, f; t.fields) {
-                    if (f.key !is null) ++keyedFields;
-                    else if (fi + 1 < t.fields.length || !isVarargOrCall(f.value)) ++listItems;
+                    if (f.key !is null)
+                        ++keyedFields;
+                    else if (fi + 1 < t.fields.length || !isVarargOrCall(f.value))
+                        ++listItems;
                 }
-                if (listItems > 0x7fff) listItems = 0x7fff;
-                if (keyedFields > 0xffff) keyedFields = 0xffff;
-                if (listItems || keyedFields) proto.tableSizeHints[cast(int)proto.code.length - 1] = (listItems << 16) | keyedFields;
+                if (listItems > 0x7fff)
+                    listItems = 0x7fff;
+                if (keyedFields > 0xffff)
+                    keyedFields = 0xffff;
+                if (listItems || keyedFields)
+                    proto.tableSizeHints[cast(int) proto.code.length - 1] = (listItems << 16) | keyedFields;
             }
             long listIdx = 1;
             for (size_t fi = 0; fi < t.fields.length; ++fi) {
@@ -1208,7 +1370,7 @@ class Compiler {
                     // Multi-result last list item: expands to all values into table!
                     int rStart = freeReg;
                     compileExpr(f.value, rStart, -1);
-                    emit(OpCode.SetList, targetReg, rStart, cast(int)listIdx);
+                    emit(OpCode.SetList, targetReg, rStart, cast(int) listIdx);
                 } else {
                     if (f.key is null) {
                         // List item: t[listIdx] = val
@@ -1234,7 +1396,8 @@ class Compiler {
         if (auto idx = as!IndexExpr(expr)) {
             RK table = compileRK(idx.table, false);
             RK key = compileRK(idx.key);
-            if (idx.lastTokenLine > 0) currentLine = idx.lastTokenLine;
+            if (idx.lastTokenLine > 0)
+                currentLine = idx.lastTokenLine;
             emit(OpCode.GetTable, targetReg, table.idx, key.idx);
             proto.code[$ - 1].cIsK = key.isK;
             freeRK(key);
@@ -1248,14 +1411,16 @@ class Compiler {
                 // one temporary per level.
                 compileExpr(f.table, targetReg, 1);
                 int kChain = addConstant(LuaValue(f.field));
-                if (f.lastTokenLine > 0) currentLine = f.lastTokenLine;
+                if (f.lastTokenLine > 0)
+                    currentLine = f.lastTokenLine;
                 emit(OpCode.GetTable, targetReg, targetReg, kChain);
                 proto.code[$ - 1].cIsK = true;
                 return;
             }
             RK table = compileRK(f.table, false);
             int kField = addConstant(LuaValue(f.field));
-            if (f.lastTokenLine > 0) currentLine = f.lastTokenLine;
+            if (f.lastTokenLine > 0)
+                currentLine = f.lastTokenLine;
             emit(OpCode.GetTable, targetReg, table.idx, kField);
             proto.code[$ - 1].cIsK = true;
             freeRK(table);
@@ -1281,7 +1446,7 @@ class Compiler {
                 } else {
                     int rArg = allocReg();
                     compileExpr(lastArg, rArg, 1);
-                    bArg = cast(int)call.args.length + 1;
+                    bArg = cast(int) call.args.length + 1;
                 }
             } else {
                 bArg = 1;
@@ -1290,7 +1455,8 @@ class Compiler {
                 proto.maxStackSize = rCall + numResults;
             }
             int cArg = (numResults < 0) ? 0 : (numResults + 1);
-            if (call.loc.line > 0) currentLine = call.loc.line;
+            if (call.loc.line > 0)
+                currentLine = call.loc.line;
             emitCall(rCall, bArg, cArg, call.callee);
             if (numResults > 0) {
                 for (int res = 0; res < numResults; ++res) {
@@ -1299,7 +1465,7 @@ class Compiler {
                     }
                 }
             }
-            freeRegs((bArg == 0 ? cast(int)call.args.length : cast(int)call.args.length + 1) - (reuseBase ? 1 : 0));
+            freeRegs((bArg == 0 ? cast(int) call.args.length : cast(int) call.args.length + 1) - (reuseBase ? 1 : 0));
             return;
         }
 
@@ -1308,9 +1474,11 @@ class Compiler {
             int rCall = reuseBase ? targetReg : allocReg();
             // The receiver lands in rCall+1 (the 'self' slot) unless it already is a local variable.
             RK receiver = compileRK(mCall.receiver, false);
-            if (!receiver.temp) allocReg();
+            if (!receiver.temp)
+                allocReg();
             int kMethod = addConstant(LuaValue(mCall.method));
-            if (mCall.nameLine > 0) currentLine = mCall.nameLine;
+            if (mCall.nameLine > 0)
+                currentLine = mCall.nameLine;
             emit(OpCode.Self, rCall, receiver.idx, kMethod);
             proto.code[$ - 1].cIsK = true;
 
@@ -1329,7 +1497,7 @@ class Compiler {
                 } else {
                     int rArg = allocReg();
                     compileExpr(lastArg, rArg, 1);
-                    bArg = cast(int)mCall.args.length + 2;
+                    bArg = cast(int) mCall.args.length + 2;
                 }
             } else {
                 bArg = 2; // self only
@@ -1338,7 +1506,8 @@ class Compiler {
                 proto.maxStackSize = rCall + numResults;
             }
             int cArg = (numResults < 0) ? 0 : (numResults + 1);
-            if (mCall.argsLine > 0) currentLine = mCall.argsLine;
+            if (mCall.argsLine > 0)
+                currentLine = mCall.argsLine;
             emitCall(rCall, bArg, cArg, null, mCall.method);
             if (numResults > 0) {
                 for (int res = 0; res < numResults; ++res) {
@@ -1347,7 +1516,8 @@ class Compiler {
                     }
                 }
             }
-            freeRegs((bArg == 0 ? cast(int)mCall.args.length + 1 : cast(int)mCall.args.length + 2) - (reuseBase ? 1 : 0));
+            freeRegs((bArg == 0 ? cast(int) mCall.args.length + 1 : cast(int) mCall.args.length + 2) - (reuseBase ? 1
+                    : 0));
             return;
         }
 
@@ -1387,7 +1557,10 @@ class Compiler {
                 return;
             }
             int upvalue = resolveUpvalue(lv.name);
-            if (upvalue >= 0) { emit(OpCode.GetUpval, targetReg, upvalue); return; }
+            if (upvalue >= 0) {
+                emit(OpCode.GetUpval, targetReg, upvalue);
+                return;
+            }
             throw new LuaException(format("logic variable '?%s' not bound", lv.name));
         }
 
@@ -1401,9 +1574,12 @@ class Compiler {
 
     /// 1 for a constant that is always true, 0 for nil/false, -1 otherwise (luaK_goiftrue/goiffalse).
     private static int constantTruth(Expr e) {
-        if (as!LiteralNilExpr(e) !is null) return 0;
-        if (auto lb = as!LiteralBoolExpr(e)) return lb.value ? 1 : 0;
-        if (as!LiteralIntExpr(e) !is null || as!LiteralFloatExpr(e) !is null || as!LiteralStringExpr(e) !is null) return 1;
+        if (as!LiteralNilExpr(e) !is null)
+            return 0;
+        if (auto lb = as!LiteralBoolExpr(e))
+            return lb.value ? 1 : 0;
+        if (as!LiteralIntExpr(e) !is null || as!LiteralFloatExpr(e) !is null || as!LiteralStringExpr(e) !is null)
+            return 1;
         return -1;
     }
 
@@ -1437,9 +1613,10 @@ class Compiler {
             // Value form of a comparison: compare, then materialize the Boolean.
             RK left = compileRK(b.left);
             RK right = compileRK(b.right);
-            if (b.loc.line > 0) currentLine = b.loc.line;
-            OpCode op = (b.op == BinaryOp.Eq || b.op == BinaryOp.Ne) ? OpCode.Eq :
-                (b.op == BinaryOp.Lt || b.op == BinaryOp.Gt) ? OpCode.Lt : OpCode.Le;
+            if (b.loc.line > 0)
+                currentLine = b.loc.line;
+            OpCode op = (b.op == BinaryOp.Eq || b.op == BinaryOp.Ne) ? OpCode.Eq
+                : (b.op == BinaryOp.Lt || b.op == BinaryOp.Gt) ? OpCode.Lt : OpCode.Le;
             bool swap = b.op == BinaryOp.Gt || b.op == BinaryOp.Ge;
             RK first = swap ? right : left, second = swap ? left : right;
             emit(op, first.idx, second.idx, b.op == BinaryOp.Ne ? 0 : 1);
@@ -1458,11 +1635,14 @@ class Compiler {
         BinaryExpr[] spine;
         Expr leftmost = b;
         while (auto inner = as!BinaryExpr(leftmost)) {
-            if (inner.op == BinaryOp.And || inner.op == BinaryOp.Or || isComparison(inner.op)) break;
-            if (inner !is b && (inner.op == BinaryOp.Concat || inner.op == BinaryOp.Pow)) break;
+            if (inner.op == BinaryOp.And || inner.op == BinaryOp.Or || isComparison(inner.op))
+                break;
+            if (inner !is b && (inner.op == BinaryOp.Concat || inner.op == BinaryOp.Pow))
+                break;
             spine ~= inner;
             leftmost = inner.left;
-            if (inner.op == BinaryOp.Concat || inner.op == BinaryOp.Pow) break;
+            if (inner.op == BinaryOp.Concat || inner.op == BinaryOp.Pow)
+                break;
         }
         int rAcc = targetReg;
         int accStart = currentPc();
@@ -1473,10 +1653,14 @@ class Compiler {
             int rightStart = currentPc();
             RK right = compileRK(node.right);
             lazyRightLine(rightStart, node.right);
-            if (node.loc.line > 0) currentLine = node.loc.line;
+            if (node.loc.line > 0)
+                currentLine = node.loc.line;
             emitBinaryOp(node.op, rAcc, left, right);
             freeRK(right);
-            if (first) { freeRK(left); first = false; }
+            if (first) {
+                freeRK(left);
+                first = false;
+            }
             left = RK(rAcc, false, false);
         }
     }
@@ -1489,39 +1673,71 @@ class Compiler {
     }
 
     private static bool containsCall(Expr e) {
-        if (auto i = as!IndexExpr(e)) return containsCall(i.table) || containsCall(i.key);
-        if (auto f = as!FieldExpr(e)) return containsCall(f.table);
+        if (auto i = as!IndexExpr(e))
+            return containsCall(i.table) || containsCall(i.key);
+        if (auto f = as!FieldExpr(e))
+            return containsCall(f.table);
         return as!CallExpr(e) !is null || as!MethodCallExpr(e) !is null || as!BinaryExpr(e) !is null || as!UnaryExpr(e) !is null;
     }
 
     /// The left operand of a binary operator is discharged after the operator token was read.
     private void lazyOperandLine(int startPc, Expr operand, int operatorLine) {
-        if (operatorLine <= 0 || !isLazyOperand(operand) || containsCall(operand)) return;
-        foreach (pc; startPc .. currentPc()) proto.code[pc].line = operatorLine;
+        if (operatorLine <= 0 || !isLazyOperand(operand) || containsCall(operand))
+            return;
+        foreach (pc; startPc .. currentPc())
+            proto.code[pc].line = operatorLine;
     }
 
     /// Loads of the right operand carry the line of its last token.
     private void lazyRightLine(int startPc, Expr operand) {
-        if (operand.lastTokenLine <= 0 || !isLazyOperand(operand) || containsCall(operand)) return;
-        foreach (pc; startPc .. currentPc()) proto.code[pc].line = operand.lastTokenLine;
+        if (operand.lastTokenLine <= 0 || !isLazyOperand(operand) || containsCall(operand))
+            return;
+        foreach (pc; startPc .. currentPc())
+            proto.code[pc].line = operand.lastTokenLine;
     }
 
     private void emitBinaryOp(BinaryOp op, int dest, RK left, RK right) {
         OpCode code;
         switch (op) {
-            case BinaryOp.Add: code = OpCode.Add; break;
-            case BinaryOp.Sub: code = OpCode.Sub; break;
-            case BinaryOp.Mul: code = OpCode.Mul; break;
-            case BinaryOp.Div: code = OpCode.Div; break;
-            case BinaryOp.IDiv: code = OpCode.IDiv; break;
-            case BinaryOp.Mod: code = OpCode.Mod; break;
-            case BinaryOp.Pow: code = OpCode.Pow; break;
-            case BinaryOp.BAnd: code = OpCode.BAnd; break;
-            case BinaryOp.BOr: code = OpCode.BOr; break;
-            case BinaryOp.BXor: code = OpCode.BXor; break;
-            case BinaryOp.Shl: code = OpCode.Shl; break;
-            case BinaryOp.Shr: code = OpCode.Shr; break;
-            default: code = OpCode.Concat; break;
+        case BinaryOp.Add:
+            code = OpCode.Add;
+            break;
+        case BinaryOp.Sub:
+            code = OpCode.Sub;
+            break;
+        case BinaryOp.Mul:
+            code = OpCode.Mul;
+            break;
+        case BinaryOp.Div:
+            code = OpCode.Div;
+            break;
+        case BinaryOp.IDiv:
+            code = OpCode.IDiv;
+            break;
+        case BinaryOp.Mod:
+            code = OpCode.Mod;
+            break;
+        case BinaryOp.Pow:
+            code = OpCode.Pow;
+            break;
+        case BinaryOp.BAnd:
+            code = OpCode.BAnd;
+            break;
+        case BinaryOp.BOr:
+            code = OpCode.BOr;
+            break;
+        case BinaryOp.BXor:
+            code = OpCode.BXor;
+            break;
+        case BinaryOp.Shl:
+            code = OpCode.Shl;
+            break;
+        case BinaryOp.Shr:
+            code = OpCode.Shr;
+            break;
+        default:
+            code = OpCode.Concat;
+            break;
         }
         emit(code, dest, left.idx, right.idx);
         proto.code[$ - 1].bIsK = left.isK;
@@ -1532,7 +1748,7 @@ class Compiler {
         // Negative numeric literals are constants.
         if (u.op == UnaryOp.Neg && !u.expr.parenthesized) {
             if (auto i = as!LiteralIntExpr(u.expr)) {
-                emitLoadConstant(targetReg, addConstant(LuaValue(cast(long)(0UL - cast(ulong)i.value))));
+                emitLoadConstant(targetReg, addConstant(LuaValue(cast(long)(0UL - cast(ulong) i.value))));
                 return;
             }
             if (auto f = as!LiteralFloatExpr(u.expr)) {
@@ -1541,13 +1757,23 @@ class Compiler {
             }
         }
         RK operand = compileRK(u.expr, false);
-        if (u.loc.line > 0) currentLine = u.loc.line;
+        if (u.loc.line > 0)
+            currentLine = u.loc.line;
         switch (u.op) {
-            case UnaryOp.Neg: emit(OpCode.Unm, targetReg, operand.idx); break;
-            case UnaryOp.Not: emit(OpCode.Not, targetReg, operand.idx); break;
-            case UnaryOp.Len: emit(OpCode.Len, targetReg, operand.idx); break;
-            case UnaryOp.BitNot: emit(OpCode.BNot, targetReg, operand.idx); break;
-            default: break;
+        case UnaryOp.Neg:
+            emit(OpCode.Unm, targetReg, operand.idx);
+            break;
+        case UnaryOp.Not:
+            emit(OpCode.Not, targetReg, operand.idx);
+            break;
+        case UnaryOp.Len:
+            emit(OpCode.Len, targetReg, operand.idx);
+            break;
+        case UnaryOp.BitNot:
+            emit(OpCode.BNot, targetReg, operand.idx);
+            break;
+        default:
+            break;
         }
         freeRK(operand);
     }
@@ -1557,7 +1783,7 @@ class Compiler {
         subCompiler.proto.sourceName = proto.sourceName;
         subCompiler.proto.lineDefined = fn.loc.line;
         subCompiler.proto.lastLineDefined = fn.endLine;
-        subCompiler.proto.numParams = cast(int)fn.params.length;
+        subCompiler.proto.numParams = cast(int) fn.params.length;
         subCompiler.proto.isVararg = fn.isVararg;
 
         subCompiler.enterScope();
@@ -1569,7 +1795,8 @@ class Compiler {
         subCompiler.emit(OpCode.Return, 0, 1); // default return
         subCompiler.exitScope();
 
-        if (fn.endLine > 0) currentLine = fn.endLine;
+        if (fn.endLine > 0)
+            currentLine = fn.endLine;
         proto.subPrototypes ~= subCompiler.proto;
         int subIdx = cast(int)(proto.subPrototypes.length - 1);
         emit(OpCode.Closure, targetReg, subIdx);
@@ -1580,7 +1807,8 @@ class Compiler {
     // -------------------------------------------------------------------------
 
     private void compileWorldPath(string[] worldPath, int targetReg) {
-        if (worldPath.length == 0) return;
+        if (worldPath.length == 0)
+            return;
         string first = worldPath[0];
         int locReg = resolveLocal(first);
         if (locReg >= 0) {
@@ -1606,39 +1834,55 @@ class Compiler {
 
     private ContentTemplate compileContent(NarrativeDefinitionStmt definition, string[] incoming, ref int[] registers) {
         auto template_ = new ContentTemplate();
-        template_.kind = definition.kind; template_.id = definition.name;
-        template_.parameters = definition.parameters.dup; template_.incomingParameters = incoming.dup;
+        template_.kind = definition.kind;
+        template_.id = definition.name;
+        template_.parameters = definition.parameters.dup;
+        template_.incomingParameters = incoming.dup;
         foreach (goal; definition.goals) {
             if (auto atom = as!AstRelAtomGoal(goal)) {
-                if (!atom.isNegated) foreach (term; atom.terms)
-                    if (auto variable = as!LogicVarExpr(term)) template_.groundedParameters ~= variable.name;
-            } else if (auto aggregate = as!AstAggregateGoal(goal)) template_.groundedParameters ~= aggregate.resultVariable;
+                if (!atom.isNegated)
+                    foreach (term; atom.terms)
+                        if (auto variable = as!LogicVarExpr(term))
+                            template_.groundedParameters ~= variable.name;
+            } else if (auto aggregate = as!AstAggregateGoal(goal))
+                template_.groundedParameters ~= aggregate.resultVariable;
         }
         foreach (i, field; definition.fieldNames) {
-            int register = allocReg(); registers ~= register;
+            int register = allocReg();
+            registers ~= register;
             compileExpr(definition.fieldValues[i], register, 1);
-            template_.optionNames ~= field; template_.optionRegisters ~= register;
+            template_.optionNames ~= field;
+            template_.optionRegisters ~= register;
         }
         void compileContext(BlockStmt body, string[] names, string[] correlated, ref int destination) {
             auto compiler = new Compiler(this, definition.kind ~ ":" ~ definition.name);
             compiler.narrativeContext = true;
             compiler.groundedLogicParameters = null;
-            foreach (name; correlated) compiler.groundedLogicParameters[name] = true;
-            compiler.proto.numParams = cast(int)names.length + 1;
-            compiler.enterScope(); compiler.addLocal("@world");
-            foreach (name; names) compiler.markReadOnly(compiler.addLocal(name));
-            compiler.compileBlock(body); compiler.emit(OpCode.Return, 0, 1); compiler.exitScope();
+            foreach (name; correlated)
+                compiler.groundedLogicParameters[name] = true;
+            compiler.proto.numParams = cast(int) names.length + 1;
+            compiler.enterScope();
+            compiler.addLocal("@world");
+            foreach (name; names)
+                compiler.markReadOnly(compiler.addLocal(name));
+            compiler.compileBlock(body);
+            compiler.emit(OpCode.Return, 0, 1);
+            compiler.exitScope();
             proto.subPrototypes ~= compiler.proto;
-            destination = allocReg(); registers ~= destination;
-            emit(OpCode.Closure, destination, cast(int)proto.subPrototypes.length - 1);
+            destination = allocReg();
+            registers ~= destination;
+            emit(OpCode.Closure, destination, cast(int) proto.subPrototypes.length - 1);
         }
+
         if (definition.goals.length) {
             auto query = new QueryExpr(definition.goals, true, definition.loc);
-            auto body = new BlockStmt([cast(Stmt)new ReturnStmt([cast(Expr)query], definition.loc)], definition.loc);
+            auto body = new BlockStmt([cast(Stmt) new ReturnStmt([cast(Expr) query], definition.loc)], definition.loc);
             compileContext(body, incoming, incoming, template_.availabilityRegister);
         }
-        if (definition.effect !is null) compileContext(definition.effect, incoming ~ definition.parameters, [], template_.effectRegister);
-        foreach (choice; definition.choices) template_.choices ~= compileContent(choice, definition.parameters, registers);
+        if (definition.effect !is null)
+            compileContext(definition.effect, incoming ~ definition.parameters, [], template_.effectRegister);
+        foreach (choice; definition.choices)
+            template_.choices ~= compileContent(choice, definition.parameters, registers);
         return template_;
     }
 
@@ -1659,7 +1903,7 @@ class Compiler {
             argRegs ~= r;
         }
         int rFirstArg = (argRegs.length > 0) ? argRegs[0] : 0;
-        int numArgs = cast(int)argRegs.length;
+        int numArgs = cast(int) argRegs.length;
 
         if (relRef.worldPath.length > 0) {
             int rWorld = allocReg();
@@ -1703,33 +1947,40 @@ class Compiler {
 
     private void emitCall(int callee, int arguments, int results, Expr expression = null, string method = "") {
         CallName identity;
-        if (method.length) identity = CallName(method, "method");
+        if (method.length)
+            identity = CallName(method, "method");
         else if (auto variable = as!VariableExpr(expression)) {
-            identity = CallName(variable.name, resolveLocal(variable.name) >= 0 ? "local" : resolveUpvalue(variable.name) >= 0 ? "upvalue" : "global");
-        } else if (auto field = as!FieldExpr(expression)) identity = CallName(field.field, "field");
+            identity = CallName(variable.name, resolveLocal(variable.name) >= 0 ? "local" : resolveUpvalue(
+                    variable.name) >= 0 ? "upvalue" : "global");
+        } else if (auto field = as!FieldExpr(expression))
+            identity = CallName(field.field, "field");
         else if (auto index = as!IndexExpr(expression)) {
             auto key = as!LiteralStringExpr(index.key);
             identity = CallName(key is null ? "?" : key.value, "field");
         }
-        if (identity.kind.length) proto.callNames[currentPc()] = identity;
+        if (identity.kind.length)
+            proto.callNames[currentPc()] = identity;
         int world = resolveLocal("@world");
         int context;
-        if (world >= 0) context = world + 1;
+        if (world >= 0)
+            context = world + 1;
         else {
             int upvalue = resolveUpvalue("@world");
-            if (upvalue >= 0) context = -(upvalue + 1);
+            if (upvalue >= 0)
+                context = -(upvalue + 1);
         }
-        proto.callWorlds[cast(int)proto.code.length] = context;
+        proto.callWorlds[cast(int) proto.code.length] = context;
         emit(OpCode.Call, callee, arguments, results);
     }
 
     private void compileRelationDecl(RelationDeclStmt s) {
-        if (s.arity < 0) throw new LuaException("relation arity must be nonnegative");
+        if (s.arity < 0)
+            throw new LuaException("relation arity must be nonnegative");
         int kName = addConstant(LuaValue(s.name));
         int schemaIndex;
         if (s.named) {
             proto.relationSchemas ~= RelationSchemaTemplate(s.columns.dup, s.keys.dup);
-            schemaIndex = cast(int)proto.relationSchemas.length;
+            schemaIndex = cast(int) proto.relationSchemas.length;
         }
         int wReg = resolveLocal("@world");
         if (wReg >= 0) {
@@ -1748,7 +1999,8 @@ class Compiler {
     }
 
     private void compileLocalRelationDecl(LocalRelationDeclStmt s) {
-        if (s.arity < 0) throw new LuaException("relation arity must be nonnegative");
+        if (s.arity < 0)
+            throw new LuaException("relation arity must be nonnegative");
         int rRel = allocReg();
         int kName = addConstant(LuaValue(s.name));
         int wReg = resolveLocal("@world");
@@ -1785,9 +2037,11 @@ class Compiler {
         TermTemplate tt;
         if (auto lv = as!LogicVarExpr(expr)) {
             if (lv.name in groundedLogicParameters) {
-                int register = allocReg(); constRegs ~= register;
+                int register = allocReg();
+                constRegs ~= register;
                 compileExpr(new VariableExpr(lv.name, lv.loc), register, 1);
-                tt.kind = TermKind.Constant; tt.reg = register;
+                tt.kind = TermKind.Constant;
+                tt.reg = register;
                 return tt;
             }
             if (lv.isAnonymous) {
@@ -1796,7 +2050,7 @@ class Compiler {
                 tt.kind = TermKind.Variable;
                 tt.varName = lv.name;
                 if (lv.name !in varMap) {
-                    varMap[lv.name] = cast(int)varNames.length;
+                    varMap[lv.name] = cast(int) varNames.length;
                     varNames ~= lv.name;
                 }
                 tt.varId = varMap[lv.name];
@@ -1812,13 +2066,16 @@ class Compiler {
     }
 
     private void collectGuardVars(Expr expr, ref string[] varNames) {
-        if (expr is null) return;
+        if (expr is null)
+            return;
         if (auto lv = as!LogicVarExpr(expr)) {
-            if (lv.name in groundedLogicParameters) return;
+            if (lv.name in groundedLogicParameters)
+                return;
             if (lv.isAnonymous) {
                 throw new LuaException("anonymous variable '?_' not permitted in procedural guard");
             }
             import std.algorithm : canFind;
+
             if (!varNames.canFind(lv.name)) {
                 varNames ~= lv.name;
             }
@@ -1835,12 +2092,14 @@ class Compiler {
         }
         if (auto call = as!CallExpr(expr)) {
             collectGuardVars(call.callee, varNames);
-            foreach (arg; call.args) collectGuardVars(arg, varNames);
+            foreach (arg; call.args)
+                collectGuardVars(arg, varNames);
             return;
         }
         if (auto mcall = as!MethodCallExpr(expr)) {
             collectGuardVars(mcall.receiver, varNames);
-            foreach (arg; mcall.args) collectGuardVars(arg, varNames);
+            foreach (arg; mcall.args)
+                collectGuardVars(arg, varNames);
             return;
         }
         if (auto idx = as!IndexExpr(expr)) {
@@ -1854,7 +2113,8 @@ class Compiler {
         }
         if (auto tc = as!TableConstructorExpr(expr)) {
             foreach (field; tc.fields) {
-                if (field.key !is null) collectGuardVars(field.key, varNames);
+                if (field.key !is null)
+                    collectGuardVars(field.key, varNames);
                 collectGuardVars(field.value, varNames);
             }
             return;
@@ -1911,7 +2171,7 @@ class Compiler {
         // Head terms
         rTemp.headRelName = s.headRel.name;
         rTemp.headRelWorldPath = s.headRel.worldPath;
-        rTemp.headArity = cast(int)s.headArgs.length;
+        rTemp.headArity = cast(int) s.headArgs.length;
         foreach (arg; s.headArgs) {
             rTemp.headTerms ~= compileTermTemplate(arg, varMap, varNames, constRegs);
         }
@@ -1956,16 +2216,16 @@ class Compiler {
         rTemp.bodyGoals = compileGoals(s.goals, varMap, varNames, constRegs, defaultWorldReg);
 
         rTemp.variableNames = varNames;
-        rTemp.numVariables = cast(int)varNames.length;
+        rTemp.numVariables = cast(int) varNames.length;
 
         proto.ruleTemplates ~= rTemp;
         int templateIdx = cast(int)(proto.ruleTemplates.length - 1);
         emit(OpCode.RegRule, 0, templateIdx);
-        freeRegs(cast(int)constRegs.length);
+        freeRegs(cast(int) constRegs.length);
     }
 
     private GoalTemplate[] compileGoals(AstGoal[] goals, ref int[string] varMap,
-        ref string[] varNames, ref int[] constRegs, int defaultWorldReg) {
+            ref string[] varNames, ref int[] constRegs, int defaultWorldReg) {
         GoalTemplate[] templates;
         foreach (g; goals) {
             if (auto aggregate = as!AstAggregateGoal(g)) {
@@ -1974,7 +2234,7 @@ class Compiler {
                 gt.aggregateOp = aggregate.operation;
                 gt.resultVariable = aggregate.resultVariable;
                 if (aggregate.resultVariable !in varMap) {
-                    varMap[aggregate.resultVariable] = cast(int)varNames.length;
+                    varMap[aggregate.resultVariable] = cast(int) varNames.length;
                     varNames ~= aggregate.resultVariable;
                 }
                 auto innerMap = varMap.dup;
@@ -1983,13 +2243,14 @@ class Compiler {
                 if (aggregate.expression !is null) {
                     collectGuardVars(aggregate.expression, gt.aggregateExpressionVariables);
                     auto subCompiler = new Compiler(this, "aggregate expression");
-                    subCompiler.proto.numParams = cast(int)gt.aggregateExpressionVariables.length;
+                    subCompiler.proto.numParams = cast(int) gt.aggregateExpressionVariables.length;
                     subCompiler.enterScope();
-                    foreach (name; gt.aggregateExpressionVariables) subCompiler.addLocal(name);
+                    foreach (name; gt.aggregateExpressionVariables)
+                        subCompiler.addLocal(name);
                     subCompiler.compileReturn(new ReturnStmt([aggregate.expression]));
                     subCompiler.exitScope();
                     proto.subPrototypes ~= subCompiler.proto;
-                    gt.aggregateExpressionProto = cast(int)proto.subPrototypes.length - 1;
+                    gt.aggregateExpressionProto = cast(int) proto.subPrototypes.length - 1;
                 }
                 templates ~= gt;
             } else if (auto relAtom = as!AstRelAtomGoal(g)) {
@@ -1997,7 +2258,7 @@ class Compiler {
                 gt.kind = relAtom.isNegated ? GoalKind.NegatedAtom : GoalKind.PositiveAtom;
                 gt.relName = relAtom.relRef.name;
                 gt.worldPath = relAtom.relRef.worldPath;
-                gt.arity = cast(int)relAtom.terms.length;
+                gt.arity = cast(int) relAtom.terms.length;
                 foreach (term; relAtom.terms) {
                     gt.terms ~= compileTermTemplate(term, varMap, varNames, constRegs);
                 }
@@ -2018,7 +2279,7 @@ class Compiler {
                 gt.guardVarNames = guardVars;
 
                 auto subCompiler = new Compiler(this, "guard");
-                subCompiler.proto.numParams = cast(int)guardVars.length;
+                subCompiler.proto.numParams = cast(int) guardVars.length;
                 subCompiler.enterScope();
                 foreach (p; guardVars) {
                     subCompiler.addLocal(p);
@@ -2048,6 +2309,6 @@ class Compiler {
         proto.queryTemplates ~= qTemp;
         int qIdx = cast(int)(proto.queryTemplates.length - 1);
         emit(OpCode.MakeQuery, targetReg, qIdx);
-        freeRegs(cast(int)constRegs.length);
+        freeRegs(cast(int) constRegs.length);
     }
 }

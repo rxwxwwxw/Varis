@@ -347,7 +347,8 @@ void testTailCalls() {
 }
 
 void testForScopeClosing() {
-    auto state = new LuaState(); openLibs(state);
+    auto state = new LuaState();
+    openLibs(state);
     state.doString(q"{
         local order = ''
         local function closing(id)
@@ -405,6 +406,7 @@ void testForScopeClosing() {
 
 void testRegisterReuseLifetimes() {
     import dlua.lib : openLibs;
+
     auto state = new LuaState();
     openLibs(state);
     state.doString(q"{
@@ -453,6 +455,7 @@ void testRegisterReuseLifetimes() {
 void testFrameContextAndHooks() {
     auto state = new LuaState();
     import dlua.lib : openLibs;
+
     openLibs(state);
     state.doString(q"{
         local hits, childHits = 0, 0

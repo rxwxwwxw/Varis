@@ -37,9 +37,11 @@ struct RelTuple {
     }
 
     bool opEquals(ref const RelTuple rhs) const {
-        if (values.length != rhs.values.length) return false;
+        if (values.length != rhs.values.length)
+            return false;
         foreach (size_t i; 0 .. values.length) {
-            if (!luaRawEqual(values[i], rhs.values[i])) return false;
+            if (!luaRawEqual(values[i], rhs.values[i]))
+                return false;
         }
         return true;
     }
@@ -58,10 +60,12 @@ struct RelTuple {
 
     string toString() const {
         import std.array : appender;
+
         auto app = appender!string();
         app.put("(");
         foreach (i, v; values) {
-            if (i > 0) app.put(", ");
+            if (i > 0)
+                app.put(", ");
             app.put(toLuaString(v));
         }
         app.put(")");
@@ -231,7 +235,8 @@ Goal[] flattenGoals(Goal[] goals) {
     Goal[] result;
     foreach (goal; goals) {
         result ~= goal;
-        if (goal.kind == GoalKind.Aggregate) result ~= flattenGoals(goal.aggregateGoals);
+        if (goal.kind == GoalKind.Aggregate)
+            result ~= flattenGoals(goal.aggregateGoals);
     }
     return result;
 }
@@ -239,10 +244,20 @@ Goal[] flattenGoals(Goal[] goals) {
 /// Named variable references in one goal (aggregate internals stay scoped).
 string[] goalVariables(Goal goal) {
     string[] result;
-    void add(Term term) { if (term.kind == TermKind.Variable) result ~= term.varName; }
-    foreach (term; goal.terms) add(term);
-    if (goal.kind == GoalKind.Comparison) { add(goal.leftTerm); add(goal.rightTerm); }
-    if (goal.kind == GoalKind.Guard) result ~= goal.guardVarNames;
-    if (goal.kind == GoalKind.Aggregate) result ~= goal.resultVariable;
+    void add(Term term) {
+        if (term.kind == TermKind.Variable)
+            result ~= term.varName;
+    }
+
+    foreach (term; goal.terms)
+        add(term);
+    if (goal.kind == GoalKind.Comparison) {
+        add(goal.leftTerm);
+        add(goal.rightTerm);
+    }
+    if (goal.kind == GoalKind.Guard)
+        result ~= goal.guardVarNames;
+    if (goal.kind == GoalKind.Aggregate)
+        result ~= goal.resultVariable;
     return result;
 }

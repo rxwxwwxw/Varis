@@ -88,6 +88,7 @@ void testTypes() {
 
     // RelTuple (Milestone 1)
     import dlua.logic.model : RelTuple;
+
     auto tZero = RelTuple([]);
     assert(tZero.length == 0);
     assert(tZero == RelTuple([]));
@@ -99,6 +100,7 @@ void testTypes() {
     bool nanCaught = false;
     try {
         import std.math : floatTraits;
+
         double nanVal = double.nan;
         auto tNan = RelTuple([luaValue(nanVal)]);
     } catch (LuaException e) {
@@ -183,9 +185,10 @@ void testStateAndPCall() {
 
     // Register a native function: add(a, b) -> a + b
     state.registerGlobal("add", (void* s, LuaValue[] args) {
-        if (args.length < 2) return [luaNil()];
-        long a = args[0].match!((long i) => i, (double d) => cast(long)d, _ => 0L);
-        long b = args[1].match!((long i) => i, (double d) => cast(long)d, _ => 0L);
+        if (args.length < 2)
+            return [luaNil()];
+        long a = args[0].match!((long i) => i, (double d) => cast(long) d, _ => 0L);
+        long b = args[1].match!((long i) => i, (double d) => cast(long) d, _ => 0L);
         return [LuaValue(a + b)];
     });
 

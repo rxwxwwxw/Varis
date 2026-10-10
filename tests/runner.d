@@ -45,7 +45,7 @@ shared static this() {
     // The C test library (T), C API and collector internals are not available.
     specs["gc.lua"] = TestClassification("gc.lua", "excluded by decision: exact collector reachability (conservative D GC; Lua objects must stay accessible from D)", true);
     // Not part of all.lua: a multi-gigabyte, multi-minute allocation stress test.
-    knownSpecs = cast(immutable)specs;
+    knownSpecs = cast(immutable) specs;
 }
 
 struct TestResult {
@@ -60,11 +60,11 @@ struct TestResult {
 
 /// Per-file adjustments that mirror how the suite itself runs its files.
 private struct RunPlan {
-    string[] arguments;      // after the interpreter
-    string exclusionNote;    // non-empty when assertions had to be removed
-    string temporaryFile;    // file to delete afterwards
-    string[string] env;      // extra environment for the process
-    string workDir;          // overrides the suite directory
+    string[] arguments; // after the interpreter
+    string exclusionNote; // non-empty when assertions had to be removed
+    string temporaryFile; // file to delete afterwards
+    string[string] env; // extra environment for the process
+    string workDir; // overrides the suite directory
     string temporaryDirectory; // directory to delete afterwards
 }
 
@@ -72,17 +72,28 @@ private struct RunPlan {
 /// Returns false when no C compiler is available or a module fails to build.
 private bool buildCModules(string testDir, string luaSrcDir) {
     auto libs = buildPath(testDir, "libs");
-    if (!exists(libs)) return false;
-    version (OSX) enum extra = ["-undefined", "dynamic_lookup"]; else enum string[] extra = [];
+    if (!exists(libs))
+        return false;
+    version (OSX)
+        enum extra = ["-undefined", "dynamic_lookup"];
+    else
+        enum string[] extra = [];
     string cc = environment.get("CC", "cc");
     // lib2-v2.so is built from lib22.c (see libs/makefile).
-    string[2][] modules = [["lib1", "lib1"], ["lib11", "lib11"], ["lib2", "lib2"], ["lib21", "lib21"], ["lib2-v2", "lib22"]];
+    string[2][] modules = [
+        ["lib1", "lib1"], ["lib11", "lib11"], ["lib2", "lib2"], ["lib21", "lib21"],
+        ["lib2-v2", "lib22"]
+    ];
     foreach (m; modules) {
         auto output = buildPath(libs, m[0] ~ ".so");
         auto source = buildPath(libs, m[1] ~ ".c");
-        if (exists(output)) continue;
-        auto result = std.process.execute([cc, "-shared", "-fPIC"] ~ extra ~ ["-I", luaSrcDir, "-o", output, source]);
-        if (result.status != 0) return false;
+        if (exists(output))
+            continue;
+        auto result = std.process.execute([cc, "-shared", "-fPIC"] ~ extra ~ [
+            "-I", luaSrcDir, "-o", output, source
+        ]);
+        if (result.status != 0)
+            return false;
     }
     return true;
 }
@@ -96,6 +107,7 @@ private string shellShimDirectory() {
     std.file.write(script, "#!/bin/sh\n/bin/sh \"$@\"\nexit $?\n");
     version (Posix) {
         import core.sys.posix.sys.stat : chmod;
+
         chmod(script.toStringz, octal!755);
     }
     return dir;
@@ -110,13 +122,18 @@ private RunPlan planFor(string testDir, string filename) {
         // stub (exact collector reachability is excluded). It also runs every file through
         // string.dump/load, as the official run does.
         auto copyDir = buildPath(tempDir(), "dlua_all_suite");
-        if (exists(copyDir)) rmdirRecurse(copyDir);
+        if (exists(copyDir))
+            rmdirRecurse(copyDir);
         mkdirRecurse(copyDir);
         foreach (entry; dirEntries(testDir, SpanMode.depth)) {
             auto rel = relativePath(entry.name, testDir);
             auto target = buildPath(copyDir, rel);
-            if (entry.isDir) mkdirRecurse(target);
-            else { mkdirRecurse(dirName(target)); std.file.copy(entry.name, target); }
+            if (entry.isDir)
+                mkdirRecurse(target);
+            else {
+                mkdirRecurse(dirName(target));
+                std.file.copy(entry.name, target);
+            }
         }
         std.file.write(buildPath(copyDir, "gc.lua"), "print('gc.lua is excluded from this run')\n");
         auto env = environment.toAA();
@@ -132,8 +149,8 @@ private RunPlan planFor(string testDir, string filename) {
         // all.lua runs big.lua inside a coroutine: it yields 'b' and then returns 'a'.
         auto driver = buildPath(tempDir(), "dlua_big_driver.lua");
         std.file.write(driver,
-            "local f = coroutine.wrap(assert(loadfile(arg[1])))\n" ~
-            "assert(f() == 'b')\nassert(f() == 'a')\n");
+                "local f = coroutine.wrap(assert(loadfile(arg[1])))\n" ~
+                "assert(f() == 'b')\nassert(f() == 'a')\n");
         plan.arguments = [driver, filename];
         plan.temporaryFile = driver;
         return plan;
@@ -146,7 +163,11 @@ private RunPlan planFor(string testDir, string filename) {
         size_t i = 0;
         bool removed;
         while (i < lines.length) {
-            if (lines[i].indexOf("lua -l lib2-v2") >= 0) { i += 3; removed = true; continue; }
+            if (lines[i].indexOf("lua -l lib2-v2") >= 0) {
+                i += 3;
+                removed = true;
+                continue;
+            }
             kept ~= lines[i++];
         }
         if (removed) {
@@ -171,7 +192,7 @@ private RunPlan planFor(string testDir, string filename) {
 
 /// Runs `luaBin` on one file; returns status, exit code and last diagnostic line.
 private void execute(string luaBin, string testDir, RunPlan plan, uint timeoutSecs, bool verbose,
-    out string status, out int exitCode, out string diagnostic) {
+        out string status, out int exitCode, out string diagnostic) {
     status = "FAIL";
     exitCode = int.min;
     diagnostic = "";
@@ -181,8 +202,8 @@ private void execute(string luaBin, string testDir, RunPlan plan, uint timeoutSe
         auto stdinPipe = pipe();
         stdinPipe.writeEnd.close();
         auto pid = spawnProcess([luaBin] ~ plan.arguments, stdinPipe.readEnd, outputFile,
-            outputFile, plan.env, Config.retainStdout | Config.retainStderr,
-            plan.workDir.length ? plan.workDir : testDir);
+                outputFile, plan.env, Config.retainStdout | Config.retainStderr,
+                plan.workDir.length ? plan.workDir : testDir);
         auto startTime = MonoTime.currTime;
         auto timeoutDuration = dur!"seconds"(timeoutSecs);
         bool finished = false;
@@ -193,22 +214,29 @@ private void execute(string luaBin, string testDir, RunPlan plan, uint timeoutSe
                 exitCode = result.status;
                 string output;
                 outputFile.seek(0);
-                foreach (line; outputFile.byLineCopy) output ~= line ~ "\n";
+                foreach (line; outputFile.byLineCopy)
+                    output ~= line ~ "\n";
                 output = output.strip();
-                if (result.status == 0) status = "PASS";
+                if (result.status == 0)
+                    status = "PASS";
                 else {
                     status = "FAIL";
                     auto lines = output.splitLines();
                     if (lines.length > 0) {
                         diagnostic = lines[$ - 1];
                         foreach (line; lines) {
-                            if (line.indexOf(": ") > 0 && (line.indexOf("assertion failed") >= 0 || line.indexOf("error") >= 0 ||
-                                line.indexOf(".lua:") >= 0)) { diagnostic = line; break; }
+                            if (line.indexOf(": ") > 0 && (line.indexOf("assertion failed") >= 0 || line.indexOf(
+                                    "error") >= 0 ||
+                                    line.indexOf(".lua:") >= 0)) {
+                                diagnostic = line;
+                                break;
+                            }
                         }
                     }
                     if (verbose) {
                         writeln("    --- Failure Output ---");
-                        foreach (line; output.splitLines()) writeln("    | ", line);
+                        foreach (line; output.splitLines())
+                            writeln("    | ", line);
                         writeln("    ----------------------");
                     }
                 }
@@ -239,15 +267,15 @@ int main(string[] args) {
     bool strict = false;
 
     auto helpInfo = getopt(
-        args,
-        "lua", "Path to Lua executable (default: ./bin/dlua)", &luaBin,
-        "reference", "Reference interpreter run on failing files (e.g. c-implementation/src/lua)", &referenceBin,
-        "dir", "Path to official tests directory (default: c-implementation/lua-5.4.9-tests)", &testDir,
-        "timeout", "Timeout per test in seconds (default: 120)", &timeoutSecs,
-        "filter", "Filter test names by substring", &filterPattern,
-        "json", "Write machine-readable JSON results to file", &jsonOut,
-        "verbose|v", "Print verbose output on failures", &verbose,
-        "strict", "Fail process if any test fails", &strict
+            args,
+            "lua", "Path to Lua executable (default: ./bin/dlua)", &luaBin,
+            "reference", "Reference interpreter run on failing files (e.g. c-implementation/src/lua)", &referenceBin,
+            "dir", "Path to official tests directory (default: c-implementation/lua-5.4.9-tests)", &testDir,
+            "timeout", "Timeout per test in seconds (default: 120)", &timeoutSecs,
+            "filter", "Filter test names by substring", &filterPattern,
+            "json", "Write machine-readable JSON results to file", &jsonOut,
+            "verbose|v", "Print verbose output on failures", &verbose,
+            "strict", "Fail process if any test fails", &strict
     );
 
     if (helpInfo.helpWanted) {
@@ -255,7 +283,8 @@ int main(string[] args) {
         return 0;
     }
 
-    if (args.length > 1 && luaBin == "./bin/dlua") luaBin = args[1];
+    if (args.length > 1 && luaBin == "./bin/dlua")
+        luaBin = args[1];
 
     if (timeoutSecs == 0) {
         stderr.writeln("Error: --timeout must be positive");
@@ -264,7 +293,8 @@ int main(string[] args) {
 
     luaBin = absolutePath(luaBin);
     testDir = absolutePath(testDir);
-    if (referenceBin.length) referenceBin = absolutePath(referenceBin);
+    if (referenceBin.length)
+        referenceBin = absolutePath(referenceBin);
 
     if (!exists(luaBin)) {
         stderr.writefln("Error: Lua interpreter binary not found: %s", luaBin);
@@ -278,7 +308,8 @@ int main(string[] args) {
     writeln("================================================================================");
     writeln("dlua Official Lua 5.4.9 Conformance Runner");
     writefln("Interpreter: %s", luaBin);
-    if (referenceBin.length) writefln("Reference:   %s", referenceBin);
+    if (referenceBin.length)
+        writefln("Reference:   %s", referenceBin);
     writefln("Test suite:  %s", testDir);
     writefln("Timeout:     %d seconds per test", timeoutSecs);
     cModulesAvailable = buildCModules(testDir, buildPath(dirName(testDir), "src"));
@@ -297,7 +328,8 @@ int main(string[] args) {
     size_t passedCount, partialCount, skippedCount, failedCount, referenceAlsoFails;
 
     foreach (filename; testFiles) {
-        if (filterPattern.length > 0 && filename.indexOf(filterPattern) < 0) continue;
+        if (filterPattern.length > 0 && filename.indexOf(filterPattern) < 0)
+            continue;
 
         auto spec = filename in knownSpecs;
         if (spec !is null && spec.isSkip) {
@@ -335,11 +367,14 @@ int main(string[] args) {
             int refExit;
             execute(referenceBin, testDir, plan, timeoutSecs * 4, false, refStatus, refExit, refDiagnostic);
             res.referenceStatus = refStatus;
-            if (refStatus != "PASS") referenceAlsoFails++;
+            if (refStatus != "PASS")
+                referenceAlsoFails++;
         }
 
-        if (plan.temporaryFile.length && exists(plan.temporaryFile)) remove(plan.temporaryFile);
-        if (plan.temporaryDirectory.length && exists(plan.temporaryDirectory)) rmdirRecurse(plan.temporaryDirectory);
+        if (plan.temporaryFile.length && exists(plan.temporaryFile))
+            remove(plan.temporaryFile);
+        if (plan.temporaryDirectory.length && exists(plan.temporaryDirectory))
+            rmdirRecurse(plan.temporaryDirectory);
 
         if (testStatus == "PASS") {
             passedCount++;
@@ -367,7 +402,8 @@ int main(string[] args) {
     writefln("  Partial:       %d (pass after removing assertions that need C modules or a specific shell)", partialCount);
     writefln("  Skipped:       %d (C test library / not part of the standard run)", skippedCount);
     writefln("  Failed:        %d", failedCount);
-    if (referenceBin.length) writefln("  ... of which the reference interpreter also fails: %d", referenceAlsoFails);
+    if (referenceBin.length)
+        writefln("  ... of which the reference interpreter also fails: %d", referenceAlsoFails);
     writeln("================================================================================");
 
     if (jsonOut.length > 0) {
@@ -385,17 +421,18 @@ int main(string[] args) {
             jsonResults ~= item;
         }
         JSONValue report = [
-            "total": JSONValue(cast(long)results.length),
-            "passed": JSONValue(cast(long)passedCount),
-            "partial": JSONValue(cast(long)partialCount),
-            "skipped": JSONValue(cast(long)skippedCount),
-            "failed": JSONValue(cast(long)failedCount),
+            "total": JSONValue(cast(long) results.length),
+            "passed": JSONValue(cast(long) passedCount),
+            "partial": JSONValue(cast(long) partialCount),
+            "skipped": JSONValue(cast(long) skippedCount),
+            "failed": JSONValue(cast(long) failedCount),
             "results": JSONValue(jsonResults)
         ];
         std.file.write(jsonOut, report.toPrettyString());
         writefln("Wrote results JSON to %s", jsonOut);
     }
 
-    if (strict && failedCount > 0) return 1;
+    if (strict && failedCount > 0)
+        return 1;
     return 0;
 }

@@ -24,46 +24,65 @@ enum TokenType {
     Invalid, // character that starts no token (reported by the parser)
 
     // Keywords
-    KwAnd, KwBreak, KwDo, KwElse, KwElseIf, KwEnd, KwFalse, KwFor, KwFunction,
-    KwGoto, KwIf, KwIn, KwLocal, KwNil, KwNot, KwOr, KwRepeat, KwReturn,
-    KwThen, KwTrue, KwUntil, KwWhile,
+    KwAnd,
+    KwBreak,
+    KwDo,
+    KwElse,
+    KwElseIf,
+    KwEnd,
+    KwFalse,
+    KwFor,
+    KwFunction,
+    KwGoto,
+    KwIf,
+    KwIn,
+    KwLocal,
+    KwNil,
+    KwNot,
+    KwOr,
+    KwRepeat,
+    KwReturn,
+    KwThen,
+    KwTrue,
+    KwUntil,
+    KwWhile,
 
     // Operators & Punctuators
-    Plus,          // +
-    Minus,         // -
-    Star,          // *
-    Slash,         // /
-    DoubleSlash,   // //
-    Caret,         // ^
-    Percent,       // %
-    Ampersand,     // &
-    Tilde,         // ~
-    Pipe,          // |
-    DoubleLess,    // <<
+    Plus, // +
+    Minus, // -
+    Star, // *
+    Slash, // /
+    DoubleSlash, // //
+    Caret, // ^
+    Percent, // %
+    Ampersand, // &
+    Tilde, // ~
+    Pipe, // |
+    DoubleLess, // <<
     DoubleGreater, // >>
-    DoubleDot,     // ..
-    TripleDot,     // ...
-    Equal,         // =
-    DoubleEqual,   // ==
-    TildeEqual,    // ~=
-    Less,          // <
-    LessEqual,     // <=
-    Greater,       // >
-    GreaterEqual,  // >=
-    Hash,          // #
-    Colon,         // :
-    DoubleColon,   // ::
-    RuleOp,        // :-
-    Question,      // ?
-    Semicolon,     // ;
-    Comma,         // ,
-    Dot,           // .
-    LParen,        // (
-    RParen,        // )
-    LBrace,        // {
-    RBrace,        // }
-    LBracket,      // [
-    RBracket,      // ]
+    DoubleDot, // ..
+    TripleDot, // ...
+    Equal, // =
+    DoubleEqual, // ==
+    TildeEqual, // ~=
+    Less, // <
+    LessEqual, // <=
+    Greater, // >
+    GreaterEqual, // >=
+    Hash, // #
+    Colon, // :
+    DoubleColon, // ::
+    RuleOp, // :-
+    Question, // ?
+    Semicolon, // ;
+    Comma, // ,
+    Dot, // .
+    LParen, // (
+    RParen, // )
+    LBrace, // {
+    RBrace, // }
+    LBracket, // [
+    RBracket, // ]
 
     // Literals
     Identifier,
@@ -82,6 +101,7 @@ struct Token {
 
     string toString() const {
         import std.conv : to;
+
         return format("Token(%s, '%s', %s)", type.to!string, text, loc.toString());
     }
 }
@@ -218,89 +238,105 @@ class Lexer {
             advance();
 
             switch (c) {
-                case '+': return Token(TokenType.Plus, "+", 0, 0, loc);
-                case '-': return Token(TokenType.Minus, "-", 0, 0, loc);
-                case '*': return Token(TokenType.Star, "*", 0, 0, loc);
-                case '/':
-                    if (peek() == '/') {
-                        advance();
-                        return Token(TokenType.DoubleSlash, "//", 0, 0, loc);
-                    }
-                    return Token(TokenType.Slash, "/", 0, 0, loc);
-                case '^': return Token(TokenType.Caret, "^", 0, 0, loc);
-                case '%': return Token(TokenType.Percent, "%", 0, 0, loc);
-                case '&': return Token(TokenType.Ampersand, "&", 0, 0, loc);
-                case '|': return Token(TokenType.Pipe, "|", 0, 0, loc);
-                case '#': return Token(TokenType.Hash, "#", 0, 0, loc);
-                case '(': return Token(TokenType.LParen, "(", 0, 0, loc);
-                case ')': return Token(TokenType.RParen, ")", 0, 0, loc);
-                case '{': return Token(TokenType.LBrace, "{", 0, 0, loc);
-                case '}': return Token(TokenType.RBrace, "}", 0, 0, loc);
-                case '[': return Token(TokenType.LBracket, "[", 0, 0, loc);
-                case ']': return Token(TokenType.RBracket, "]", 0, 0, loc);
-                case ';': return Token(TokenType.Semicolon, ";", 0, 0, loc);
-                case ',': return Token(TokenType.Comma, ",", 0, 0, loc);
+            case '+':
+                return Token(TokenType.Plus, "+", 0, 0, loc);
+            case '-':
+                return Token(TokenType.Minus, "-", 0, 0, loc);
+            case '*':
+                return Token(TokenType.Star, "*", 0, 0, loc);
+            case '/':
+                if (peek() == '/') {
+                    advance();
+                    return Token(TokenType.DoubleSlash, "//", 0, 0, loc);
+                }
+                return Token(TokenType.Slash, "/", 0, 0, loc);
+            case '^':
+                return Token(TokenType.Caret, "^", 0, 0, loc);
+            case '%':
+                return Token(TokenType.Percent, "%", 0, 0, loc);
+            case '&':
+                return Token(TokenType.Ampersand, "&", 0, 0, loc);
+            case '|':
+                return Token(TokenType.Pipe, "|", 0, 0, loc);
+            case '#':
+                return Token(TokenType.Hash, "#", 0, 0, loc);
+            case '(':
+                return Token(TokenType.LParen, "(", 0, 0, loc);
+            case ')':
+                return Token(TokenType.RParen, ")", 0, 0, loc);
+            case '{':
+                return Token(TokenType.LBrace, "{", 0, 0, loc);
+            case '}':
+                return Token(TokenType.RBrace, "}", 0, 0, loc);
+            case '[':
+                return Token(TokenType.LBracket, "[", 0, 0, loc);
+            case ']':
+                return Token(TokenType.RBracket, "]", 0, 0, loc);
+            case ';':
+                return Token(TokenType.Semicolon, ";", 0, 0, loc);
+            case ',':
+                return Token(TokenType.Comma, ",", 0, 0, loc);
 
-                case '~':
-                    if (peek() == '=') {
-                        advance();
-                        return Token(TokenType.TildeEqual, "~=", 0, 0, loc);
-                    }
-                    return Token(TokenType.Tilde, "~", 0, 0, loc);
+            case '~':
+                if (peek() == '=') {
+                    advance();
+                    return Token(TokenType.TildeEqual, "~=", 0, 0, loc);
+                }
+                return Token(TokenType.Tilde, "~", 0, 0, loc);
 
-                case '=':
-                    if (peek() == '=') {
-                        advance();
-                        return Token(TokenType.DoubleEqual, "==", 0, 0, loc);
-                    }
-                    return Token(TokenType.Equal, "=", 0, 0, loc);
+            case '=':
+                if (peek() == '=') {
+                    advance();
+                    return Token(TokenType.DoubleEqual, "==", 0, 0, loc);
+                }
+                return Token(TokenType.Equal, "=", 0, 0, loc);
 
-                case '<':
-                    if (peek() == '=') {
-                        advance();
-                        return Token(TokenType.LessEqual, "<=", 0, 0, loc);
-                    } else if (peek() == '<') {
-                        advance();
-                        return Token(TokenType.DoubleLess, "<<", 0, 0, loc);
-                    }
-                    return Token(TokenType.Less, "<", 0, 0, loc);
+            case '<':
+                if (peek() == '=') {
+                    advance();
+                    return Token(TokenType.LessEqual, "<=", 0, 0, loc);
+                } else if (peek() == '<') {
+                    advance();
+                    return Token(TokenType.DoubleLess, "<<", 0, 0, loc);
+                }
+                return Token(TokenType.Less, "<", 0, 0, loc);
 
-                case '>':
-                    if (peek() == '=') {
-                        advance();
-                        return Token(TokenType.GreaterEqual, ">=", 0, 0, loc);
-                    } else if (peek() == '>') {
-                        advance();
-                        return Token(TokenType.DoubleGreater, ">>", 0, 0, loc);
-                    }
-                    return Token(TokenType.Greater, ">", 0, 0, loc);
+            case '>':
+                if (peek() == '=') {
+                    advance();
+                    return Token(TokenType.GreaterEqual, ">=", 0, 0, loc);
+                } else if (peek() == '>') {
+                    advance();
+                    return Token(TokenType.DoubleGreater, ">>", 0, 0, loc);
+                }
+                return Token(TokenType.Greater, ">", 0, 0, loc);
 
-                case ':':
-                    if (peek() == ':') {
-                        advance();
-                        return Token(TokenType.DoubleColon, "::", 0, 0, loc);
-                    } else if (peek() == '-') {
-                        advance();
-                        return Token(TokenType.RuleOp, ":-", 0, 0, loc);
-                    }
-                    return Token(TokenType.Colon, ":", 0, 0, loc);
+            case ':':
+                if (peek() == ':') {
+                    advance();
+                    return Token(TokenType.DoubleColon, "::", 0, 0, loc);
+                } else if (peek() == '-') {
+                    advance();
+                    return Token(TokenType.RuleOp, ":-", 0, 0, loc);
+                }
+                return Token(TokenType.Colon, ":", 0, 0, loc);
 
-                case '?':
-                    return Token(TokenType.Question, "?", 0, 0, loc);
+            case '?':
+                return Token(TokenType.Question, "?", 0, 0, loc);
 
-                case '.':
+            case '.':
+                if (peek() == '.') {
+                    advance();
                     if (peek() == '.') {
                         advance();
-                        if (peek() == '.') {
-                            advance();
-                            return Token(TokenType.TripleDot, "...", 0, 0, loc);
-                        }
-                        return Token(TokenType.DoubleDot, "..", 0, 0, loc);
+                        return Token(TokenType.TripleDot, "...", 0, 0, loc);
                     }
-                    return Token(TokenType.Dot, ".", 0, 0, loc);
+                    return Token(TokenType.DoubleDot, "..", 0, 0, loc);
+                }
+                return Token(TokenType.Dot, ".", 0, 0, loc);
 
-                default:
-                    return Token(TokenType.Invalid, [c].idup, 0, 0, loc);
+            default:
+                return Token(TokenType.Invalid, [c].idup, 0, 0, loc);
             }
         }
 
@@ -323,7 +359,8 @@ class Lexer {
 
     private int checkLongBracketOpen() {
         // [=*[
-        if (peek() != '[') return -1;
+        if (peek() != '[')
+            return -1;
         size_t i = 1;
         while (peek(i) == '=') {
             i++;
@@ -354,7 +391,7 @@ class Lexer {
                     advance();
                     eqCount++;
                 }
-                if (peek() == ']' && eqCount == cast(size_t)numEquals) {
+                if (peek() == ']' && eqCount == cast(size_t) numEquals) {
                     advance();
                     return;
                 }
@@ -383,7 +420,7 @@ class Lexer {
                     advance();
                     eqCount++;
                 }
-                if (peek() == ']' && eqCount == cast(size_t)numEquals) {
+                if (peek() == ']' && eqCount == cast(size_t) numEquals) {
                     advance();
                     return Token(TokenType.String, internLiteral(result), 0, 0, loc);
                 } else {
@@ -401,7 +438,9 @@ class Lexer {
         assert(0);
     }
 
-    private string formatSourceName() const { return shortSourceName(sourceName); }
+    private string formatSourceName() const {
+        return shortSourceName(sourceName);
+    }
 
     private void lexError(string msg, string nearToken = "") {
         string src = formatSourceName();
@@ -416,7 +455,8 @@ class Lexer {
 
     private void esccheck(bool condition, string msg, size_t tokenStart) {
         if (!condition) {
-            if (!isAtEnd()) advance();
+            if (!isAtEnd())
+                advance();
             lexError(msg, source[tokenStart .. cursor]);
         }
     }
@@ -434,88 +474,122 @@ class Lexer {
             }
             if (c == '\\') {
                 advance();
-                if (isAtEnd()) lexError("unfinished string", "<eof>");
+                if (isAtEnd())
+                    lexError("unfinished string", "<eof>");
                 char esc = peek();
                 switch (esc) {
-                    case 'a': buf ~= '\a'; advance(); break;
-                    case 'b': buf ~= '\b'; advance(); break;
-                    case 'f': buf ~= '\f'; advance(); break;
-                    case 'n': buf ~= '\n'; advance(); break;
-                    case 'r': buf ~= '\r'; advance(); break;
-                    case 't': buf ~= '\t'; advance(); break;
-                    case 'v': buf ~= '\v'; advance(); break;
-                    case '\\': buf ~= '\\'; advance(); break;
-                    case '"': buf ~= '"'; advance(); break;
-                    case '\'': buf ~= '\''; advance(); break;
-                    case '\n':
-                    case '\r': {
+                case 'a':
+                    buf ~= '\a';
+                    advance();
+                    break;
+                case 'b':
+                    buf ~= '\b';
+                    advance();
+                    break;
+                case 'f':
+                    buf ~= '\f';
+                    advance();
+                    break;
+                case 'n':
+                    buf ~= '\n';
+                    advance();
+                    break;
+                case 'r':
+                    buf ~= '\r';
+                    advance();
+                    break;
+                case 't':
+                    buf ~= '\t';
+                    advance();
+                    break;
+                case 'v':
+                    buf ~= '\v';
+                    advance();
+                    break;
+                case '\\':
+                    buf ~= '\\';
+                    advance();
+                    break;
+                case '"':
+                    buf ~= '"';
+                    advance();
+                    break;
+                case '\'':
+                    buf ~= '\'';
+                    advance();
+                    break;
+                case '\n':
+                case '\r': {
                         buf ~= '\n';
                         char first = advance();
-                        if (!isAtEnd() && (peek() == '\n' || peek() == '\r') && peek() != first) advance();
+                        if (!isAtEnd() && (peek() == '\n' || peek() == '\r') && peek() != first)
+                            advance();
                         break;
                     }
-                    case 'z': // zap whitespace
+                case 'z': // zap whitespace
+                    advance();
+                    while (!isAtEnd() && (peek() == ' ' || peek() == '\t' || peek() == '\n' || peek() == '\r' || peek() == '\v' || peek() == '\f')) {
                         advance();
-                        while (!isAtEnd() && (peek() == ' ' || peek() == '\t' || peek() == '\n' || peek() == '\r' || peek() == '\v' || peek() == '\f')) {
+                    }
+                    break;
+                case 'x': // \xXX hexadecimal byte
+                    advance();
+                    esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
+                    char h1 = advance();
+                    esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
+                    char h2 = advance();
+                    int bVal = (hexVal(h1) << 4) | hexVal(h2);
+                    buf ~= cast(char) bVal;
+                    break;
+                case 'u': // \u{XXX} UTF-8 codepoint
+                    advance();
+                    esccheck(peek() == '{', "missing '{'", tokenStart);
+                    advance(); // consume '{'
+                    esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
+                    ulong cp = 0;
+                    while (!isAtEnd() && peek() != '}') {
+                        esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
+                        char hc = advance();
+                        if (cp > (0x7FFFFFFFu >> 4)) {
+                            lexError("UTF-8 value too large", source[tokenStart .. cursor]);
+                        }
+                        cp = (cp << 4) | hexVal(hc);
+                    }
+                    esccheck(peek() == '}', "missing '}'", tokenStart);
+                    advance(); // consume '}'
+                    if (cp < 0x80) {
+                        buf ~= cast(char) cp;
+                    } else {
+                        char[8] temp;
+                        int n = 1;
+                        uint mfb = 0x3f;
+                        do {
+                            temp[8 - (n++)] = cast(char)(0x80 | (cp & 0x3f));
+                            cp >>= 6;
+                            mfb >>= 1;
+                        }
+                        while (cp > mfb);
+                        temp[8 - n] = cast(char)((~mfb << 1) | cp);
+                        buf ~= temp[8 - n .. 8];
+                    }
+                    break;
+                default:
+                    if (isDigit(esc)) {
+                        // \ddd (up to 3 decimal digits)
+                        int dVal = 0;
+                        int count = 0;
+                        while (count < 3 && isDigit(peek())) {
+                            dVal = dVal * 10 + (advance() - '0');
+                            count++;
+                        }
+                        esccheck(dVal <= 255, "decimal escape too large", tokenStart);
+                        buf ~= cast(char) dVal;
+                    } else {
+                        if (!isAtEnd())
                             advance();
-                        }
-                        break;
-                    case 'x': // \xXX hexadecimal byte
-                        advance();
-                        esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
-                        char h1 = advance();
-                        esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
-                        char h2 = advance();
-                        int bVal = (hexVal(h1) << 4) | hexVal(h2);
-                        buf ~= cast(char)bVal;
-                        break;
-                    case 'u': // \u{XXX} UTF-8 codepoint
-                        advance();
-                        esccheck(peek() == '{', "missing '{'", tokenStart);
-                        advance(); // consume '{'
-                        esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
-                        ulong cp = 0;
-                        while (!isAtEnd() && peek() != '}') {
-                            esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
-                            char hc = advance();
-                            if (cp > (0x7FFFFFFFu >> 4)) {
-                                lexError("UTF-8 value too large", source[tokenStart .. cursor]);
-                            }
-                            cp = (cp << 4) | hexVal(hc);
-                        }
-                        esccheck(peek() == '}', "missing '}'", tokenStart);
-                        advance(); // consume '}'
-                        if (cp < 0x80) {
-                            buf ~= cast(char)cp;
-                        } else {
-                            char[8] temp;
-                            int n = 1;
-                            uint mfb = 0x3f;
-                            do {
-                                temp[8 - (n++)] = cast(char)(0x80 | (cp & 0x3f));
-                                cp >>= 6;
-                                mfb >>= 1;
-                            } while (cp > mfb);
-                            temp[8 - n] = cast(char)((~mfb << 1) | cp);
-                            buf ~= temp[8 - n .. 8];
-                        }
-                        break;
-                    default:
-                        if (isDigit(esc)) {
-                            // \ddd (up to 3 decimal digits)
-                            int dVal = 0;
-                            int count = 0;
-                            while (count < 3 && isDigit(peek())) {
-                                dVal = dVal * 10 + (advance() - '0');
-                                count++;
-                            }
-                            esccheck(dVal <= 255, "decimal escape too large", tokenStart);
-                            buf ~= cast(char)dVal;
-                        } else {
-                            if (!isAtEnd()) advance();
-                            lexError("invalid escape sequence", source[tokenStart .. cursor]);
-                        }
-                        break;
+                        lexError("invalid escape sequence", source[tokenStart .. cursor]);
+                    }
+                    break;
                 }
             } else {
                 buf ~= advance();
@@ -527,13 +601,16 @@ class Lexer {
         }
 
         advance(); // consume closing quote
-        return Token(TokenType.String, internLiteral(cast(string)buf), 0, 0, loc);
+        return Token(TokenType.String, internLiteral(cast(string) buf), 0, 0, loc);
     }
 
     private static int hexVal(char c) {
-        if (c >= '0' && c <= '9') return c - '0';
-        if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-        if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+        if (c >= '0' && c <= '9')
+            return c - '0';
+        if (c >= 'a' && c <= 'f')
+            return c - 'a' + 10;
+        if (c >= 'A' && c <= 'F')
+            return c - 'A' + 10;
         return 0;
     }
 
@@ -546,29 +623,52 @@ class Lexer {
         string text = source[start .. cursor];
 
         switch (text) {
-            case "and": return Token(TokenType.KwAnd, text, 0, 0, loc);
-            case "break": return Token(TokenType.KwBreak, text, 0, 0, loc);
-            case "do": return Token(TokenType.KwDo, text, 0, 0, loc);
-            case "else": return Token(TokenType.KwElse, text, 0, 0, loc);
-            case "elseif": return Token(TokenType.KwElseIf, text, 0, 0, loc);
-            case "end": return Token(TokenType.KwEnd, text, 0, 0, loc);
-            case "false": return Token(TokenType.KwFalse, text, 0, 0, loc);
-            case "for": return Token(TokenType.KwFor, text, 0, 0, loc);
-            case "function": return Token(TokenType.KwFunction, text, 0, 0, loc);
-            case "goto": return Token(TokenType.KwGoto, text, 0, 0, loc);
-            case "if": return Token(TokenType.KwIf, text, 0, 0, loc);
-            case "in": return Token(TokenType.KwIn, text, 0, 0, loc);
-            case "local": return Token(TokenType.KwLocal, text, 0, 0, loc);
-            case "nil": return Token(TokenType.KwNil, text, 0, 0, loc);
-            case "not": return Token(TokenType.KwNot, text, 0, 0, loc);
-            case "or": return Token(TokenType.KwOr, text, 0, 0, loc);
-            case "repeat": return Token(TokenType.KwRepeat, text, 0, 0, loc);
-            case "return": return Token(TokenType.KwReturn, text, 0, 0, loc);
-            case "then": return Token(TokenType.KwThen, text, 0, 0, loc);
-            case "true": return Token(TokenType.KwTrue, text, 0, 0, loc);
-            case "until": return Token(TokenType.KwUntil, text, 0, 0, loc);
-            case "while": return Token(TokenType.KwWhile, text, 0, 0, loc);
-            default: return Token(TokenType.Identifier, text, 0, 0, loc);
+        case "and":
+            return Token(TokenType.KwAnd, text, 0, 0, loc);
+        case "break":
+            return Token(TokenType.KwBreak, text, 0, 0, loc);
+        case "do":
+            return Token(TokenType.KwDo, text, 0, 0, loc);
+        case "else":
+            return Token(TokenType.KwElse, text, 0, 0, loc);
+        case "elseif":
+            return Token(TokenType.KwElseIf, text, 0, 0, loc);
+        case "end":
+            return Token(TokenType.KwEnd, text, 0, 0, loc);
+        case "false":
+            return Token(TokenType.KwFalse, text, 0, 0, loc);
+        case "for":
+            return Token(TokenType.KwFor, text, 0, 0, loc);
+        case "function":
+            return Token(TokenType.KwFunction, text, 0, 0, loc);
+        case "goto":
+            return Token(TokenType.KwGoto, text, 0, 0, loc);
+        case "if":
+            return Token(TokenType.KwIf, text, 0, 0, loc);
+        case "in":
+            return Token(TokenType.KwIn, text, 0, 0, loc);
+        case "local":
+            return Token(TokenType.KwLocal, text, 0, 0, loc);
+        case "nil":
+            return Token(TokenType.KwNil, text, 0, 0, loc);
+        case "not":
+            return Token(TokenType.KwNot, text, 0, 0, loc);
+        case "or":
+            return Token(TokenType.KwOr, text, 0, 0, loc);
+        case "repeat":
+            return Token(TokenType.KwRepeat, text, 0, 0, loc);
+        case "return":
+            return Token(TokenType.KwReturn, text, 0, 0, loc);
+        case "then":
+            return Token(TokenType.KwThen, text, 0, 0, loc);
+        case "true":
+            return Token(TokenType.KwTrue, text, 0, 0, loc);
+        case "until":
+            return Token(TokenType.KwUntil, text, 0, 0, loc);
+        case "while":
+            return Token(TokenType.KwWhile, text, 0, 0, loc);
+        default:
+            return Token(TokenType.Identifier, text, 0, 0, loc);
         }
     }
 
@@ -621,14 +721,20 @@ class Lexer {
                     bool ok = true;
                     for (size_t i = 2; i < numStr.length; ++i) {
                         char h = numStr[i];
-                        if (h >= '0' && h <= '9') a = (a << 4) | (h - '0');
-                        else if (h >= 'a' && h <= 'f') a = (a << 4) | (h - 'a' + 10);
-                        else if (h >= 'A' && h <= 'F') a = (a << 4) | (h - 'A' + 10);
-                        else { ok = false; break; }
+                        if (h >= '0' && h <= '9')
+                            a = (a << 4) | (h - '0');
+                        else if (h >= 'a' && h <= 'f')
+                            a = (a << 4) | (h - 'a' + 10);
+                        else if (h >= 'A' && h <= 'F')
+                            a = (a << 4) | (h - 'A' + 10);
+                        else {
+                            ok = false;
+                            break;
+                        }
                     }
                     if (ok) {
-                        long iVal = cast(long)a;
-                        return Token(TokenType.Integer, numStr, iVal, cast(double)iVal, loc);
+                        long iVal = cast(long) a;
+                        return Token(TokenType.Integer, numStr, iVal, cast(double) iVal, loc);
                     }
                 }
             } else {
@@ -641,7 +747,7 @@ class Lexer {
                     if (d >= '0' && d <= '9') {
                         ulong prev = a;
                         a = a * 10 + (d - '0');
-                        if (a < prev || a > cast(ulong)long.max) {
+                        if (a < prev || a > cast(ulong) long.max) {
                             overflow = true;
                         }
                     } else {
@@ -650,8 +756,8 @@ class Lexer {
                     }
                 }
                 if (ok && !overflow && numStr.length > 0) {
-                    long iVal = cast(long)a;
-                    return Token(TokenType.Integer, numStr, iVal, cast(double)iVal, loc);
+                    long iVal = cast(long) a;
+                    return Token(TokenType.Integer, numStr, iVal, cast(double) iVal, loc);
                 }
             }
         }

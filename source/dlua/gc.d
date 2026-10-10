@@ -26,8 +26,8 @@ import dlua.vm : VM, LuaClosure;
 import dlua.exception : LuaException;
 import core.memory : GC;
 
-private enum size_t weakMaskValue = 0x5A5A_5A5A_5A5A_5A5AUL;  // see dlua.table.hideReference
-private __gshared size_t[] weakTables;  // hidden references to registered weak tables
+private enum size_t weakMaskValue = 0x5A5A_5A5A_5A5A_5A5AUL; // see dlua.table.hideReference
+private __gshared size_t[] weakTables; // hidden references to registered weak tables
 
 /// True once weak tables or finalizers exist. The VM then clears the dead native stack below each
 /// Lua call, so that frames created later do not inherit stale words (which the conservative
@@ -40,26 +40,32 @@ void scrubDeadStack() {
     // Clearing 16 KB costs far more than a typical Lua call, so only every 32nd call pays it;
     // frames created in between rarely add stale words that survive to the next explicit collection.
     static __gshared uint calls;
-    if ((++calls & 31) != 0) return;
+    if ((++calls & 31) != 0)
+        return;
     ubyte[16384] junk = void;
     scrubMemset(junk.ptr, 0, junk.length);
 }
 
 /// Registers `t` for weak-reference processing if its metatable declares weakness.
 void registerWeakIfNeeded(LuaTable t) {
-    if (t is null || t.metatable is null || t.weakRegistered) return;
-    auto mode = t.metatable.rawget(LuaValue("__mode"));
-    if (!isString(mode)) return;
-    string text = mode.match!((string s) => s, _ => "");
-    foreach (c; text) if (c == 'k' || c == 'v') {
-        t.weakRegistered = true;
-        stackHygiene = true;
-        weakTables ~= hideReference(t);
+    if (t is null || t.metatable is null || t.weakRegistered)
         return;
-    }
+    auto mode = t.metatable.rawget(LuaValue("__mode"));
+    if (!isString(mode))
+        return;
+    string text = mode.match!((string s) => s, _ => "");
+    foreach (c; text)
+        if (c == 'k' || c == 'v') {
+            t.weakRegistered = true;
+            stackHygiene = true;
+            weakTables ~= hideReference(t);
+            return;
+        }
 }
 
-@property bool hasWeakTables() { return weakTables.length != 0; }
+@property bool hasWeakTables() {
+    return weakTables.length != 0;
+}
 
 private struct HiddenTable {
     size_t reference;
@@ -75,15 +81,24 @@ pragma(inline, false)
 private void hideWeakEntries(ref HiddenTable[] hidden) {
     size_t[] live;
     foreach (reference; weakTables) {
-        if (!hiddenTableAlive(reference)) continue;
-        auto table = cast(LuaTable)revealReference(reference);
+        if (!hiddenTableAlive(reference))
+            continue;
+        auto table = cast(LuaTable) revealReference(reference);
         live ~= reference;
-        if (table.metatable is null) continue;
+        if (table.metatable is null)
+            continue;
         auto mode = table.metatable.rawget(LuaValue("__mode"));
-        if (!isString(mode)) continue;
+        if (!isString(mode))
+            continue;
         bool weakKeys, weakValues;
-        foreach (c; mode.match!((string s) => s, _ => "")) { if (c == 'k') weakKeys = true; if (c == 'v') weakValues = true; }
-        if (!weakKeys && !weakValues) continue;
+        foreach (c; mode.match!((string s) => s, _ => "")) {
+            if (c == 'k')
+                weakKeys = true;
+            if (c == 'v')
+                weakValues = true;
+        }
+        if (!weakKeys && !weakValues)
+            continue;
         hidden ~= HiddenTable(reference, table.weakHide(weakKeys, weakValues));
     }
     weakTables = live;
@@ -126,13 +141,16 @@ private __gshared extern (C) void* function(void*, int, size_t) nothrow @nogc sc
 
 private extern (C) void* scrubFill(void* p, int c, size_t n) nothrow @nogc {
     import core.stdc.string : memset;
+
     return memset(p, c, n);
 }
 
 private void clearDeadRegisters(LuaState state) {
-    foreach (ref frame; state.callStack) frame.clearDead();
+    foreach (ref frame; state.callStack)
+        frame.clearDead();
     auto main = state.mainStack();
-    foreach (ref frame; main) frame.clearDead();
+    foreach (ref frame; main)
+        frame.clearDead();
 }
 
 /// Runs a full collection cycle with weak-table clearing and finalization.
@@ -140,7 +158,8 @@ private void clearDeadRegisters(LuaState state) {
 /// the frames of the cycle itself start without stale words.
 pragma(inline, false)
 void runGcCycle(LuaState state, bool settle = false) {
-    if (state.inGcCycle) return;
+    if (state.inGcCycle)
+        return;
     scrubStack();
     runGcCycleImpl(state);
     if (settle) {
@@ -153,9 +172,11 @@ void runGcCycle(LuaState state, bool settle = false) {
 
 pragma(inline, false)
 private void runGcCycleImpl(LuaState state) {
-    if (state.inGcCycle) return;
+    if (state.inGcCycle)
+        return;
     state.inGcCycle = true;
-    scope(exit) state.inGcCycle = false;
+    scope (exit)
+        state.inGcCycle = false;
 
     clearDeadRegisters(state);
     HiddenTable[] weak;
@@ -174,23 +195,27 @@ private void runGcCycleImpl(LuaState state) {
     scrubStack();
     GC.collect();
     size_t survivorCount;
-    foreach (reference; weakTables) if (hiddenReferenceAlive(reference)) survivors[survivorCount++] = reference;
-    foreach (i, ref entry; finalizable) finalizerAlive[i] = hiddenReferenceAlive(entry.reference);
+    foreach (reference; weakTables)
+        if (hiddenReferenceAlive(reference))
+            survivors[survivorCount++] = reference;
+    foreach (i, ref entry; finalizable)
+        finalizerAlive[i] = hiddenReferenceAlive(entry.reference);
     // Dead weak tables and threads must leave the registries now: once Lua code runs, their
     // addresses may be reused by other objects.
     weakTables = survivors[0 .. survivorCount];
 
     size_t removedEntries;
     foreach (ref entry; weak) {
-        if (!hiddenReferenceAlive(entry.reference)) continue;
-        removedEntries += (cast(LuaTable)revealReference(entry.reference)).weakRestore(entry.saved);
+        if (!hiddenReferenceAlive(entry.reference))
+            continue;
+        removedEntries += (cast(LuaTable) revealReference(entry.reference)).weakRestore(entry.saved);
     }
 
     foreach (i, ref entry; finalizable) {
         if (finalizerAlive[i]) {
             auto original = revealReference(entry.reference);
-            state.finalizers ~= cast(LuaTable)original !is null && entry.shadow.typeOf() == LuaType.Table
-                ? LuaValue(cast(LuaTable)original) : LuaValue(cast(LuaUserData)original);
+            state.finalizers ~= cast(LuaTable) original !is null && entry.shadow.typeOf() == LuaType.Table
+                ? LuaValue(cast(LuaTable) original) : LuaValue(cast(LuaUserData) original);
         } else {
             state.finalizerMarked.remove(entry.reference);
             pending ~= entry.shadow;
@@ -204,26 +229,34 @@ private void runGcCycleImpl(LuaState state) {
         scrubStack();
         GC.collect();
         size_t kept;
-        foreach (reference; weakTables) if (hiddenReferenceAlive(reference)) weakTables[kept++] = reference;
+        foreach (reference; weakTables)
+            if (hiddenReferenceAlive(reference))
+                weakTables[kept++] = reference;
         weakTables = weakTables[0 .. kept];
-        }
+    }
     // Finalizers run in the reverse order of marking.
-    foreach_reverse (shadow; pending) callFinalizer(state, shadow);
+    foreach_reverse (shadow; pending)
+        callFinalizer(state, shadow);
 }
 
 private void callFinalizer(LuaState state, LuaValue object) {
     auto mt = state.getMetatable(object);
     auto gc = mt is null ? luaNil() : mt.rawget(LuaValue("__gc"));
-    if (!isFunction(gc)) return;
+    if (!isFunction(gc))
+        return;
     bool previous = state.inFinalizer;
     state.inFinalizer = true;
-    scope(exit) state.inFinalizer = previous;
+    scope (exit)
+        state.inFinalizer = previous;
     try {
         VM.callValue(state, gc, [object], false, "__gc", "metamethod");
     } catch (LuaException e) {
         string text = isString(e.errorObject) ? toLuaString(e.errorObject) : "error object is not a string";
-        state.warning("error in ", true); state.warning("__gc", true); state.warning(" (", true);
-        state.warning(text, true); state.warning(")", false);
+        state.warning("error in ", true);
+        state.warning("__gc", true);
+        state.warning(" (", true);
+        state.warning(text, true);
+        state.warning(")", false);
     }
 }
 
@@ -233,8 +266,10 @@ private void callFinalizer(LuaState state, LuaValue object) {
 pragma(inline, false)
 void gcTick(LuaState state) {
     state.allocTicks = 0;
-    if (!state.gcRunning || state.inGcCycle || state.closing) return;
-    if (weakTables.length == 0 && state.finalizers.length == 0) return;
+    if (!state.gcRunning || state.inGcCycle || state.closing)
+        return;
+    if (weakTables.length == 0 && state.finalizers.length == 0)
+        return;
     gcTickRun(state);
 }
 
@@ -260,18 +295,28 @@ private void retuneThreshold(LuaState state) {
 /// reinstates the values whose keys are known to be reachable, collects, and reports which keys
 /// survived. The rounds repeat until the set of reachable keys is stable; the parent then
 /// reinstates exactly those values before its own collection.
-private struct EphemeronRef { size_t table; size_t index; }
+private struct EphemeronRef {
+    size_t table;
+    size_t index;
+}
 
 pragma(inline, false)
 private void resolveEphemerons(ref HiddenTable[] weak) {
     import core.sys.posix.unistd : fork, pipe, close, read, _exit;
     import core.sys.posix.sys.wait : waitpid;
+
     EphemeronRef[] entries;
-    foreach (ref t; weak) foreach (i, ref rec; t.saved) if (rec.ephemeron) entries ~= EphemeronRef(t.reference, i);
-    if (entries.length == 0) return;
+    foreach (ref t; weak)
+        foreach (i, ref rec; t.saved)
+            if (rec.ephemeron)
+                entries ~= EphemeronRef(t.reference, i);
+    if (entries.length == 0)
+        return;
 
     HiddenTable* find(size_t reference) {
-        foreach (ref t; weak) if (t.reference == reference) return &t;
+        foreach (ref t; weak)
+            if (t.reference == reference)
+                return &t;
         return null;
     }
 
@@ -279,9 +324,17 @@ private void resolveEphemerons(ref HiddenTable[] weak) {
     bool known = true;
     for (size_t round = 0; round <= entries.length; round++) {
         int[2] fds;
-        if (pipe(fds) != 0) { known = false; break; }
+        if (pipe(fds) != 0) {
+            known = false;
+            break;
+        }
         auto pid = fork();
-        if (pid < 0) { close(fds[0]); close(fds[1]); known = false; break; }
+        if (pid < 0) {
+            close(fds[0]);
+            close(fds[1]);
+            known = false;
+            break;
+        }
         if (pid == 0) {
             close(fds[0]);
             ephemeronProbe(weak, entries, reveal, fds[1]);
@@ -292,22 +345,33 @@ private void resolveEphemerons(ref HiddenTable[] weak) {
         size_t got;
         while (got < reported.length) {
             auto n = read(fds[0], reported.ptr + got, reported.length - got);
-            if (n <= 0) break;
-            got += cast(size_t)n;
+            if (n <= 0)
+                break;
+            got += cast(size_t) n;
         }
         close(fds[0]);
         int status;
         waitpid(pid, &status, 0);
-        if (got != reported.length) { known = false; break; }
+        if (got != reported.length) {
+            known = false;
+            break;
+        }
         bool changed;
-        foreach (i, flag; reported) if (flag && !reveal[i]) { reveal[i] = true; changed = true; }
-        if (!changed) break;
+        foreach (i, flag; reported)
+            if (flag && !reveal[i]) {
+                reveal[i] = true;
+                changed = true;
+            }
+        if (!changed)
+            break;
     }
-    if (!known) reveal[] = true; // could not probe: keep every value (conservative)
+    if (!known)
+        reveal[] = true; // could not probe: keep every value (conservative)
     foreach (i, ref e; entries) {
-        if (!reveal[i]) continue;
+        if (!reveal[i])
+            continue;
         auto t = find(e.table);
-        (cast(LuaTable)revealReference(t.reference)).ephemeronReveal(t.saved[e.index]);
+        (cast(LuaTable) revealReference(t.reference)).ephemeronReveal(t.saved[e.index]);
     }
 }
 
@@ -321,22 +385,30 @@ private void traceReachable(LuaValue start, ref bool[size_t] seen) {
         auto v = work[$ - 1];
         work = work[0 .. $ - 1];
         auto object = collectableObject(v);
-        if (object is null) continue;
-        auto address = cast(size_t)cast(void*)object;
-        if (address in seen) continue;
+        if (object is null)
+            continue;
+        auto address = cast(size_t) cast(void*) object;
+        if (address in seen)
+            continue;
         seen[address] = true;
-        if (auto t = cast(LuaTable)object) {
-            if (t.metatable !is null) work ~= LuaValue(t.metatable);
+        if (auto t = cast(LuaTable) object) {
+            if (t.metatable !is null)
+                work ~= LuaValue(t.metatable);
             t.forEachReference((LuaValue child) { work ~= child; });
-        } else if (auto c = cast(LuaClosure)object) {
+        } else if (auto c = cast(LuaClosure) object) {
             foreach (up; c.upvalues) {
-                if (up is null) continue;
+                if (up is null)
+                    continue;
                 auto value = up.get();
-                if (isCollectable(value)) work ~= value;
+                if (isCollectable(value))
+                    work ~= value;
             }
-        } else if (auto u = cast(LuaUserData)object) {
-            if (u.metatable !is null) work ~= LuaValue(u.metatable);
-            foreach (value; u.userValues) if (isCollectable(value)) work ~= value;
+        } else if (auto u = cast(LuaUserData) object) {
+            if (u.metatable !is null)
+                work ~= LuaValue(u.metatable);
+            foreach (value; u.userValues)
+                if (isCollectable(value))
+                    work ~= value;
         }
     }
 }
@@ -345,8 +417,11 @@ private void traceReachable(LuaValue start, ref bool[size_t] seen) {
 pragma(inline, false)
 private void ephemeronProbe(ref HiddenTable[] weak, EphemeronRef[] entries, bool[] reveal, int fd) {
     import core.sys.posix.unistd : write;
+
     HiddenTable* find(size_t reference) {
-        foreach (ref t; weak) if (t.reference == reference) return &t;
+        foreach (ref t; weak)
+            if (t.reference == reference)
+                return &t;
         return null;
     }
     // Values of entries already known reachable are strong again; objects reachable from them make
@@ -354,21 +429,24 @@ private void ephemeronProbe(ref HiddenTable[] weak, EphemeronRef[] entries, bool
     bool[size_t] seen;
     auto known = reveal.dup;
     foreach (i, ref e; entries) {
-        if (!known[i]) continue;
+        if (!known[i])
+            continue;
         auto t = find(e.table);
-        (cast(LuaTable)revealReference(t.reference)).ephemeronReveal(t.saved[e.index]);
+        (cast(LuaTable) revealReference(t.reference)).ephemeronReveal(t.saved[e.index]);
         traceReachable(collectableValue(t.saved[e.index].valueKind, revealReference(t.saved[e.index].valueRef)), seen);
     }
     bool progress = true;
     while (progress) {
         progress = false;
         foreach (i, ref e; entries) {
-            if (known[i]) continue;
+            if (known[i])
+                continue;
             auto t = find(e.table);
-            if ((t.saved[e.index].keyRef ^ weakMaskValue) !in seen) continue;
+            if ((t.saved[e.index].keyRef ^ weakMaskValue) !in seen)
+                continue;
             known[i] = true;
             progress = true;
-            (cast(LuaTable)revealReference(t.reference)).ephemeronReveal(t.saved[e.index]);
+            (cast(LuaTable) revealReference(t.reference)).ephemeronReveal(t.saved[e.index]);
             traceReachable(collectableValue(t.saved[e.index].valueKind, revealReference(t.saved[e.index].valueRef)), seen);
         }
     }
@@ -377,14 +455,17 @@ private void ephemeronProbe(ref HiddenTable[] weak, EphemeronRef[] entries, bool
     // reuse the address of a dead key.
     auto flags = new ubyte[entries.length];
     auto refs = new size_t[entries.length];
-    foreach (i, ref e; entries) refs[i] = find(e.table).saved[e.index].keyRef;
+    foreach (i, ref e; entries)
+        refs[i] = find(e.table).saved[e.index].keyRef;
     scrubStack();
     GC.collect();
-    foreach (i; 0 .. entries.length) flags[i] = known[i] || hiddenReferenceAlive(refs[i]) ? 1 : 0;
+    foreach (i; 0 .. entries.length)
+        flags[i] = known[i] || hiddenReferenceAlive(refs[i]) ? 1 : 0;
     size_t sent;
     while (sent < flags.length) {
         auto n = write(fd, flags.ptr + sent, flags.length - sent);
-        if (n <= 0) break;
-        sent += cast(size_t)n;
+        if (n <= 0)
+            break;
+        sent += cast(size_t) n;
     }
 }

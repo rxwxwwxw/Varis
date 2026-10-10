@@ -101,9 +101,9 @@ void testValidation() {
     auto refP = new RelationRef(pRel.name, pRel.arity, "", pRel.id, false);
     auto refQ = new RelationRef(qRel.name, qRel.arity, "", qRel.id, false);
     auto unsafeRule = new Rule(
-        refP,
-        [Term.makeVariable("x", 0), Term.makeVariable("y", 1)],
-        [Goal.makePositiveAtom(refQ, [Term.makeVariable("x", 0)])]
+            refP,
+            [Term.makeVariable("x", 0), Term.makeVariable("y", 1)],
+            [Goal.makePositiveAtom(refQ, [Term.makeVariable("x", 0)])]
     );
 
     bool threwUnsafe = false;
@@ -143,17 +143,17 @@ void testEvaluatorAndQuery() {
     // path(?x, ?y) :- edge(?x, ?y)
     // path(?x, ?y) :- edge(?x, ?z), path(?z, ?y)
     auto rule1 = new Rule(
-        refPath,
-        [Term.makeVariable("x", 0), Term.makeVariable("y", 1)],
-        [Goal.makePositiveAtom(refEdge, [Term.makeVariable("x", 0), Term.makeVariable("y", 1)])]
+            refPath,
+            [Term.makeVariable("x", 0), Term.makeVariable("y", 1)],
+            [Goal.makePositiveAtom(refEdge, [Term.makeVariable("x", 0), Term.makeVariable("y", 1)])]
     );
     auto rule2 = new Rule(
-        refPath,
-        [Term.makeVariable("x", 0), Term.makeVariable("y", 1)],
-        [
-            Goal.makePositiveAtom(refEdge, [Term.makeVariable("x", 0), Term.makeVariable("z", 2)]),
-            Goal.makePositiveAtom(refPath, [Term.makeVariable("z", 2), Term.makeVariable("y", 1)])
-        ]
+            refPath,
+            [Term.makeVariable("x", 0), Term.makeVariable("y", 1)],
+            [
+        Goal.makePositiveAtom(refEdge, [Term.makeVariable("x", 0), Term.makeVariable("z", 2)]),
+        Goal.makePositiveAtom(refPath, [Term.makeVariable("z", 2), Term.makeVariable("y", 1)])
+    ]
     );
     w.registerRule(rule1);
     w.registerRule(rule2);
@@ -164,13 +164,16 @@ void testEvaluatorAndQuery() {
     relMap[rPath.id] = rPath;
     Rule[] rules = [rule1, rule2];
 
-    auto queryGoal = Goal.makePositiveAtom(refPath, [Term.makeVariable("x", 0), Term.makeVariable("y", 1)]);
+    auto queryGoal = Goal.makePositiveAtom(refPath, [
+        Term.makeVariable("x", 0), Term.makeVariable("y", 1)
+    ]);
     auto iter = new QueryIterator(state, [queryGoal], ["x", "y"], relMap, rules);
 
     size_t count = 0;
     while (true) {
         auto item = iter.next();
-        if (isNil(item)) break;
+        if (isNil(item))
+            break;
         count++;
         auto rec = unwrapBindingRecord(item);
         assert(rec.hasBinding("x"));

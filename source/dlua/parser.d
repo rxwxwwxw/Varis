@@ -65,15 +65,18 @@ class Parser {
         return false;
     }
 
-    private string formatSourceName() const { return shortSourceName(sourceName); }
+    private string formatSourceName() const {
+        return shortSourceName(sourceName);
+    }
 
     private string formatNear(Token tok) const {
         if (tok.type == TokenType.EOF || tok.text == "<eof>") {
             return "<eof>";
         }
         if (tok.type == TokenType.Invalid) {
-            ubyte code = cast(ubyte)tok.text[0];
-            if (code >= 32 && code < 127) return "'" ~ tok.text ~ "'";
+            ubyte code = cast(ubyte) tok.text[0];
+            if (code >= 32 && code < 127)
+                return "'" ~ tok.text ~ "'";
             return "'<\\" ~ code.to!string ~ ">'";
         }
         return "'" ~ (tok.raw.length ? tok.raw : tok.text) ~ "'";
@@ -81,9 +84,14 @@ class Parser {
 
     /// check_match: closes a construct, mentioning where it was opened when on another line.
     private void checkMatch(TokenType what, string whatText, string whoText, int whereLine) {
-        if (check(what)) { advance(); return; }
-        if (whereLine == current.loc.line) syntaxError(whatText ~ " expected", current);
-        else syntaxError(whatText ~ " expected (to close " ~ whoText ~ " at line " ~ whereLine.to!string ~ ")", current);
+        if (check(what)) {
+            advance();
+            return;
+        }
+        if (whereLine == current.loc.line)
+            syntaxError(whatText ~ " expected", current);
+        else
+            syntaxError(whatText ~ " expected (to close " ~ whoText ~ " at line " ~ whereLine.to!string ~ ")", current);
     }
 
     private void syntaxErrorNoNear(string msg, int line) {
@@ -92,15 +100,15 @@ class Parser {
 
     private bool[] varargContext;
     private int nestingLevel;
-    private int[] activeLocals;       // active local variables per function being parsed
-    private int[] functionStartLines;  // line where each function being parsed starts
+    private int[] activeLocals; // active local variables per function being parsed
+    private int[] functionStartLines; // line where each function being parsed starts
 
     private void declareLocals(int count = 1) {
         activeLocals[$ - 1] += count;
         if (activeLocals[$ - 1] > 200) {
             auto line = functionStartLines[$ - 1];
             syntaxError("too many local variables (limit is 200) in " ~
-                (line == 0 ? "main function" : "function at line " ~ line.to!string), current);
+                    (line == 0 ? "main function" : "function at line " ~ line.to!string), current);
         }
     }
 
@@ -113,7 +121,8 @@ class Parser {
     }
 
     private void syntaxError(string msg, Token tok) {
-        throw new LuaException(LuaValue(format("%s:%d: %s near %s", formatSourceName(), tok.loc.line, msg, formatNear(tok))));
+        throw new LuaException(LuaValue(format("%s:%d: %s near %s", formatSourceName(), tok.loc.line, msg, formatNear(
+                tok))));
     }
 
     private Token consume(TokenType type, string message) {
@@ -144,7 +153,8 @@ class Parser {
         auto loc = current.loc;
         Stmt[] stmts;
         int savedLocals = activeLocals[$ - 1];
-        scope(exit) activeLocals[$ - 1] = savedLocals;
+        scope (exit)
+            activeLocals[$ - 1] = savedLocals;
 
         while (!isAtEnd() && !isBlockEnd()) {
             if (check(TokenType.KwReturn)) {
@@ -162,10 +172,10 @@ class Parser {
 
     private bool isBlockEnd() const {
         return check(TokenType.KwEnd) ||
-               check(TokenType.KwElse) ||
-               check(TokenType.KwElseIf) ||
-               check(TokenType.KwUntil) ||
-               check(TokenType.EOF);
+            check(TokenType.KwElse) ||
+            check(TokenType.KwElseIf) ||
+            check(TokenType.KwUntil) ||
+            check(TokenType.EOF);
     }
 
     private bool isAtEnd() const {
@@ -174,7 +184,8 @@ class Parser {
 
     private Stmt parseStatement() {
         enterLevel();
-        scope(exit) --nestingLevel;
+        scope (exit)
+            --nestingLevel;
         auto loc = current.loc;
 
         if (match(TokenType.Semicolon)) {
@@ -231,7 +242,8 @@ class Parser {
             if (match(TokenType.KwFunction)) {
                 return parseFunctionDecl(true, loc);
             }
-            if (check(TokenType.Identifier) && current.text == "relation" && peekToken(0).type == TokenType.Identifier && peekToken(1).type == TokenType.LParen) {
+            if (check(TokenType.Identifier) && current.text == "relation" && peekToken(0)
+                    .type == TokenType.Identifier && peekToken(1).type == TokenType.LParen) {
                 return parseLocalRelationDeclStmt(loc);
             }
             return parseLocalDecl(loc);
@@ -239,10 +251,13 @@ class Parser {
 
         // Declarative Statements (Phase 6)
         if (check(TokenType.Identifier)) {
-            if ((current.text == "storylet" || current.text == "action") && peekToken(0).type == TokenType.Identifier && peekToken(1).type == TokenType.LParen)
+            if ((current.text == "storylet" || current.text == "action") && peekToken(0)
+                    .type == TokenType.Identifier && peekToken(1).type == TokenType.LParen)
                 return parseNarrativeDefinition(current.text, loc);
-            if (current.text == "deck" && peekToken(0).type == TokenType.Colon && peekToken(1).type == TokenType.Identifier && peekToken(2).type == TokenType.LBrace) {
-                advance(); advance();
+            if (current.text == "deck" && peekToken(0).type == TokenType.Colon && peekToken(1)
+                    .type == TokenType.Identifier && peekToken(2).type == TokenType.LBrace) {
+                advance();
+                advance();
                 string name = consume(TokenType.Identifier, "deck symbol expected").text;
                 consume(TokenType.LBrace, "deck configuration expected");
                 return new NarrativeDeckStmt(name, parseTableConstructor(loc), loc);
@@ -251,17 +266,24 @@ class Parser {
                 advance();
                 Expr world;
                 if (match(TokenType.LParen)) {
-                    world = parseExpr(); consume(TokenType.RParen, "')' expected after transaction world");
+                    world = parseExpr();
+                    consume(TokenType.RParen, "')' expected after transaction world");
                 }
                 consume(TokenType.KwDo, "'do' expected");
                 auto body = parseBlock();
                 consume(TokenType.KwEnd, "'end' expected after transaction");
                 return new TransactionStmt(world, body, loc);
             }
-            if (current.text == "rollback" && peekToken(0).type != TokenType.Equal && peekToken(0).type != TokenType.LParen && peekToken(0).type != TokenType.Dot && peekToken(0).type != TokenType.Colon && peekToken(0).type != TokenType.Comma && peekToken(0).type != TokenType.LBracket && peekToken(0).type != TokenType.String && peekToken(0).type != TokenType.LBrace) {
-                advance(); return new RollbackStmt(loc);
+            if (current.text == "rollback" && peekToken(0).type != TokenType.Equal && peekToken(0)
+                    .type != TokenType.LParen && peekToken(0).type != TokenType.Dot && peekToken(0)
+                    .type != TokenType.Colon && peekToken(0).type != TokenType.Comma && peekToken(0)
+                    .type != TokenType.LBracket && peekToken(0).type != TokenType.String && peekToken(0).type != TokenType
+                    .LBrace) {
+                advance();
+                return new RollbackStmt(loc);
             }
-            if ((current.text == "set" || current.text == "delete" || current.text == "adjust") && peekToken(0).type == TokenType.Identifier)
+            if ((current.text == "set" || current.text == "delete" || current.text == "adjust") && peekToken(0).type == TokenType
+                    .Identifier)
                 return parseUpdateStmt(loc);
             if (current.text == "fact" && peekToken(0).type == TokenType.Identifier) {
                 return parseFactStmt(loc);
@@ -269,7 +291,8 @@ class Parser {
             if (current.text == "retract" && peekToken(0).type == TokenType.Identifier) {
                 return parseRetractStmt(loc);
             }
-            if (current.text == "relation" && peekToken(0).type == TokenType.Identifier && peekToken(1).type == TokenType.LParen) {
+            if (current.text == "relation" && peekToken(0).type == TokenType.Identifier && peekToken(1)
+                    .type == TokenType.LParen) {
                 return parseRelationDeclStmt(loc);
             }
             if (current.text == "rule" && peekToken(0).type == TokenType.Identifier) {
@@ -337,7 +360,8 @@ class Parser {
 
     private Stmt parseForStmt(SourceLoc loc) {
         int savedLocals = activeLocals[$ - 1];
-        scope(exit) activeLocals[$ - 1] = savedLocals;
+        scope (exit)
+            activeLocals[$ - 1] = savedLocals;
         auto varName = consume(TokenType.Identifier, "<name> expected").text;
 
         if (!check(TokenType.Equal) && !check(TokenType.Comma) && !check(TokenType.KwIn))
@@ -423,10 +447,12 @@ class Parser {
 
         auto declaration = new LocalDeclStmt(names, values, loc);
         bool hasClose;
-        foreach (attr; attributes) if (attr == "close") {
-            if (hasClose) syntaxErrorNoNear("multiple to-be-closed variables in local list", previous.loc.line);
-            hasClose = true;
-        }
+        foreach (attr; attributes)
+            if (attr == "close") {
+                if (hasClose)
+                    syntaxErrorNoNear("multiple to-be-closed variables in local list", previous.loc.line);
+                hasClose = true;
+            }
         declaration.attributes = attributes;
         return declaration;
     }
@@ -437,7 +463,8 @@ class Parser {
             // Attribute: <const> or <close>
             auto attr = consume(TokenType.Identifier, "<name> expected").text;
             consume(TokenType.Greater, "'>' expected");
-            if (attr != "const" && attr != "close") syntaxErrorNoNear("unknown attribute '" ~ attr ~ "'", previous.loc.line);
+            if (attr != "const" && attr != "close")
+                syntaxErrorNoNear("unknown attribute '" ~ attr ~ "'", previous.loc.line);
             attribute = attr;
         }
         return name;
@@ -455,14 +482,21 @@ class Parser {
         }
 
         // Otherwise, it must be an assignment: varlist '=' explist
-        bool isVariable(Expr e) { return !e.parenthesized && (as!VariableExpr(e) !is null || as!IndexExpr(e) !is null || as!FieldExpr(e) !is null); }
-        if (!check(TokenType.Comma) && !check(TokenType.Equal)) syntaxError("syntax error", current);
-        if (!isVariable(expr)) syntaxError("syntax error", current);
+        bool isVariable(Expr e) {
+            return !e.parenthesized && (as!VariableExpr(e) !is null || as!IndexExpr(e) !is null || as!FieldExpr(e) !is null);
+        }
+
+        if (!check(TokenType.Comma) && !check(TokenType.Equal))
+            syntaxError("syntax error", current);
+        if (!isVariable(expr))
+            syntaxError("syntax error", current);
         Expr[] targets = [expr];
         while (match(TokenType.Comma)) {
-            if (targets.length + nestingLevel > 195) syntaxError("too many C levels (limit is 200)", current);
+            if (targets.length + nestingLevel > 195)
+                syntaxError("too many C levels (limit is 200)", current);
             auto target = parsePrefixExpr();
-            if (!isVariable(target)) syntaxError("syntax error", current);
+            if (!isVariable(target))
+                syntaxError("syntax error", current);
             targets ~= target;
         }
 
@@ -487,7 +521,8 @@ class Parser {
 
     Expr parseExpr() {
         expressionDepth++;
-        scope(exit) expressionDepth--;
+        scope (exit)
+            expressionDepth--;
         return parseBinaryExpr(0);
     }
 
@@ -500,56 +535,78 @@ class Parser {
 
     private static bool getBinaryOpInfo(TokenType type, out OpInfo info) {
         switch (type) {
-            case TokenType.KwOr:
-                info = OpInfo(BinaryOp.Or, 1, 1); return true;
-            case TokenType.KwAnd:
-                info = OpInfo(BinaryOp.And, 2, 2); return true;
-            case TokenType.Less:
-                info = OpInfo(BinaryOp.Lt, 3, 3); return true;
-            case TokenType.Greater:
-                info = OpInfo(BinaryOp.Gt, 3, 3); return true;
-            case TokenType.LessEqual:
-                info = OpInfo(BinaryOp.Le, 3, 3); return true;
-            case TokenType.GreaterEqual:
-                info = OpInfo(BinaryOp.Ge, 3, 3); return true;
-            case TokenType.TildeEqual:
-                info = OpInfo(BinaryOp.Ne, 3, 3); return true;
-            case TokenType.DoubleEqual:
-                info = OpInfo(BinaryOp.Eq, 3, 3); return true;
-            case TokenType.Pipe:
-                info = OpInfo(BinaryOp.BOr, 4, 4); return true;
-            case TokenType.Tilde:
-                info = OpInfo(BinaryOp.BXor, 5, 5); return true;
-            case TokenType.Ampersand:
-                info = OpInfo(BinaryOp.BAnd, 6, 6); return true;
-            case TokenType.DoubleLess:
-                info = OpInfo(BinaryOp.Shl, 7, 7); return true;
-            case TokenType.DoubleGreater:
-                info = OpInfo(BinaryOp.Shr, 7, 7); return true;
-            case TokenType.DoubleDot: // Right-associative
-                info = OpInfo(BinaryOp.Concat, 9, 8); return true;
-            case TokenType.Plus:
-                info = OpInfo(BinaryOp.Add, 10, 10); return true;
-            case TokenType.Minus:
-                info = OpInfo(BinaryOp.Sub, 10, 10); return true;
-            case TokenType.Star:
-                info = OpInfo(BinaryOp.Mul, 11, 11); return true;
-            case TokenType.Slash:
-                info = OpInfo(BinaryOp.Div, 11, 11); return true;
-            case TokenType.DoubleSlash:
-                info = OpInfo(BinaryOp.IDiv, 11, 11); return true;
-            case TokenType.Percent:
-                info = OpInfo(BinaryOp.Mod, 11, 11); return true;
-            case TokenType.Caret: // Right-associative
-                info = OpInfo(BinaryOp.Pow, 14, 13); return true;
-            default:
-                return false;
+        case TokenType.KwOr:
+            info = OpInfo(BinaryOp.Or, 1, 1);
+            return true;
+        case TokenType.KwAnd:
+            info = OpInfo(BinaryOp.And, 2, 2);
+            return true;
+        case TokenType.Less:
+            info = OpInfo(BinaryOp.Lt, 3, 3);
+            return true;
+        case TokenType.Greater:
+            info = OpInfo(BinaryOp.Gt, 3, 3);
+            return true;
+        case TokenType.LessEqual:
+            info = OpInfo(BinaryOp.Le, 3, 3);
+            return true;
+        case TokenType.GreaterEqual:
+            info = OpInfo(BinaryOp.Ge, 3, 3);
+            return true;
+        case TokenType.TildeEqual:
+            info = OpInfo(BinaryOp.Ne, 3, 3);
+            return true;
+        case TokenType.DoubleEqual:
+            info = OpInfo(BinaryOp.Eq, 3, 3);
+            return true;
+        case TokenType.Pipe:
+            info = OpInfo(BinaryOp.BOr, 4, 4);
+            return true;
+        case TokenType.Tilde:
+            info = OpInfo(BinaryOp.BXor, 5, 5);
+            return true;
+        case TokenType.Ampersand:
+            info = OpInfo(BinaryOp.BAnd, 6, 6);
+            return true;
+        case TokenType.DoubleLess:
+            info = OpInfo(BinaryOp.Shl, 7, 7);
+            return true;
+        case TokenType.DoubleGreater:
+            info = OpInfo(BinaryOp.Shr, 7, 7);
+            return true;
+        case TokenType.DoubleDot: // Right-associative
+            info = OpInfo(BinaryOp.Concat, 9, 8);
+            return true;
+        case TokenType.Plus:
+            info = OpInfo(BinaryOp.Add, 10, 10);
+            return true;
+        case TokenType.Minus:
+            info = OpInfo(BinaryOp.Sub, 10, 10);
+            return true;
+        case TokenType.Star:
+            info = OpInfo(BinaryOp.Mul, 11, 11);
+            return true;
+        case TokenType.Slash:
+            info = OpInfo(BinaryOp.Div, 11, 11);
+            return true;
+        case TokenType.DoubleSlash:
+            info = OpInfo(BinaryOp.IDiv, 11, 11);
+            return true;
+        case TokenType.Percent:
+            info = OpInfo(BinaryOp.Mod, 11, 11);
+            return true;
+        case TokenType.Caret: // Right-associative
+            info = OpInfo(BinaryOp.Pow, 14, 13);
+            return true;
+        default:
+            return false;
         }
     }
 
     private Expr parseBinaryExpr(int minPrec) {
         enterLevel();
-        scope(exit) --nestingLevel;
+        scope (exit)
+            --nestingLevel;
         auto left = parseUnaryExpr();
 
         while (true) {
@@ -578,11 +635,16 @@ class Parser {
 
         UnaryOp op;
         bool unary = true;
-        if (match(TokenType.Minus)) op = UnaryOp.Neg;
-        else if (match(TokenType.KwNot)) op = UnaryOp.Not;
-        else if (match(TokenType.Hash)) op = UnaryOp.Len;
-        else if (match(TokenType.Tilde)) op = UnaryOp.BitNot;
-        else unary = false;
+        if (match(TokenType.Minus))
+            op = UnaryOp.Neg;
+        else if (match(TokenType.KwNot))
+            op = UnaryOp.Not;
+        else if (match(TokenType.Hash))
+            op = UnaryOp.Len;
+        else if (match(TokenType.Tilde))
+            op = UnaryOp.BitNot;
+        else
+            unary = false;
         if (unary) {
             auto operand = parseBinaryExpr(12);
             auto folded = foldUnary(op, operand, loc);
@@ -592,7 +654,8 @@ class Parser {
         }
 
         auto primary = parsePrimaryExpr();
-        if (primary.lastTokenLine == 0) primary.lastTokenLine = previous.loc.line;
+        if (primary.lastTokenLine == 0)
+            primary.lastTokenLine = previous.loc.line;
         return primary;
     }
 
@@ -618,7 +681,8 @@ class Parser {
             return new LiteralStringExpr(previous.text, loc);
         }
         if (match(TokenType.TripleDot)) {
-            if (!varargContext[$ - 1]) syntaxError("cannot use '...' outside a vararg function", previous);
+            if (!varargContext[$ - 1])
+                syntaxError("cannot use '...' outside a vararg function", previous);
             return new VarargExpr(loc);
         }
         if (match(TokenType.LBrace)) {
@@ -655,8 +719,10 @@ class Parser {
     }
 
     private bool isMethodSuffix() {
-        if (!aggregateExpressionMode || expressionDepth > aggregateExpressionDepth) return true;
-        if (peekToken(0).type != TokenType.Identifier) return false;
+        if (!aggregateExpressionMode || expressionDepth > aggregateExpressionDepth)
+            return true;
+        if (peekToken(0).type != TokenType.Identifier)
+            return false;
         size_t end = 1;
         auto opening = peekToken(end).type;
         if (opening == TokenType.LParen || opening == TokenType.LBrace) {
@@ -664,11 +730,15 @@ class Parser {
             int depth = 1;
             while (depth) {
                 auto token = peekToken(++end).type;
-                if (token == TokenType.EOF) return false;
-                if (token == opening) depth++;
-                if (token == closing) depth--;
+                if (token == TokenType.EOF)
+                    return false;
+                if (token == opening)
+                    depth++;
+                if (token == closing)
+                    depth--;
             }
-        } else if (opening != TokenType.String) return false;
+        } else if (opening != TokenType.String)
+            return false;
         auto following = peekToken(end + 1).type;
         // A relation goal after the separator ends at a comma or aggregate brace.
         return following != TokenType.Comma && following != TokenType.RBrace && following != TokenType.EOF;
@@ -701,15 +771,18 @@ class Parser {
                 consume(TokenType.RBracket, "']' expected");
                 expr = new IndexExpr(expr, key, suffixLoc);
                 expr.lastTokenLine = previous.loc.line;
-            } else if (isMethodSuffix() && check(TokenType.Colon) && (!inDeclarative || (peekToken(0).type == TokenType.Identifier &&
-                       (peekToken(1).type == TokenType.LParen || peekToken(1).type == TokenType.LBrace || peekToken(1).type == TokenType.String)))) {
+            } else if (isMethodSuffix() && check(TokenType.Colon) && (!inDeclarative || (peekToken(0)
+                    .type == TokenType.Identifier &&
+                    (peekToken(1).type == TokenType.LParen || peekToken(1).type == TokenType.LBrace || peekToken(1)
+                    .type == TokenType.String)))) {
                 advance();
                 auto method = consume(TokenType.Identifier, "<name> expected").text;
                 int nameLine = previous.loc.line;
                 int argsLine = current.loc.line;
                 Expr[] args = parseArgs();
                 auto methodCall = new MethodCallExpr(expr, method, args, suffixLoc);
-                methodCall.nameLine = nameLine; methodCall.argsLine = argsLine;
+                methodCall.nameLine = nameLine;
+                methodCall.argsLine = argsLine;
                 expr = methodCall;
             } else if (check(TokenType.LParen) || check(TokenType.LBrace) || check(TokenType.String)) {
                 Expr[] args = parseArgs();
@@ -788,7 +861,11 @@ class Parser {
         activeLocals ~= 0;
         functionStartLines ~= loc.line;
         varargContext ~= false;
-        scope(exit) { varargContext.length--; activeLocals.length--; functionStartLines.length--; }
+        scope (exit) {
+            varargContext.length--;
+            activeLocals.length--;
+            functionStartLines.length--;
+        }
 
         if (isMethod) {
             params ~= "self";
@@ -850,7 +927,8 @@ class Parser {
         if (!check(TokenType.RParen)) {
             while (true) {
                 args ~= parseExpr();
-                if (!match(TokenType.Comma)) break;
+                if (!match(TokenType.Comma))
+                    break;
                 if (check(TokenType.RParen)) {
                     syntaxError("trailing comma not permitted in fact arguments", previous);
                 }
@@ -868,7 +946,8 @@ class Parser {
         if (!check(TokenType.RParen)) {
             while (true) {
                 args ~= parseExpr();
-                if (!match(TokenType.Comma)) break;
+                if (!match(TokenType.Comma))
+                    break;
                 if (check(TokenType.RParen)) {
                     syntaxError("trailing comma not permitted in retract arguments", previous);
                 }
@@ -880,13 +959,16 @@ class Parser {
 
     private AstGoal[] parseWhenClause() {
         auto when = consume(TokenType.Identifier, "'when' expected");
-        if (when.text != "when") syntaxError("'when' expected", when);
+        if (when.text != "when")
+            syntaxError("'when' expected", when);
         consume(TokenType.LBrace, "'{' expected after when");
         AstGoal[] goals;
         do {
             goals ~= parseGoal();
-            if (!match(TokenType.Comma)) break;
-        } while (true);
+            if (!match(TokenType.Comma))
+                break;
+        }
+        while (true);
         consume(TokenType.RBrace, "'}' expected after availability goals");
         return goals;
     }
@@ -897,40 +979,53 @@ class Parser {
         auto definition = new NarrativeDefinitionStmt(kind, name, loc);
         if (kind != "choice" || check(TokenType.LParen)) {
             consume(TokenType.LParen, "'(' expected after content identifier");
-            if (!check(TokenType.RParen)) do {
+            if (!check(TokenType.RParen))
+                do {
                 consume(TokenType.Question, "logic parameter expected");
                 string parameter = consume(TokenType.Identifier, "parameter name expected").text;
-                if (parameter == "_") syntaxError("anonymous content parameter is prohibited", previous);
+                if (parameter == "_")
+                    syntaxError("anonymous content parameter is prohibited", previous);
                 definition.parameters ~= parameter;
-                if (!match(TokenType.Comma)) break;
-            } while (true);
+                if (!match(TokenType.Comma))
+                    break;
+            }
+            while (true);
             consume(TokenType.RParen, "')' expected after parameters");
         }
-        if (kind != "choice" || (check(TokenType.Identifier) && current.text == "when")) definition.goals = parseWhenClause();
+        if (kind != "choice" || (check(TokenType.Identifier) && current.text == "when"))
+            definition.goals = parseWhenClause();
         bool[string] fields;
         while (check(TokenType.Identifier)) {
             string field = current.text;
-            if (field == "choice" || field == "effect") break;
+            if (field == "choice" || field == "effect")
+                break;
             bool allowed = kind != "action" && (field == "title" || field == "text");
-            if (kind == "storylet") allowed = allowed || field == "deck" || field == "priority" || field == "weight" || field == "cooldown" || field == "repeatable" || field == "sticky" || field == "order";
-            if (kind == "action") allowed = field == "phase" || field == "priority" || field == "once_per";
-            if (!allowed) syntaxError("invalid " ~ kind ~ " field '" ~ field ~ "'", current);
-            if (field in fields) syntaxError("duplicate content field '" ~ field ~ "'", current);
+            if (kind == "storylet")
+                allowed = allowed || field == "deck" || field == "priority" || field == "weight" || field == "cooldown" || field == "repeatable" || field == "sticky" || field == "order";
+            if (kind == "action")
+                allowed = field == "phase" || field == "priority" || field == "once_per";
+            if (!allowed)
+                syntaxError("invalid " ~ kind ~ " field '" ~ field ~ "'", current);
+            if (field in fields)
+                syntaxError("duplicate content field '" ~ field ~ "'", current);
             fields[field] = true;
             advance();
             definition.fieldNames ~= field;
             if (field == "title" || field == "text") {
                 auto value = consume(TokenType.String, "template string literal expected");
                 definition.fieldValues ~= new LiteralStringExpr(value.text, value.loc);
-            } else definition.fieldValues ~= parseExpr();
+            } else
+                definition.fieldValues ~= parseExpr();
         }
         if (kind == "storylet") {
             while (check(TokenType.Identifier) && current.text == "choice")
                 definition.choices ~= parseNarrativeDefinition("choice", current.loc);
-            if (!definition.choices.length) syntaxError("storylet requires at least one choice", current);
+            if (!definition.choices.length)
+                syntaxError("storylet requires at least one choice", current);
         } else {
             auto effect = consume(TokenType.Identifier, "'effect' expected");
-            if (effect.text != "effect") syntaxError("'effect' expected", effect);
+            if (effect.text != "effect")
+                syntaxError("'effect' expected", effect);
             consume(TokenType.KwDo, "'do' expected after effect");
             definition.effect = parseBlock();
             consume(TokenType.KwEnd, "'end' expected after effect");
@@ -948,15 +1043,19 @@ class Parser {
         if (!check(TokenType.RParen)) {
             do {
                 args ~= parseExpr();
-                if (!match(TokenType.Comma)) break;
-                if (check(TokenType.RParen)) syntaxError("trailing comma in update", current);
-            } while (true);
+                if (!match(TokenType.Comma))
+                    break;
+                if (check(TokenType.RParen))
+                    syntaxError("trailing comma in update", current);
+            }
+            while (true);
         }
         consume(TokenType.RParen, "')' expected after update arguments");
         Expr delta;
         if (operation == "adjust") {
             auto by = consume(TokenType.Identifier, "'by' expected after adjust key");
-            if (by.text != "by") syntaxError("'by' expected after adjust key", by);
+            if (by.text != "by")
+                syntaxError("'by' expected after adjust key", by);
             delta = parseExpr();
         }
         return new UpdateStmt(operation, reference, args, delta, loc);
@@ -970,27 +1069,34 @@ class Parser {
             auto intTok = current;
             advance();
             consume(TokenType.RParen, "')' expected after relation arity");
-            return new RelationDeclStmt(name, cast(int)intTok.intValue, loc);
+            return new RelationDeclStmt(name, cast(int) intTok.intValue, loc);
         }
         string[] columns;
         if (!check(TokenType.RParen)) {
             do {
                 columns ~= consume(TokenType.Identifier, "column name expected").text;
-                if (!match(TokenType.Comma)) break;
-            } while (true);
+                if (!match(TokenType.Comma))
+                    break;
+            }
+            while (true);
         }
         consume(TokenType.RParen, "')' expected after column names");
         string[] keys;
         if (check(TokenType.Identifier) && current.text == "key" && peekToken(0).type == TokenType.LParen) {
-            advance(); advance();
+            advance();
+            advance();
             do {
                 keys ~= consume(TokenType.Identifier, "key column expected").text;
-                if (!match(TokenType.Comma)) break;
-            } while (true);
+                if (!match(TokenType.Comma))
+                    break;
+            }
+            while (true);
             consume(TokenType.RParen, "')' expected after keys");
         }
-        auto declaration = new RelationDeclStmt(name, cast(int)columns.length, loc);
-        declaration.columns = columns; declaration.keys = keys; declaration.named = true;
+        auto declaration = new RelationDeclStmt(name, cast(int) columns.length, loc);
+        declaration.columns = columns;
+        declaration.keys = keys;
+        declaration.named = true;
         return declaration;
     }
 
@@ -1000,19 +1106,24 @@ class Parser {
         consume(TokenType.LParen, "'(' expected after relation name");
         auto intTok = consume(TokenType.Integer, "integer arity expected");
         consume(TokenType.RParen, "')' expected after relation arity");
-        return new LocalRelationDeclStmt(name, cast(int)intTok.intValue, loc);
+        return new LocalRelationDeclStmt(name, cast(int) intTok.intValue, loc);
     }
 
     private bool isWorldBlockStmt(string keyword = "logic") {
-        if (!check(TokenType.Identifier) || current.text != keyword) return false;
-        if (peekToken(0).type != TokenType.LParen) return false;
+        if (!check(TokenType.Identifier) || current.text != keyword)
+            return false;
+        if (peekToken(0).type != TokenType.LParen)
+            return false;
         size_t k = 1;
         int parenDepth = 1;
         while (parenDepth > 0) {
             auto tok = peekToken(k++);
-            if (tok.type == TokenType.EOF) return false;
-            if (tok.type == TokenType.LParen) parenDepth++;
-            else if (tok.type == TokenType.RParen) parenDepth--;
+            if (tok.type == TokenType.EOF)
+                return false;
+            if (tok.type == TokenType.LParen)
+                parenDepth++;
+            else if (tok.type == TokenType.RParen)
+                parenDepth--;
         }
         return peekToken(k).type == TokenType.KwDo;
     }
@@ -1036,7 +1147,8 @@ class Parser {
         if (!check(TokenType.RParen)) {
             while (true) {
                 headArgs ~= parseDeclarativeTerm();
-                if (!match(TokenType.Comma)) break;
+                if (!match(TokenType.Comma))
+                    break;
                 if (check(TokenType.RParen)) {
                     syntaxError("trailing comma not permitted in rule head", previous);
                 }
@@ -1071,15 +1183,21 @@ class Parser {
 
         bool saved = inDeclarative;
         inDeclarative = false;
-        scope(exit) inDeclarative = saved;
+        scope (exit)
+            inDeclarative = saved;
         return parseExpr();
     }
 
     private bool isGoalStart() {
-        if (check(TokenType.KwNot)) return true;
-        if (check(TokenType.Question)) return true;
-        if (check(TokenType.Identifier)) return true;
-        if (check(TokenType.Colon) || check(TokenType.Integer) || check(TokenType.Float) || check(TokenType.String) || check(TokenType.LParen)) return true;
+        if (check(TokenType.KwNot))
+            return true;
+        if (check(TokenType.Question))
+            return true;
+        if (check(TokenType.Identifier))
+            return true;
+        if (check(TokenType.Colon) || check(TokenType.Integer) || check(TokenType.Float) || check(TokenType.String) || check(
+                TokenType.LParen))
+            return true;
         return false;
     }
 
@@ -1088,10 +1206,12 @@ class Parser {
 
     private AstGoal parseGoal() {
         auto loc = current.loc;
-        if (check(TokenType.Question) && peekToken(0).type == TokenType.Identifier && peekToken(1).type == TokenType.Equal) {
+        if (check(TokenType.Question) && peekToken(0).type == TokenType.Identifier && peekToken(1)
+                .type == TokenType.Equal) {
             advance();
             string result = consume(TokenType.Identifier, "aggregate result variable expected").text;
-            if (result == "_") syntaxError("anonymous aggregate result is prohibited", previous);
+            if (result == "_")
+                syntaxError("anonymous aggregate result is prohibited", previous);
             consume(TokenType.Equal, "'=' expected before aggregate");
             string operation = consume(TokenType.Identifier, "aggregate operator expected").text;
             if (operation != "count" && operation != "sum" && operation != "min" && operation != "max")
@@ -1114,8 +1234,10 @@ class Parser {
             AstGoal[] goals;
             do {
                 goals ~= parseGoal();
-                if (!match(TokenType.Comma)) break;
-            } while (true);
+                if (!match(TokenType.Comma))
+                    break;
+            }
+            while (true);
             consume(TokenType.RBrace, "'}' expected after aggregate goals");
             return new AstAggregateGoal(result, operation, expression, goals, loc);
         }
@@ -1128,7 +1250,8 @@ class Parser {
             if (!check(TokenType.RParen)) {
                 while (true) {
                     terms ~= parseDeclarativeTerm();
-                    if (!match(TokenType.Comma)) break;
+                    if (!match(TokenType.Comma))
+                        break;
                     if (check(TokenType.RParen)) {
                         syntaxError("trailing comma not permitted in negated atom terms", previous);
                     }
@@ -1144,7 +1267,8 @@ class Parser {
             consume(TokenType.LParen, "'(' expected after 'where'");
             bool saved = inDeclarative;
             inDeclarative = true;
-            scope(exit) inDeclarative = saved;
+            scope (exit)
+                inDeclarative = saved;
             auto guardExpr = parseExpr();
             consume(TokenType.RParen, "')' expected after guard expression");
             return new AstGuardGoal(guardExpr, loc);
@@ -1171,7 +1295,8 @@ class Parser {
             if (!check(TokenType.RParen)) {
                 while (true) {
                     terms ~= parseDeclarativeTerm();
-                    if (!match(TokenType.Comma)) break;
+                    if (!match(TokenType.Comma))
+                        break;
                     if (check(TokenType.RParen)) {
                         syntaxError("trailing comma not permitted in relation terms", previous);
                     }
@@ -1189,20 +1314,26 @@ class Parser {
 
     private bool isCompareOp(TokenType t) {
         return t == TokenType.DoubleEqual ||
-               t == TokenType.TildeEqual ||
-               t == TokenType.Less ||
-               t == TokenType.LessEqual ||
-               t == TokenType.Greater ||
-               t == TokenType.GreaterEqual;
+            t == TokenType.TildeEqual ||
+            t == TokenType.Less ||
+            t == TokenType.LessEqual ||
+            t == TokenType.Greater ||
+            t == TokenType.GreaterEqual;
     }
 
     private CompareOp parseCompareOp() {
-        if (match(TokenType.DoubleEqual)) return CompareOp.Eq;
-        if (match(TokenType.TildeEqual)) return CompareOp.Neq;
-        if (match(TokenType.Less)) return CompareOp.Lt;
-        if (match(TokenType.LessEqual)) return CompareOp.Le;
-        if (match(TokenType.Greater)) return CompareOp.Gt;
-        if (match(TokenType.GreaterEqual)) return CompareOp.Ge;
+        if (match(TokenType.DoubleEqual))
+            return CompareOp.Eq;
+        if (match(TokenType.TildeEqual))
+            return CompareOp.Neq;
+        if (match(TokenType.Less))
+            return CompareOp.Lt;
+        if (match(TokenType.LessEqual))
+            return CompareOp.Le;
+        if (match(TokenType.Greater))
+            return CompareOp.Gt;
+        if (match(TokenType.GreaterEqual))
+            return CompareOp.Ge;
         syntaxError("comparison operator expected (==, ~=, <, <=, >, >=)", current);
         return CompareOp.Eq;
     }
@@ -1245,102 +1376,143 @@ private struct Numeral {
     bool isInt;
     long i;
     double d;
-    double asFloat() const { return isInt ? cast(double)i : d; }
+    double asFloat() const {
+        return isInt ? cast(double) i : d;
+    }
 }
 
 private bool numeralOf(Expr e, out Numeral n) {
-    if (auto li = as!LiteralIntExpr(e)) { n.isInt = true; n.i = li.value; return true; }
-    if (auto lf = as!LiteralFloatExpr(e)) { n.isInt = false; n.d = lf.value; return true; }
+    if (auto li = as!LiteralIntExpr(e)) {
+        n.isInt = true;
+        n.i = li.value;
+        return true;
+    }
+    if (auto lf = as!LiteralFloatExpr(e)) {
+        n.isInt = false;
+        n.d = lf.value;
+        return true;
+    }
     return false;
 }
 
 private bool toExactInteger(Numeral n, out long result) {
     import dlua.types : floatToInteger;
-    if (n.isInt) { result = n.i; return true; }
+
+    if (n.isInt) {
+        result = n.i;
+        return true;
+    }
     return floatToInteger(n.d, result);
 }
 
 private Expr numeralExpr(Numeral n, SourceLoc loc) {
     import std.math : isNaN;
-    if (n.isInt) return new LiteralIntExpr(n.i, loc);
-    if (isNaN(n.d) || n.d == 0) return null;  // folds neither NaN nor 0.0 (-0.0 problems)
+
+    if (n.isInt)
+        return new LiteralIntExpr(n.i, loc);
+    if (isNaN(n.d) || n.d == 0)
+        return null; // folds neither NaN nor 0.0 (-0.0 problems)
     return new LiteralFloatExpr(n.d, loc);
 }
 
 private long shiftLeft(long x, long y) {
-    if (y <= -64 || y >= 64) return 0;
-    if (y >= 0) return cast(long)(cast(ulong)x << y);
-    return cast(long)(cast(ulong)x >> -y);
+    if (y <= -64 || y >= 64)
+        return 0;
+    if (y >= 0)
+        return cast(long)(cast(ulong) x << y);
+    return cast(long)(cast(ulong) x >> -y);
 }
 
 private Expr foldBinary(BinaryOp op, Expr left, Expr right, SourceLoc loc) {
     import core.stdc.math : pow, fmod;
     import std.math : floor;
+
     Numeral a, b;
-    if (!numeralOf(left, a) || !numeralOf(right, b)) return null;
+    if (!numeralOf(left, a) || !numeralOf(right, b))
+        return null;
     Numeral r;
     switch (op) {
-        case BinaryOp.Add, BinaryOp.Sub, BinaryOp.Mul:
-            if (a.isInt && b.isInt) {
-                r.isInt = true;
-                ulong x = cast(ulong)a.i, y = cast(ulong)b.i;
-                r.i = cast(long)(op == BinaryOp.Add ? x + y : op == BinaryOp.Sub ? x - y : x * y);
-            } else {
-                double x = a.asFloat, y = b.asFloat;
-                r.d = op == BinaryOp.Add ? x + y : op == BinaryOp.Sub ? x - y : x * y;
+    case BinaryOp.Add, BinaryOp.Sub, BinaryOp.Mul:
+        if (a.isInt && b.isInt) {
+            r.isInt = true;
+            ulong x = cast(ulong) a.i, y = cast(ulong) b.i;
+            r.i = cast(long)(op == BinaryOp.Add ? x + y : op == BinaryOp.Sub ? x - y : x * y);
+        } else {
+            double x = a.asFloat, y = b.asFloat;
+            r.d = op == BinaryOp.Add ? x + y : op == BinaryOp.Sub ? x - y : x * y;
+        }
+        break;
+    case BinaryOp.Div:
+        if (b.asFloat == 0)
+            return null;
+        r.d = a.asFloat / b.asFloat;
+        break;
+    case BinaryOp.Pow:
+        r.d = pow(a.asFloat, b.asFloat);
+        break;
+    case BinaryOp.IDiv:
+        if (b.asFloat == 0)
+            return null;
+        if (a.isInt && b.isInt) {
+            r.isInt = true;
+            if (b.i == -1)
+                r.i = cast(long)(0UL - cast(ulong) a.i);
+            else {
+                long q = a.i / b.i;
+                if ((a.i % b.i != 0) && ((a.i ^ b.i) < 0))
+                    q -= 1;
+                r.i = q;
             }
-            break;
-        case BinaryOp.Div:
-            if (b.asFloat == 0) return null;
-            r.d = a.asFloat / b.asFloat;
-            break;
-        case BinaryOp.Pow:
-            r.d = pow(a.asFloat, b.asFloat);
-            break;
-        case BinaryOp.IDiv:
-            if (b.asFloat == 0) return null;
-            if (a.isInt && b.isInt) {
-                r.isInt = true;
-                if (b.i == -1) r.i = cast(long)(0UL - cast(ulong)a.i);
-                else {
-                    long q = a.i / b.i;
-                    if ((a.i % b.i != 0) && ((a.i ^ b.i) < 0)) q -= 1;
-                    r.i = q;
-                }
-            } else r.d = floor(a.asFloat / b.asFloat);
-            break;
-        case BinaryOp.Mod:
-            if (b.asFloat == 0) return null;
-            if (a.isInt && b.isInt) {
-                r.isInt = true;
-                if (b.i == -1) r.i = 0;
-                else {
-                    long m = a.i % b.i;
-                    if (m != 0 && (m ^ b.i) < 0) m += b.i;
-                    r.i = m;
-                }
-            } else {
-                double x = a.asFloat, y = b.asFloat;
-                double m = fmod(x, y);
-                if ((m > 0) ? y < 0 : (m < 0 && y > 0)) m += y;
-                r.d = m;
+        } else
+            r.d = floor(a.asFloat / b.asFloat);
+        break;
+    case BinaryOp.Mod:
+        if (b.asFloat == 0)
+            return null;
+        if (a.isInt && b.isInt) {
+            r.isInt = true;
+            if (b.i == -1)
+                r.i = 0;
+            else {
+                long m = a.i % b.i;
+                if (m != 0 && (m ^ b.i) < 0)
+                    m += b.i;
+                r.i = m;
             }
-            break;
-        case BinaryOp.BAnd, BinaryOp.BOr, BinaryOp.BXor, BinaryOp.Shl, BinaryOp.Shr: {
+        } else {
+            double x = a.asFloat, y = b.asFloat;
+            double m = fmod(x, y);
+            if ((m > 0) ? y < 0 : (m < 0 && y > 0))
+                m += y;
+            r.d = m;
+        }
+        break;
+    case BinaryOp.BAnd, BinaryOp.BOr, BinaryOp.BXor, BinaryOp.Shl, BinaryOp.Shr: {
             long x, y;
-            if (!toExactInteger(a, x) || !toExactInteger(b, y)) return null;
+            if (!toExactInteger(a, x) || !toExactInteger(b, y))
+                return null;
             r.isInt = true;
             switch (op) {
-                case BinaryOp.BAnd: r.i = x & y; break;
-                case BinaryOp.BOr: r.i = x | y; break;
-                case BinaryOp.BXor: r.i = x ^ y; break;
-                case BinaryOp.Shl: r.i = shiftLeft(x, y); break;
-                default: r.i = shiftLeft(x, cast(long)(0UL - cast(ulong)y)); break;
+            case BinaryOp.BAnd:
+                r.i = x & y;
+                break;
+            case BinaryOp.BOr:
+                r.i = x | y;
+                break;
+            case BinaryOp.BXor:
+                r.i = x ^ y;
+                break;
+            case BinaryOp.Shl:
+                r.i = shiftLeft(x, y);
+                break;
+            default:
+                r.i = shiftLeft(x, cast(long)(0UL - cast(ulong) y));
+                break;
             }
             break;
         }
-        default:
-            return null;
+    default:
+        return null;
     }
     return numeralExpr(r, loc);
 }
@@ -1348,22 +1520,28 @@ private Expr foldBinary(BinaryOp op, Expr left, Expr right, SourceLoc loc) {
 private Expr foldUnary(UnaryOp op, Expr operand, SourceLoc loc) {
     Numeral a;
     switch (op) {
-        case UnaryOp.Neg:
-            if (!numeralOf(operand, a)) return null;
-            if (a.isInt) return new LiteralIntExpr(cast(long)(0UL - cast(ulong)a.i), loc);
-            a.d = -a.d;
-            return numeralExpr(a, loc);
-        case UnaryOp.BitNot: {
+    case UnaryOp.Neg:
+        if (!numeralOf(operand, a))
+            return null;
+        if (a.isInt)
+            return new LiteralIntExpr(cast(long)(0UL - cast(ulong) a.i), loc);
+        a.d = -a.d;
+        return numeralExpr(a, loc);
+    case UnaryOp.BitNot: {
             long x;
-            if (!numeralOf(operand, a) || !toExactInteger(a, x)) return null;
+            if (!numeralOf(operand, a) || !toExactInteger(a, x))
+                return null;
             return new LiteralIntExpr(~x, loc);
         }
-        case UnaryOp.Not:
-            if (as!LiteralNilExpr(operand) !is null) return new LiteralBoolExpr(true, loc);
-            if (auto lb = as!LiteralBoolExpr(operand)) return new LiteralBoolExpr(!lb.value, loc);
-            if (numeralOf(operand, a) || as!LiteralStringExpr(operand) !is null) return new LiteralBoolExpr(false, loc);
-            return null;
-        default:
-            return null;
+    case UnaryOp.Not:
+        if (as!LiteralNilExpr(operand) !is null)
+            return new LiteralBoolExpr(true, loc);
+        if (auto lb = as!LiteralBoolExpr(operand))
+            return new LiteralBoolExpr(!lb.value, loc);
+        if (numeralOf(operand, a) || as!LiteralStringExpr(operand) !is null)
+            return new LiteralBoolExpr(false, loc);
+        return null;
+    default:
+        return null;
     }
 }
