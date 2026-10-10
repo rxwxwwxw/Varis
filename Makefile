@@ -61,41 +61,49 @@ DATALOG_BENCH_ARGS = --runs $(BENCHMARK_RUNS) --baseline $(DATALOG_BASELINE) --t
 RUN_TEST = python3 -c "import subprocess, sys; sys.exit(subprocess.run(sys.argv[1:], timeout=$(TIMEOUT)).returncode)"
 
 BIN_DIR = bin
+BUILD_DIR = build
+DEBUG_OBJ_DIR = $(BUILD_DIR)/debug/obj
+DEBUG_STAMP = $(DEBUG_OBJ_DIR)/.built
 
-.PHONY: all check hooks fmt fmt-check check-sources test test-regression test-regression-record test-regression-runner benchmark-regression test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner dlua c-lua benchmark benchmark-workloads benchmark-datalog benchmark-datalog-record test-benchmarks clean
+# Unit tests link one shared, once-compiled object set instead of recompiling every module per test.
+$(DEBUG_STAMP): $(SRC_FILES)
+	mkdir -p $(DEBUG_OBJ_DIR)
+	$(DC) -c -Isource -g -oq -od=$(DEBUG_OBJ_DIR) $(SRC_FILES)
+	touch $@
+
+# $(call unit_test,name)
+define unit_test
+	$(DC) $(DFLAGS) $(DEBUG_OBJ_DIR)/*.o tests/unit/$(1).d -of=$(BUILD_DIR)/debug/$(1)
+	$(RUN_TEST) ./$(BUILD_DIR)/debug/$(1)
+endef
+
+.PHONY: dlua-checked all check hooks fmt fmt-check check-sources test test-regression test-regression-record test-regression-runner benchmark-regression test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-runner test-official test-official-runner dlua c-lua benchmark benchmark-workloads benchmark-datalog benchmark-datalog-record test-benchmarks clean
 
 all: test dlua
 
 bin:
 	mkdir -p $(BIN_DIR)
 
-test-foundation: bin
-	$(DC) $(DFLAGS) $(SRC_FILES) tests/unit/test_foundation.d -of=$(BIN_DIR)/test_foundation
-	$(RUN_TEST) ./$(BIN_DIR)/test_foundation
+test-foundation: $(DEBUG_STAMP)
+	$(call unit_test,test_foundation)
 
-test-frontend: bin
-	$(DC) $(DFLAGS) $(SRC_FILES) tests/unit/test_parser.d -of=$(BIN_DIR)/test_parser
-	$(RUN_TEST) ./$(BIN_DIR)/test_parser
+test-frontend: $(DEBUG_STAMP)
+	$(call unit_test,test_parser)
 
-test-vm: bin
-	$(DC) $(DFLAGS) $(SRC_FILES) tests/unit/test_vm.d -of=$(BIN_DIR)/test_vm
-	$(RUN_TEST) ./$(BIN_DIR)/test_vm
+test-vm: $(DEBUG_STAMP)
+	$(call unit_test,test_vm)
 
-test-libs: bin
-	$(DC) $(DFLAGS) $(SRC_FILES) tests/unit/test_libs.d -of=$(BIN_DIR)/test_libs
-	$(RUN_TEST) ./$(BIN_DIR)/test_libs
+test-libs: $(DEBUG_STAMP)
+	$(call unit_test,test_libs)
 
-test-logic: bin
-	$(DC) $(DFLAGS) $(SRC_FILES) tests/unit/test_logic.d -of=$(BIN_DIR)/test_logic
-	$(RUN_TEST) ./$(BIN_DIR)/test_logic
+test-logic: $(DEBUG_STAMP)
+	$(call unit_test,test_logic)
 
-test-stateful: bin
-	$(DC) $(DFLAGS) $(SRC_FILES) tests/unit/test_stateful.d -of=$(BIN_DIR)/test_stateful
-	$(RUN_TEST) ./$(BIN_DIR)/test_stateful
+test-stateful: $(DEBUG_STAMP)
+	$(call unit_test,test_stateful)
 
-test-narrative: bin
-	$(DC) $(DFLAGS) $(SRC_FILES) tests/unit/test_narrative.d -of=$(BIN_DIR)/test_narrative
-	$(RUN_TEST) ./$(BIN_DIR)/test_narrative
+test-narrative: $(DEBUG_STAMP)
+	$(call unit_test,test_narrative)
 
 test-datalog: dlua
 	TEST_TIMEOUT=$(DATALOG_TIMEOUT) sh lua54_datalog_tests/run-tests.sh ./$(BIN_DIR)/dlua
@@ -124,6 +132,11 @@ test-conformance-core: dlua c-lua
 	python3 tests/official/differential.py
 
 test: test-foundation test-frontend test-vm test-libs test-logic test-stateful test-narrative test-datalog test-scenarios test-extensions test-benchmarks test-official-runner test-regression-runner
+
+# Optimized build with assertions enabled (no -release): the "checked" validation profile.
+dlua-checked: $(SRC_FILES) source/dlua/cli.d
+	mkdir -p $(BUILD_DIR)/checked
+	$(DC) -Isource -O3 $(EXPORT_DYNAMIC) $(SRC_FILES) source/dlua/cli.d -of=$(BUILD_DIR)/checked/dlua
 
 dlua: bin
 	$(DC) -Isource -O3 -release $(EXPORT_DYNAMIC) $(SRC_FILES) source/dlua/cli.d -of=$(BIN_DIR)/dlua
