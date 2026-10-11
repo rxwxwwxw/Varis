@@ -54,7 +54,7 @@ python3 tools/suite bench --list
 make bench-record LABEL=2026-11-01  # store benchmarks/baselines/LABEL.json
 ```
 
-`v0-snapshot` is 10–40× slower, so only the first three interleaved samples include it (`runs = 3`).
+A comparator entry may set `runs = N` to cap its interleaved samples (none does at present).
 Gates are strict: a machine busy with other work can make memory-heavy workloads such as
 `core.deep_recursion` exceed its `gate.clua`; that is a failed check, not an exemption. Run the
 benchmarks on an idle machine.

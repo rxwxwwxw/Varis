@@ -21,10 +21,9 @@ overwritten by the analysis state; fixed, regression case `analysis_host_isolati
 `all.lua` hang was a stale reserved register plus missing live-register data in binary chunks (fixed,
 see tests/official/README.md; regression case `weak_stale_register`).
 
-Deviations from the plan: the unit-test tier names are `smoke`/`fast`/`full` plus `release`
-(benchmarks); `unit:` traceability names are D `@("name") unittest` blocks; a GitHub Actions workflow (`.github/workflows/ci.yml`: format/source checks and the full test tier on
+Remaining departures from the plan: `unit:` traceability names are D `@("name") unittest` blocks; a GitHub Actions workflow (`.github/workflows/ci.yml`: format/source checks and the full test tier on
 macOS and Linux) is committed but has not run because no remote exists yet (`make c-lua` now selects
-the Linux target by `uname`); `v0-snapshot` is sampled three times per workload (it is 10-40x slower); gates stay strict.
+the Linux target by `uname`); gates are strict and every comparator is sampled the same number of times.
 
 ---
 

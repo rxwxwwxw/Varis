@@ -14,7 +14,6 @@ note = "stock C Lua 5.4.9, built -O2 by c-implementation/src/Makefile"
 
 [comparator.v0-snapshot]
 ref = "baseline/v0-snapshot"
-runs = 3          # it is 10-40x slower: only the first 3 interleaved samples include it
 note = "2026-10-09 19:19 pre-optimization snapshot"
 
 [comparator.v1-perf-final]
