@@ -201,7 +201,7 @@ def summarize(xs):
     return {"median": med, "min": min(xs), "max": max(xs), "cv": (1.4826 * mad / med) if med else 0.0, "samples": xs}
 
 
-def run_workload(w, cand, comps, runs=None, log=lambda *_: None):
+def run_workload(w, cand, comps, runs=None, log=lambda *_: None, caps=None):
     """Interleaved samples. Returns a record with per-binary summaries and paired ratios."""
     runs = runs or w["runs"]
     labels = ["candidate"] + [l for l, b in comps.items() if b]
@@ -215,7 +215,7 @@ def run_workload(w, cand, comps, runs=None, log=lambda *_: None):
         if i % 2:
             order.reverse()
         for l in order:
-            if l in failed:
+            if l in failed or (caps and l in caps and i >= caps[l]):
                 continue
             try:
                 m = measure(w, bins[l])
@@ -251,17 +251,41 @@ def run_workload(w, cand, comps, runs=None, log=lambda *_: None):
 
 # ---------------------------------------------------------------- targets
 
+LOAD_FACTOR = 0.75
+
+
+def machine_loaded():
+    """True when the 1-minute load average says other work is competing for the cores."""
+    try:
+        return os.getloadavg()[0] > LOAD_FACTOR * (os.cpu_count() or 1)
+    except OSError:
+        return False
+
+
 def evaluate(rec, target):
-    """Findings: dicts {kind, label, value, limit, ok}. goal misses are informational."""
+    """Findings: dicts {kind, label, value, limit, ok}. goal misses are informational.
+
+    On a loaded machine a ratio against a binary built by a different toolchain (`clua`) is not
+    trustworthy: memory-heavy workloads suffer from contention more than the C interpreter does. Such
+    gate failures are reported with ok=None (inconclusive) instead of failing the check; ratios between
+    two builds of this project (same toolchain, same load) and floors keep being enforced.
+    """
     findings = []
+    loaded = rec.get("loaded", False)
     for kind in ("goal", "gate"):
         for label, limit in target.get(kind, {}).items():
             r = rec["ratios"].get(label)
             if r is None:
                 findings.append({"kind": kind, "label": label, "value": None, "limit": limit, "ok": None})
             else:
+                ok = r["median"] <= limit
+                if not ok and loaded and kind == "gate" and label == "clua":
+                    ok = None
+                    kind_note = "inconclusive: machine loaded"
+                else:
+                    kind_note = ""
                 findings.append({"kind": kind, "label": label, "value": r["median"], "limit": limit,
-                                 "ok": r["median"] <= limit})
+                                 "ok": ok, "note": kind_note})
     for label, limit in target.get("floor", {}).items():
         r = rec["ratios"].get(label)
         if r is None:

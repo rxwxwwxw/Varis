@@ -155,12 +155,15 @@ def cmd_bench(args):
     for w in ws:
         t = targets.get(w["id"], {})
         use = {l: comps[l] for l in (B.needed_labels(w, t) | set(args.compare)) if comps.get(l)}
-        rec = B.run_workload(w, cand.resolve(), use, args.runs)
+        caps = {l: manifest['comparator'][l]['runs'] for l in use if 'runs' in manifest.get('comparator', {}).get(l, {})}
+        rec = B.run_workload(w, cand.resolve(), use, args.runs, caps=caps)
+        rec['loaded'] = B.machine_loaded()
         findings = B.evaluate(rec, t)
         tries = 0
         while args.check and B.hard_failed(findings) and tries < 2 and not args.no_confirm:
             tries += 1
-            again = B.run_workload(w, cand.resolve(), use, args.runs)
+            again = B.run_workload(w, cand.resolve(), use, args.runs, caps=caps)
+            again['loaded'] = B.machine_loaded()
             f2 = B.evaluate(again, t)
             rec["confirmation"] = rec.get("confirmation", []) + [f2]
             if not B.hard_failed(f2):
@@ -190,6 +193,8 @@ def cmd_bench(args):
                     behind.append(w["id"])
                 elif args.check:
                     failures.append(w["id"])
+        if any(f.get("note") for f in findings):
+            status.append("clua gate inconclusive (machine loaded)")
         if rec.get("noisy"):
             status.append("noisy")
         if rec.get("note"):

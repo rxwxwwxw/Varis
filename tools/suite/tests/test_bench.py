@@ -38,6 +38,23 @@ class Evaluate(unittest.TestCase):
         self.assertFalse(B.hard_failed(f))
 
 
+class Loaded(unittest.TestCase):
+    def test_clua_gate_failure_is_inconclusive_under_load(self):
+        r = rec(clua=3.0, **{"v1-perf-final": 1.5})
+        r["loaded"] = True
+        f = B.evaluate(r, {"gate": {"clua": 2.2, "v1-perf-final": 1.2}})
+        by = {x["label"]: x for x in f}
+        self.assertIsNone(by["clua"]["ok"])
+        self.assertFalse(by["v1-perf-final"]["ok"])      # same-toolchain ratios are still enforced
+        self.assertTrue(B.hard_failed(f))
+        r["ratios"]["v1-perf-final"]["median"] = 1.0
+        self.assertFalse(B.hard_failed(B.evaluate(r, {"gate": {"clua": 2.2, "v1-perf-final": 1.2}})))
+
+    def test_unloaded_clua_gate_still_fails(self):
+        r = rec(clua=3.0)
+        self.assertTrue(B.hard_failed(B.evaluate(r, {"gate": {"clua": 2.2}})))
+
+
 class Derive(unittest.TestCase):
     def test_core_headroom_and_goal(self):
         t = B.derive(rec(clua=1.9))

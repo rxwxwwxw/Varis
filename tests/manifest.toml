@@ -147,6 +147,16 @@ cases = [
 ]
 
 [[suite]]
+id = "bench-gates"
+kind = "script"
+tier = "release"
+tags = ["bench"]
+timeout = 1800
+cases = [
+  { id = "slowed-candidate-is-rejected", command = ["python3", "tools/suite/tests/gate_enforcement.py"] },
+]
+
+[[suite]]
 id = "official"
 kind = "official"
 tier = "full"
