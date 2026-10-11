@@ -251,41 +251,17 @@ def run_workload(w, cand, comps, runs=None, log=lambda *_: None, caps=None):
 
 # ---------------------------------------------------------------- targets
 
-LOAD_FACTOR = 0.75
-
-
-def machine_loaded():
-    """True when the 1-minute load average says other work is competing for the cores."""
-    try:
-        return os.getloadavg()[0] > LOAD_FACTOR * (os.cpu_count() or 1)
-    except OSError:
-        return False
-
-
 def evaluate(rec, target):
-    """Findings: dicts {kind, label, value, limit, ok}. goal misses are informational.
-
-    On a loaded machine a ratio against a binary built by a different toolchain (`clua`) is not
-    trustworthy: memory-heavy workloads suffer from contention more than the C interpreter does. Such
-    gate failures are reported with ok=None (inconclusive) instead of failing the check; ratios between
-    two builds of this project (same toolchain, same load) and floors keep being enforced.
-    """
+    """Findings: dicts {kind, label, value, limit, ok}. goal misses are informational."""
     findings = []
-    loaded = rec.get("loaded", False)
     for kind in ("goal", "gate"):
         for label, limit in target.get(kind, {}).items():
             r = rec["ratios"].get(label)
             if r is None:
                 findings.append({"kind": kind, "label": label, "value": None, "limit": limit, "ok": None})
             else:
-                ok = r["median"] <= limit
-                if not ok and loaded and kind == "gate" and label == "clua":
-                    ok = None
-                    kind_note = "inconclusive: machine loaded"
-                else:
-                    kind_note = ""
                 findings.append({"kind": kind, "label": label, "value": r["median"], "limit": limit,
-                                 "ok": ok, "note": kind_note})
+                                 "ok": r["median"] <= limit})
     for label, limit in target.get("floor", {}).items():
         r = rec["ratios"].get(label)
         if r is None:

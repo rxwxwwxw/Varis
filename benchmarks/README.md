@@ -54,12 +54,10 @@ python3 tools/suite bench --list
 make bench-record LABEL=2026-11-01  # store benchmarks/baselines/LABEL.json
 ```
 
-**Load awareness.** If the 1-minute load average exceeds 75 % of the core count while a workload is
-measured, a failing `gate.clua` is reported as *inconclusive* (it compares against a binary from a
-different toolchain, and memory-heavy workloads such as `core.deep_recursion` degrade more than the C
-interpreter under contention). Ratios between two builds of this project and all floors are still
-enforced, so a regression is caught on a busy machine; a clean `clua` verdict needs an idle one.
 `v0-snapshot` is 10–40× slower, so only the first three interleaved samples include it (`runs = 3`).
+Gates are strict: a machine busy with other work can make memory-heavy workloads such as
+`core.deep_recursion` exceed its `gate.clua`; that is a failed check, not an exemption. Run the
+benchmarks on an idle machine.
 
 Run on an otherwise idle machine. Ratios are portable between machines; absolute seconds are not
 and are never enforced. `history/2026-10-09-perf/` holds the pre-suite experiment records

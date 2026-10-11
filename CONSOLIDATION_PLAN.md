@@ -23,8 +23,7 @@ see tests/official/README.md; regression case `weak_stale_register`).
 
 Deviations from the plan: the unit-test tier names are `smoke`/`fast`/`full` plus `release`
 (benchmarks); `unit:` traceability names are D `@("name") unittest` blocks; GitHub Actions is deferred
-until a remote exists; the benchmark clua gates are load-aware (inconclusive, not fatal, on a saturated machine) and
-`v0-snapshot` is sampled three times per workload.
+until a remote exists; `v0-snapshot` is sampled three times per workload (it is 10-40x slower); gates stay strict.
 
 ---
 
