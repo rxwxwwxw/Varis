@@ -186,7 +186,10 @@ make varis
 ```bash
 make bench          # report ratios against C Lua and earlier versions
 make bench-check    # enforce gates and floors from benchmarks/targets.toml
+make status         # regenerate docs/STATUS.md (full tests + all benchmarks; idle machine)
 ```
+
+Current counts and ratios: [docs/STATUS.md](docs/STATUS.md) (generated, not hand-edited).
 
 Targets are ratios measured in the same session against named comparators: stock C Lua 5.4.9
 (`-O2`) and earlier Varis versions built from git tags. See [benchmarks/README.md](benchmarks/README.md).

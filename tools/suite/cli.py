@@ -286,22 +286,20 @@ def cmd_report(args):
         for suite in sorted(by):
             lines.append(f"| {suite} | " + " | ".join(str(by[suite].get(st, "")) for st in statuses) + " |")
         lines.append("| **total** | " + " | ".join(f"**{tests['counts'].get(st, 0)}**" for st in statuses) + " |")
-        flaky = [r for r in tests["results"] if "flaky" in (r.get("detail") or "")]
         ledger = [r for r in tests["results"] if r["status"] in ("skip", "partial", "known-gap")]
         if ledger:
             lines += ["", "Ledgered results (skips, partials, known gaps):", ""]
             lines += [f"- `{r['id']}` — {r['status']}: {r['detail'][:140]}" for r in ledger]
-        if flaky:
-            lines += ["", "Passed only after a retry:", ""] + [f"- `{r['id']}`: {r['detail']}" for r in flaky]
         lines.append("")
-    recs, meta = [], None
+    recs, meta, commits = [], None, []
     for path in args.bench or []:
         d = json.loads(Path(path).read_text())
         meta = meta or d
+        commits.append(f"`{Path(path).name}` @ `{d.get('commit')}`")
         recs += d["records"]
     if recs:
         lines += ["## Benchmarks", "",
-                  f"Commit `{meta.get('commit')}`, {meta['machine']}, {meta['toolchain']}. Ratios are candidate "
+                  f"{meta['machine']}, {meta['toolchain']}. Recorded runs: " + ", ".join(commits) + ". Ratios are candidate "
                   "CPU time ÷ comparator CPU time (lower is better) from paired, interleaved samples; "
                   "`goal` is reported only, `gate`/`floor` are enforced by `make bench-check`.", ""]
         labels = sorted({l for r in recs for l in r["ratios"]})

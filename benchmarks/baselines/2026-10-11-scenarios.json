@@ -1,0 +1,1061 @@
+{
+  "schema": 1,
+  "kind": "bench",
+  "machine": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "arch": "arm64",
+  "toolchain": "LDC - the LLVM D compiler (1.43.0):",
+  "commit": "8366c91",
+  "runs": 3,
+  "binaries": {
+    "candidate": {
+      "path": "/Users/alex/repos/dlua/bin/varis",
+      "sha256": "669bb233d45f08f8db49b401d107612080036b6c075336fdaa90a66a7347139a"
+    },
+    "v1-perf-final": {
+      "path": "/Users/alex/repos/dlua/.cache/builds/1665cf22-cebb4ae3e0/interpreter",
+      "sha256": "6f370a475cde5fb82cff0c454b06c97ec3cfb20c2d406bfadc82e52b4bc98ed3"
+    }
+  },
+  "records": [
+    {
+      "id": "scenarios.01_symbols",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.206369,
+          "min": 0.19933199999999998,
+          "max": 0.21195699999999998,
+          "cv": 0.04014541331304591,
+          "samples": [
+            0.21195699999999998,
+            0.19933199999999998,
+            0.206369
+          ],
+          "rss_kb": 12048.0
+        },
+        "v1-perf-final": {
+          "median": 0.20918399999999998,
+          "min": 0.19907199999999997,
+          "max": 0.218775,
+          "cv": 0.06797659763653063,
+          "samples": [
+            0.20918399999999998,
+            0.19907199999999997,
+            0.218775
+          ],
+          "rss_kb": 12032.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.001306060118952,
+          "min": 0.9432933379042395,
+          "max": 1.0132562719902096,
+          "rss": 1.0013297872340425
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.001306060118952,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.02_facts_and_relations",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.456107,
+          "min": 0.444283,
+          "max": 0.482952,
+          "cv": 0.0384345392638131,
+          "samples": [
+            0.456107,
+            0.444283,
+            0.482952
+          ],
+          "rss_kb": 220224.0
+        },
+        "v1-perf-final": {
+          "median": 0.46067299999999994,
+          "min": 0.414929,
+          "max": 0.46258699999999997,
+          "cv": 0.00615989302607281,
+          "samples": [
+            0.46258699999999997,
+            0.414929,
+            0.46067299999999994
+          ],
+          "rss_kb": 220176.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.048361853201729,
+          "min": 0.9859918242406294,
+          "max": 1.0707446334192114,
+          "rss": 1.000218007412252
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.048361853201729,
+          "limit": 1.33,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.03_transitive_closure",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 3.343273,
+          "min": 3.110072,
+          "max": 3.3607430000000003,
+          "cv": 0.007747205208788056,
+          "samples": [
+            3.343273,
+            3.3607430000000003,
+            3.110072
+          ],
+          "rss_kb": 37600.0
+        },
+        "v1-perf-final": {
+          "median": 3.258839,
+          "min": 3.239122,
+          "max": 3.353228,
+          "cv": 0.008970195888781242,
+          "samples": [
+            3.258839,
+            3.353228,
+            3.239122
+          ],
+          "rss_kb": 37504.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0022411240750704,
+          "min": 0.9601589566555382,
+          "max": 1.0259092271818275,
+          "rss": 1.0025597269624573
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0022411240750704,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.04_cycles",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 1.636998,
+          "min": 1.636201,
+          "max": 1.7259010000000001,
+          "cv": 0.0007218287377259507,
+          "samples": [
+            1.636201,
+            1.636998,
+            1.7259010000000001
+          ],
+          "rss_kb": 55136.0
+        },
+        "v1-perf-final": {
+          "median": 1.722641,
+          "min": 1.564745,
+          "max": 1.772887,
+          "cv": 0.0432444830931111,
+          "samples": [
+            1.772887,
+            1.564745,
+            1.722641
+          ],
+          "rss_kb": 55056.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.001892443056911,
+          "min": 0.9229020236484333,
+          "max": 1.0461755749339348,
+          "rss": 1.001453065969195
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.001892443056911,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.05_rule_unions",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.891512,
+          "min": 0.772543,
+          "max": 0.902505,
+          "cv": 0.018281550668975903,
+          "samples": [
+            0.772543,
+            0.891512,
+            0.902505
+          ],
+          "rss_kb": 23328.0
+        },
+        "v1-perf-final": {
+          "median": 0.839994,
+          "min": 0.830166,
+          "max": 0.863611,
+          "cv": 0.01734654390388513,
+          "samples": [
+            0.830166,
+            0.839994,
+            0.863611
+          ],
+          "rss_kb": 23280.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0450364805450603,
+          "min": 0.9305885810789649,
+          "max": 1.0613313904623127,
+          "rss": 1.002061855670103
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0450364805450603,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.06_stratified_negation",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 5.094773999999999,
+          "min": 5.092299,
+          "max": 5.111424,
+          "cv": 0.000720235087954706,
+          "samples": [
+            5.111424,
+            5.094773999999999,
+            5.092299
+          ],
+          "rss_kb": 25552.0
+        },
+        "v1-perf-final": {
+          "median": 4.982995000000001,
+          "min": 4.982912,
+          "max": 5.143265,
+          "cv": 2.4695148199305577e-05,
+          "samples": [
+            5.143265,
+            4.982995000000001,
+            4.982912
+          ],
+          "rss_kb": 25504.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0219524246063345,
+          "min": 0.9938091854104348,
+          "max": 1.0224320915433387,
+          "rss": 1.0018820577164367
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0219524246063345,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.07_comparisons_and_guards",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.328372,
+          "min": 0.319166,
+          "max": 0.331523,
+          "cv": 0.01422676903024625,
+          "samples": [
+            0.331523,
+            0.328372,
+            0.319166
+          ],
+          "rss_kb": 62624.0
+        },
+        "v1-perf-final": {
+          "median": 0.32104299999999997,
+          "min": 0.29871,
+          "max": 0.388426,
+          "cv": 0.10313542360369168,
+          "samples": [
+            0.32104299999999997,
+            0.388426,
+            0.29871
+          ],
+          "rss_kb": 62592.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0326436022588876,
+          "min": 0.8453914001637377,
+          "max": 1.0684811355495298,
+          "rss": 1.0005112474437627
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0326436022588876,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.08_mutation_and_invalidation",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 2.4024,
+          "min": 2.3258039999999998,
+          "max": 2.446814,
+          "cv": 0.027409339160838993,
+          "samples": [
+            2.446814,
+            2.4024,
+            2.3258039999999998
+          ],
+          "rss_kb": 23216.0
+        },
+        "v1-perf-final": {
+          "median": 2.461708,
+          "min": 2.2988500000000003,
+          "max": 2.463861,
+          "cv": 0.0012966760476873925,
+          "samples": [
+            2.2988500000000003,
+            2.463861,
+            2.461708
+          ],
+          "rss_kb": 23152.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9750550051321889,
+          "min": 0.9447928023957349,
+          "max": 1.064364356091089,
+          "rss": 1.0027643400138218
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 0.9750550051321889,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.09_query_semantics",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 1.940394,
+          "min": 1.9165329999999998,
+          "max": 2.105808,
+          "cv": 0.01823151308445614,
+          "samples": [
+            2.105808,
+            1.9165329999999998,
+            1.940394
+          ],
+          "rss_kb": 898320.0
+        },
+        "v1-perf-final": {
+          "median": 2.080733,
+          "min": 1.917286,
+          "max": 2.091309,
+          "cv": 0.007535795126044465,
+          "samples": [
+            2.080733,
+            2.091309,
+            1.917286
+          ],
+          "rss_kb": 898288.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0120510416281185,
+          "min": 0.9164274624170794,
+          "max": 1.0120524533116082,
+          "rss": 1.0000356233190246
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0120510416281185,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.10_worlds",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 1.296925,
+          "min": 1.269873,
+          "max": 1.348915,
+          "cv": 0.03092491485629478,
+          "samples": [
+            1.296925,
+            1.348915,
+            1.269873
+          ],
+          "rss_kb": 12048.0
+        },
+        "v1-perf-final": {
+          "median": 1.230264,
+          "min": 1.225771,
+          "max": 1.313699,
+          "cv": 0.0054145466338933095,
+          "samples": [
+            1.225771,
+            1.230264,
+            1.313699
+          ],
+          "rss_kb": 12032.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0580483630302888,
+          "min": 0.9666392377553763,
+          "max": 1.0964435275680668,
+          "rss": 1.0013297872340425
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0580483630302888,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.11_local_relations",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.970545,
+          "min": 0.87763,
+          "max": 1.036349,
+          "cv": 0.1005218824474908,
+          "samples": [
+            1.036349,
+            0.970545,
+            0.87763
+          ],
+          "rss_kb": 12176.0
+        },
+        "v1-perf-final": {
+          "median": 0.88909,
+          "min": 0.8491299999999999,
+          "max": 0.91186,
+          "cv": 0.03797006152358021,
+          "samples": [
+            0.8491299999999999,
+            0.91186,
+            0.88909
+          ],
+          "rss_kb": 12128.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0643574671550458,
+          "min": 0.9871104162683193,
+          "max": 1.2204833182198251,
+          "rss": 1.0039577836411608
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0643574671550458,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.12_constants_and_capture",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.434552,
+          "min": 0.411622,
+          "max": 0.43588099999999996,
+          "cv": 0.00453426839595711,
+          "samples": [
+            0.434552,
+            0.411622,
+            0.43588099999999996
+          ],
+          "rss_kb": 14672.0
+        },
+        "v1-perf-final": {
+          "median": 0.43805900000000003,
+          "min": 0.421735,
+          "max": 0.45255199999999995,
+          "cv": 0.04905120497467209,
+          "samples": [
+            0.421735,
+            0.43805900000000003,
+            0.45255199999999995
+          ],
+          "rss_kb": 14656.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9631622443387722,
+          "min": 0.9396496818921651,
+          "max": 1.030391122387281,
+          "rss": 1.0010917030567685
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 0.9631622443387722,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.13_errors_and_atomicity",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 1.426118,
+          "min": 1.36314,
+          "max": 1.432226,
+          "cv": 0.006349909895254112,
+          "samples": [
+            1.426118,
+            1.36314,
+            1.432226
+          ],
+          "rss_kb": 16032.0
+        },
+        "v1-perf-final": {
+          "median": 1.3494220000000001,
+          "min": 1.326111,
+          "max": 1.436781,
+          "cv": 0.025611623791519714,
+          "samples": [
+            1.326111,
+            1.436781,
+            1.3494220000000001
+          ],
+          "rss_kb": 15984.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0613625685663934,
+          "min": 0.9487458422682371,
+          "max": 1.0754137474163172,
+          "rss": 1.003003003003003
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0613625685663934,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.14_conjunctive_queries",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.560309,
+          "min": 0.554522,
+          "max": 0.6023109999999999,
+          "cv": 0.015312633207747832,
+          "samples": [
+            0.554522,
+            0.560309,
+            0.6023109999999999
+          ],
+          "rss_kb": 21264.0
+        },
+        "v1-perf-final": {
+          "median": 0.560785,
+          "min": 0.473784,
+          "max": 0.574244,
+          "cv": 0.035582823007034775,
+          "samples": [
+            0.473784,
+            0.560785,
+            0.574244
+          ],
+          "rss_kb": 21168.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0488764358008094,
+          "min": 0.9991511898499424,
+          "max": 1.1704109889738783,
+          "rss": 1.0045351473922903
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0488764358008094,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.15_coroutines",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.9105409999999999,
+          "min": 0.880704,
+          "max": 0.968946,
+          "cv": 0.04858247591267152,
+          "samples": [
+            0.880704,
+            0.9105409999999999,
+            0.968946
+          ],
+          "rss_kb": 265536.0
+        },
+        "v1-perf-final": {
+          "median": 0.9095489999999999,
+          "min": 0.8890049999999999,
+          "max": 1.022397,
+          "cv": 0.03348751348195645,
+          "samples": [
+            0.9095489999999999,
+            0.8890049999999999,
+            1.022397
+          ],
+          "rss_kb": 265472.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9682864804425051,
+          "min": 0.9477199170185359,
+          "max": 1.0242248356308457,
+          "rss": 1.0002410800385728
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 0.9682864804425051,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.16_contextual_syntax",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.383644,
+          "min": 0.350318,
+          "max": 0.386829,
+          "cv": 0.012308496939871313,
+          "samples": [
+            0.386829,
+            0.350318,
+            0.383644
+          ],
+          "rss_kb": 143072.0
+        },
+        "v1-perf-final": {
+          "median": 0.37030399999999997,
+          "min": 0.357244,
+          "max": 0.390325,
+          "cv": 0.052288811354994656,
+          "samples": [
+            0.37030399999999997,
+            0.357244,
+            0.390325
+          ],
+          "rss_kb": 142976.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9828834945237943,
+          "min": 0.9806126904860544,
+          "max": 1.0446254968890425,
+          "rss": 1.0006714413607878
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 0.9828834945237943,
+          "limit": 1.32,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.17_same_generation",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 2.263531,
+          "min": 2.112846,
+          "max": 2.277076,
+          "cv": 0.008871898374707574,
+          "samples": [
+            2.277076,
+            2.263531,
+            2.112846
+          ],
+          "rss_kb": 77664.0
+        },
+        "v1-perf-final": {
+          "median": 2.267383,
+          "min": 2.252853,
+          "max": 2.418653,
+          "cv": 0.009500899495144943,
+          "samples": [
+            2.267383,
+            2.418653,
+            2.252853
+          ],
+          "rss_kb": 77616.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9378534684686484,
+          "min": 0.9358643013280533,
+          "max": 1.0042749725123634,
+          "rss": 1.0006184291898577
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 0.9378534684686484,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.18_triangles",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 5.647483,
+          "min": 5.5756310000000004,
+          "max": 5.6644179999999995,
+          "cv": 0.00444584445849574,
+          "samples": [
+            5.5756310000000004,
+            5.6644179999999995,
+            5.647483
+          ],
+          "rss_kb": 77520.0
+        },
+        "v1-perf-final": {
+          "median": 5.53044,
+          "min": 5.518208,
+          "max": 5.591501999999999,
+          "cv": 0.003279153774383237,
+          "samples": [
+            5.591501999999999,
+            5.53044,
+            5.518208
+          ],
+          "rss_kb": 77456.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0234269893414676,
+          "min": 0.9971615855632353,
+          "max": 1.0242255589067055,
+          "rss": 1.0008262755629003
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0234269893414676,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.19_grid_reachability",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 2.531644,
+          "min": 2.476248,
+          "max": 2.7518269999999996,
+          "cv": 0.032441413405676314,
+          "samples": [
+            2.7518269999999996,
+            2.531644,
+            2.476248
+          ],
+          "rss_kb": 24016.0
+        },
+        "v1-perf-final": {
+          "median": 2.599371,
+          "min": 2.4682020000000002,
+          "max": 2.627525,
+          "cv": 0.01605816191686361,
+          "samples": [
+            2.599371,
+            2.627525,
+            2.4682020000000002
+          ],
+          "rss_kb": 23952.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 1.0032598628475302,
+          "min": 0.9635090056231626,
+          "max": 1.0586511121344353,
+          "rss": 1.0026720106880427
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 1.0032598628475302,
+          "limit": 1.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "narrative_e2e.sample_game_check",
+      "group": "narrative_e2e",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.590656,
+          "min": 0.563044,
+          "max": 0.683518,
+          "cv": 0.06930861821432434,
+          "samples": [
+            0.563044,
+            0.590656,
+            0.683518
+          ],
+          "rss_kb": 322768.0
+        },
+        "v1-perf-final": {
+          "median": 0.594653,
+          "min": 0.5702499999999999,
+          "max": 0.662097,
+          "cv": 0.06084201677280716,
+          "samples": [
+            0.5702499999999999,
+            0.594653,
+            0.662097
+          ],
+          "rss_kb": 321808.0
+        }
+      },
+      "ratios": {
+        "v1-perf-final": {
+          "median": 0.9932784329684706,
+          "min": 0.9873634370889962,
+          "max": 1.0323532654580823,
+          "rss": 1.0029831452294535
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "v1-perf-final",
+          "value": 0.9932784329684706,
+          "limit": 1.31,
+          "ok": true
+        }
+      ]
+    }
+  ]
+}
