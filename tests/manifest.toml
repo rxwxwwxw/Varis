@@ -67,7 +67,7 @@ tier = "fast"
 tags = ["extensions"]
 glob = "tests/extensions/cases/*.lua"
 helpers = "tests/extensions/helpers.lua"
-expect_count = 56
+expect_count = 57
 timeout = 300
 
 [suite.override.negative_unsafe_head]
@@ -153,7 +153,7 @@ tier = "full"
 tags = ["official"]
 timeout = 1800
 expect_results = 33
-cases = [{ id = "all", file_timeout = 100 }]
+cases = [{ id = "all", file_timeout = 240 }]
 
 # Skips, partials and known gaps. Anything ending in these statuses must be listed here;
 # an entry whose case starts passing is reported as stale.

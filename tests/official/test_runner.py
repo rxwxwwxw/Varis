@@ -20,8 +20,8 @@ class RunnerTests(unittest.TestCase):
             report = root / "results.json"
             result = subprocess.run(
                 [str(RUNNER), "--lua", str(interpreter), "--dir", directory,
-                 "--json", str(report), "--timeout", "1", "--strict", *options],
-                capture_output=True, text=True, timeout=10,
+                 "--json", str(report), "--timeout", "10", "--strict", *options],
+                capture_output=True, text=True, timeout=60,
             )
             return result, json.loads(report.read_text()) if report.exists() else None
 
@@ -42,7 +42,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(report["results"][0]["diagnostic"], "varis: intended failure")
 
     def test_timeout_is_failure(self):
-        result, report = self.run_fixture("import time\ntime.sleep(30)\n")
+        result, report = self.run_fixture("import time\ntime.sleep(60)\n", "--timeout", "1")
         self.assertEqual(result.returncode, 1)
         self.assertEqual(report["results"][0]["status"], "TIMEOUT")
         self.assertIsNone(report["results"][0]["exit_code"])

@@ -529,11 +529,49 @@ class Compiler {
             (as!VarargExpr(expr) !is null);
     }
 
+    /// True when compiling `e` into a reserved target register evaluates temporaries before the target is
+    /// first written (so the target's stale contents must be cleared first; see compileLocalDecl).
+    /// An expression whose operands are all plain constants or variables is a single instruction that
+    /// writes the target itself.
+    private static bool needsFreshTarget(Expr e) {
+        static bool leaf(Expr x) {
+            return cast(LiteralNilExpr) x || cast(LiteralBoolExpr) x || cast(LiteralIntExpr) x ||
+                cast(LiteralFloatExpr) x || cast(LiteralStringExpr) x || cast(VariableExpr) x ||
+                cast(SymbolLiteralExpr) x;
+        }
+
+        if (e is null)
+            return false;
+        if (cast(CallExpr) e || cast(MethodCallExpr) e)
+            return true;
+        if (auto b = cast(BinaryExpr) e)
+            return !leaf(b.left) || !leaf(b.right);
+        if (auto u = cast(UnaryExpr) e)
+            return !leaf(u.expr);
+        if (auto i = cast(IndexExpr) e)
+            return !leaf(i.table) || !leaf(i.key);
+        if (auto f = cast(FieldExpr) e)
+            return !leaf(f.table);
+        return false;
+    }
+
     private void compileLocalDecl(LocalDeclStmt s) {
         int[] targetRegs;
         foreach (name; s.names) {
             targetRegs ~= allocReg();
         }
+
+        // The new locals' registers are reserved before their initializers run, and an initializer that
+        // evaluates subexpressions (call, concatenation chain, ...) writes its temporaries above them.
+        // They would keep a stale value from earlier code alive across any collection that happens in
+        // between (Lua itself evaluates into these registers first). Clear them; trivial single-
+        // instruction initializers write the register immediately and need nothing.
+        bool needsFresh = false;
+        foreach (v; s.values)
+            needsFresh = needsFresh || needsFreshTarget(v);
+        if (needsFresh)
+            foreach (r; targetRegs)
+                emit(OpCode.LoadNil, r, 0);
 
         if (s.values.length == 0) {
             foreach (r; targetRegs) {

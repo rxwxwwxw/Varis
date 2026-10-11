@@ -128,18 +128,20 @@ scope rather than as a conformance failure.
 - The differential fixture (`core.lua`) is focused coverage, not a replacement for the official
   suite.
 
-## Known flake: `all.lua` hangs in `closure.lua`
+## Fixed: `all.lua` hung in `closure.lua` (stale register + loaded chunks)
 
-Found 2026-10-10 while running the unified suite. `closure.lua` contains
-`while x[1] do <make garbage> end`, waiting for an automatic collection to clear a weak-table entry.
-Under the conservative D collector an unrelated word (typically an integer in the heap's address
-range, which official tests produce plenty of) can retain the table, and the loop then spins forever.
-Whether it does depends on exact heap/stack layout: the same source hangs or not depending on the
-binary's build path and the process environment (`v1-perf-final` built in `.cache/src/1665cf22`
-passed 0/9, an identical-source build in another directory hung 5/5). `closure.lua` alone has not
-been seen to hang; `varis all.lua` in the scratch copy hangs on roughly a third of full-suite runs.
+Found 2026-10-10 and fixed the same day; recorded because the symptom looked like a conservative-GC
+flake. `closure.lua` waits in `while x[1] do <make garbage> end` for an automatic collection to clear a
+weak-table entry. The cycle that clears it fires at one of the three `Concat` instructions of
+`local a = A..A..A..A`, always the same one for a given allocation threshold, and the threshold depends
+on the heap size, hence "a third of the runs". At the two inner concatenations the register reserved
+for `a` still held the table from the loop test (the dead condition temporary), so the object stayed
+reachable and the loop never ended.
 
-Mitigation in the suite: `official` cases retry a timed-out file twice with a different environment
-size and report a retry pass with `flaky:` in the detail; three timeouts fail. This is only a
-mitigation. The real fix is to stop integer payloads from being treated as pointers (or to run
-weak-table clearing from a precise root set) in `source/varis/gc.d` / `types.d`.
+Two defects combined: (1) the compiler reserves a new local's register before its initializer runs, so
+initializers that compute temporaries leave the reserved register's old contents alive (stock Lua
+evaluates into that register first); (2) `all.lua` runs every file through `string.dump`/`load`, and the
+binary chunk format dropped the per-instruction live-register data the collector uses to clear dead
+registers. Fixes: `compileLocalDecl` clears the reserved registers when the initializer needs
+temporaries, and chunks carry the live-register bound (`dump.d`, format marker `dLu2`). Regression case:
+`tests/extensions/cases/weak_stale_register.lua`. 0 hangs in 15 `all.lua` runs afterwards (3 in 15 before).

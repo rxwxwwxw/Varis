@@ -217,20 +217,14 @@ def _official_once(case, ctx, runner, filt=None, env=None, file_timeout=240):
 
 
 def official(case, ctx):
-    """Run the official Lua suite through the D runner and expand its JSON into one result per file.
-
-    A file that times out is retried (twice, with a different amount of environment padding): the
-    suite's closure.lua spins forever when the conservative collector happens to retain an object
-    the test waits to see collected (see tests/official/README.md "Known flake"). A pass on retry is
-    reported as a pass whose detail says so; a file that times out three times fails.
-    """
+    """Run the official Lua suite through the D runner and expand its JSON into one result per file."""
     runner = ctx.root / "bin/test_runner"
     if not runner.exists():
         code, out, err, _ = run(["make", "-s", "test-runner"], cwd=ctx.root, timeout=600)
         if code != 0:
             return _res(case, M.ERROR, 0, "cannot build test_runner: " + text(err)[-300:])
-    file_timeout = case.params.get("file_timeout", 240)
-    report, problem, secs = _official_once(case, ctx, runner, case.params.get("filter"), None, file_timeout)
+    report, problem, secs = _official_once(case, ctx, runner, case.params.get("filter"), None,
+                                           case.params.get("file_timeout", 240))
     if report is None:
         return _res(case, M.ERROR if problem != "official runner timed out" else M.TIMEOUT, secs, problem)
     mapping = {"PASS": M.PASS, "PARTIAL": M.PARTIAL, "SKIP": M.SKIP, "FAIL": M.FAIL, "TIMEOUT": M.TIMEOUT}
@@ -238,19 +232,6 @@ def official(case, ctx):
     for r in report["results"]:
         status = mapping.get(r["status"].upper(), M.ERROR)
         detail = r.get("reason") or r.get("diagnostic") or ""
-        name = Path(r["name"]).name
-        timed_out = status == M.TIMEOUT or "timed out" in detail.lower() or "timeout" in detail.lower()
-        if status == M.FAIL and timed_out or status == M.TIMEOUT:
-            for attempt, pad in enumerate((61, 1237), 1):
-                env = dict(os.environ, VARIS_SUITE_ENV_PAD="x" * pad)
-                rep2, _, _ = _official_once(case, ctx, runner, name, env, file_timeout)
-                again = [x for x in (rep2 or {}).get("results", []) if Path(x["name"]).name == name]
-                if again and mapping.get(again[0]["status"].upper()) in (M.PASS, M.PARTIAL):
-                    r = again[0]
-                    status = mapping[r["status"].upper()]
-                    detail = f"flaky: timed out, then {r['status'].lower()} on retry {attempt} " \
-                             f"(conservative-GC retention hang)"
-                    break
         results.append(M.Result(f"official.{Path(r['name']).stem}", case.suite, status,
                                 float(r.get("duration_seconds", 0)), detail[:300]))
     return results

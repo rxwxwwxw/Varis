@@ -24,7 +24,7 @@ import varis.exception : LuaException;
 private enum string signature = "\x1bLua";
 private enum ubyte versionByte = 0x54;
 private enum ubyte formatByte = 0;
-private enum string varisBody = "dLua"; // marks varis's private body encoding after the standard header
+private enum string varisBody = "dLu2"; // marks varis's private body encoding (v2: per-instruction live registers)
 private enum string luacData = "\x19\x93\r\n\x1a\n";
 private enum long luacInt = 0x5678;
 private enum double luacNum = 370.5;
@@ -102,6 +102,12 @@ private void dumpProto(ref Writer w, Prototype p, string parentSource) {
         w.integer(instr.sBx);
         w.integer(w.strip ? 0 : instr.line);
         w.byte_(cast(ubyte)((instr.bIsK ? 1 : 0) | (instr.cIsK ? 2 : 0) | (instr.aIsK ? 4 : 0)));
+    }
+    // Live-register bound per instruction (0 = unknown): the collector clears dead temporaries with it,
+    // so loaded chunks must carry it or stale registers would keep objects alive.
+    foreach (i; 0 .. p.code.length) {
+        immutable live = i < p.liveTop.length ? p.liveTop[i] : int.max;
+        w.varint(live == int.max ? 0 : cast(ulong) live + 1);
     }
     w.varint(p.constants.length);
     foreach (k; p.constants)
@@ -288,6 +294,11 @@ private Prototype undumpProto(ref Reader r, string parentSource, int depth) {
         instr.bIsK = (flags & 1) != 0;
         instr.cIsK = (flags & 2) != 0;
         instr.aIsK = (flags & 4) != 0;
+    }
+    p.liveTop = new int[ncode];
+    foreach (ref live; p.liveTop) {
+        auto v = r.varint();
+        live = v == 0 ? int.max : cast(int)(v - 1);
     }
     auto nk = r.count();
     foreach (i; 0 .. nk)
