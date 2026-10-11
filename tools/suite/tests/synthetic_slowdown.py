@@ -2,7 +2,8 @@
 """Release-tier acceptance check (plan Phase 3): a synthetic slowdown must trip exactly the expected gates.
 
 Builds a scratch worktree of HEAD in which the interpreter's numeric `for` handler does extra work
-(a few atomic additions, enough to cost the `for`-loop workloads well over 20 %), then runs the committed
+(three atomic additions: far above the 20 % that the tightest of these gates allows, so that the verdict
+does not depend on measurement noise of the short `sieve` workload, whose gate has 1.6x headroom), then runs the committed
 `bench --check` against that build for a fixed set of core workloads. Exactly the `for`-loop-bound
 workloads must fail a gate or floor; the others must pass. The worktree is removed afterwards.
 """
@@ -17,7 +18,8 @@ SELECT = ["core.numeric_loop", "core.array_access", "core.sieve", "core.fib", "c
           "core.hash_access", "core.string_manip", "core.coroutine_switch"]
 EXPECT_FAIL = {"core.numeric_loop", "core.array_access", "core.sieve"}
 INJECT = ('                        { import core.atomic : atomicOp; '
-          'atomicOp!"+="(syntheticSink, 1); atomicOp!"+="(syntheticSink, 2); }\n')
+          'atomicOp!"+="(syntheticSink, 1); atomicOp!"+="(syntheticSink, 2); '
+          'atomicOp!"+="(syntheticSink, 3); }\n')
 
 
 def sh(*cmd, cwd=ROOT, check=True):
