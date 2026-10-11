@@ -66,6 +66,12 @@ and are never enforced. `history/2026-10-09-perf/` holds the pre-suite experimen
 
 ## Acceptance check: a synthetic slowdown trips exactly the expected gates
 
+Reproducible from the committed harness: `python3 tools/suite/tests/synthetic_slowdown.py` (also the
+`bench-gates.synthetic-for-loop-slowdown` case of the `release` test tier) builds a scratch worktree of
+`HEAD` with extra work in the `for`-loop handler, runs `bench --check` on eight core workloads and requires
+exactly `numeric_loop`, `array_access` and `sieve` to fail (measured 2.2×, 1.4× and 1.7× against
+`v1-perf-final`; the other five pass). The original one-off record follows.
+
 Recorded 2026-10-10 (plan Phase 3 done-criterion). A scratch worktree of `main` was built with
 three atomic additions injected into the `ForLoop` handler of the interpreter loop (about 3.7× on
 `for` loops), then run as `python3 tools/suite bench --check --group core --candidate <that build>`:

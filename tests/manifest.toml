@@ -154,6 +154,7 @@ tags = ["bench"]
 timeout = 1800
 cases = [
   { id = "slowed-candidate-is-rejected", command = ["python3", "tools/suite/tests/gate_enforcement.py"] },
+  { id = "synthetic-for-loop-slowdown", command = ["python3", "tools/suite/tests/synthetic_slowdown.py"] },
 ]
 
 [[suite]]

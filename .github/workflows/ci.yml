@@ -1,0 +1,29 @@
+# Written ahead of the remote (no remote existed when this was added) and not yet executed there.
+# It runs the same commands as the local hooks and `make check`/`make test`.
+name: ci
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-14, ubuntu-24.04]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # baseline/* tags are the benchmark comparators
+      - uses: dlang-community/setup-dlang@v2
+        with:
+          compiler: ldc-1.43.0
+      - name: Install dfmt
+        run: |
+          if [ "$RUNNER_OS" = macOS ]; then brew install dfmt; else dub fetch dfmt@0.15.2 && dub build dfmt@0.15.2 -b release && sudo cp "$(dub run dfmt@0.15.2 --quiet -- --version >/dev/null 2>&1; find ~/.dub -name dfmt -type f -perm -u+x | head -1)" /usr/local/bin/dfmt; fi
+      - name: Format and source checks
+        run: make fmt-check check-sources
+      - name: Tests (full tier)
+        run: make test
+      # Absolute benchmark gates need a dedicated idle machine; hosted runners only run the tests.

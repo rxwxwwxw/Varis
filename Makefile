@@ -81,7 +81,7 @@ varis-checked: $(SRC_FILES) source/varis/cli.d
 
 # Reference interpreter (stock Lua 5.4.9, -O2).
 c-lua:
-	$(MAKE) -C c-implementation/src macosx
+	$(MAKE) -C c-implementation/src $(if $(filter Darwin,$(UNAME_S)),macosx,linux)
 
 # Unit tests link one shared, once-compiled object set instead of recompiling every module.
 $(DEBUG_STAMP): $(SRC_FILES)
