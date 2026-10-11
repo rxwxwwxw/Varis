@@ -12,13 +12,19 @@ The rename was done immediately after Phase 3 rather than as a later stage.
 | 0 Git and history | Repository initialized; commit 0 = Oct 9 19:19 snapshot (tag `baseline/v0-snapshot`), commit 1 = tree after the perf work (`baseline/v1-perf-final`). The snapshot builds and passes acceptance (15/15). `dlua.zip` had been overwritten with the current tree before import; the snapshot was recovered from an earlier extraction and archived in `.cache/legacy/` (ignored). The experiment binaries `dlua-{values,registers,callstorage}` had been deleted from `bin/` before they could be archived; their results remain in `benchmarks/history/`. |
 | 1 Formatting, hooks | dfmt 0.15.2 with `.editorconfig` (otbs, 120 columns, `keep_line_breaks`); formatting is one commit listed in `.git-blame-ignore-revs`. Hooks in `.githooks/` (pre-commit, commit-msg, pre-push); `make hooks/fmt/fmt-check/check-sources/check`. |
 | 2 Test suite | `tools/suite` + `tests/manifest.toml`: 145 cases / 221 results, tiers smoke/fast/full, ledger, parity mutation tests (`tools/suite/tests`), traceability (`tests/requirements.toml` → `tests/TRACEABILITY.md`), shared debug object set, per-test D `unittest` results. Full tier about 45 s, fast about 10 s. |
-| 3 Benchmark suite | `tools/suite bench`: 66 workloads in six groups, comparators `clua`/`v0-snapshot`/`v1-perf-final` built from git refs, goals/gates/floors in `benchmarks/targets.toml`, confirmation re-runs, baselines in `benchmarks/baselines/`. Old runners retired. |
+| 3 Benchmark suite | `tools/suite bench`: 73 workloads in seven groups (`core`, `programs`, `regression`, `startup`, in-process `datalog` and `narrative` kernels, end-to-end `scenarios` and `narrative_e2e`), comparators `clua`/`v0-snapshot`/`v1-perf-final` built from git refs, goals/gates/floors in `benchmarks/targets.toml`, confirmation re-runs, baselines in `benchmarks/baselines/`, `suite report`/`make status` → `docs/STATUS.md`. Old runners retired. The synthetic-slowdown check is recorded in `benchmarks/README.md`. |
 | 4 Docs, cleanup | README/AGENTS updated (commands, git workflow); acceptance programs moved to `tests/datalog/acceptance/`; legacy Makefile targets removed; `make test-legacy` removed. |
 | 5 Rename | Done: module tree, binary, Makefile targets, headers (PUC-Rio notice preserved), docs. `_VERSION` and `lua_*` C API names unchanged. The checkout directory name on disk is outside the repository. |
 
+Found while implementing: `narrative.analyze` broke host `io` file handles (per-module FILE* metatable
+overwritten by the analysis state; fixed, regression case `analysis_host_isolation`), and the intermittent
+`all.lua` hang was a stale reserved register plus missing live-register data in binary chunks (fixed,
+see tests/official/README.md; regression case `weak_stale_register`).
+
 Deviations from the plan: the unit-test tier names are `smoke`/`fast`/`full` plus `release`
-(benchmarks); `unit:` traceability names are D `@("name") unittest` blocks; the synthetic-slowdown
-acceptance check is recorded in `benchmarks/README.md`; GitHub Actions is deferred until a remote exists.
+(benchmarks); `unit:` traceability names are D `@("name") unittest` blocks; GitHub Actions is deferred
+until a remote exists; `docs/STATUS.md` is generated from the recorded baseline JSON (the full
+benchmark run takes well over an hour on a loaded machine).
 
 ---
 
