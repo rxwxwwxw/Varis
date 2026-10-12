@@ -306,7 +306,7 @@ Use this table to avoid coding against a design that has not landed.
 | Query evaluation | Compiled slot plans, index probes, semi-naive recursion, derived relations cached per closure (`logic/evaluate.d`); the naive evaluator is the oracle (`logic/naive.d`, `VARIS_LOGIC_ORACLE=1`) | Same, plus storylet indexing | W2–W4 (done), W5 |
 | Sample game | In `make test` (suite `sample-game`: its check plus a golden transcript and save, `tests/sample_game/`) | Same | S0 (done) |
 | Debugging | Lua `debug` library; `narrative.explain`/`observe`/`analyze` from scripts | Workbench debugger at source and story level | Milestone 44 |
-| Tools | CLI and REPL (`cli.d`); `varis check` first version (compile errors only); `varis serve` first version (command window, workspace with relation tables, story panel with why/changes, plain editor, breakpoints and stepping) | Full `varis check`, language services, complete debugger and workbench | Milestones 30–33, 42–44 |
+| Tools | CLI and REPL (`cli.d`); project manifest (`project.lua`), project index, `varis check` (every syntax error, static checks, load and analysis passes, `--locale`), `varis lsp` language server, `varis play`, `varis test`, `varis l10n` (extract, status, kits, XLIFF/CSV, review, packs); `varis serve` first version (command window, workspace, story panel with why/changes and a language switch, editor with the services' problems list, breakpoints and stepping) | Content-tier enforcement (needs milestone 26), complete debugger and workbench | Milestones 26, 42–44 |
 | Core speed | 0.5–2.3× C Lua on core workloads (`fib` 2.28×, `string_ops` 2.13×, `closures` 1.95×, loops 1.2–1.5×); `pcall_error` 1.3× (was 37×), `deep_recursion` 2.7× (was 8×) | ≤ 1.0×, then below | L, X |
 | Turn latency (reference-scale game, M1) | 0.3 ms with or without a recursive rule (was 15 ms and 840 ms); peak memory 53 MB | 5 ms and 64 MB on the stand-in; real hardware unmeasured | W, M |
 
@@ -352,7 +352,9 @@ Use this table to avoid coding against a design that has not landed.
 | `benchmarks/` | | ✅ | Workloads, `targets.toml` (goals and gates), plans and history |
 | `docs/` | | Current reference | The Varis language definition, libraries, grammar, compatibility, runnable examples |
 | `source/varis/workbench/server.d`, `page.d` | tools | ✅ first version (milestone 42) | `varis serve`: loopback HTTP server owning the project state, and the workbench page |
-| A language-services module, the debugger | tools | Planned | Milestones 32, 44; see WORKBENCH_PLAN.md |
+| `source/varis/services/{diagnostic,manifest,index,checks,check,loadpass,lang,lsp,play,json,catalog,xliff,l10n}.d` | tools | ✅ authoring plan A0–A6, localization plan T1/T3/T4 | Diagnostic record, manifest reader, project index, static checks, `varis check`, language services and server, playtest and author tests, catalogs and the `l10n` commands. Read the AST; never run content to understand it (§4.12). |
+| `source/varis/narrative/translation.d` | narrative | ✅ localization plan T3 | Translated message templates, render traces; translations are presentation data, never fingerprinted or saved |
+| The debugger | tools | Planned | Milestone 44; see WORKBENCH_PLAN.md |
 
 Keep all source modules listed explicitly in the `Makefile` (`make check-sources`).
 
