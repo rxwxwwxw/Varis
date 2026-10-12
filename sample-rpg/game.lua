@@ -39,6 +39,12 @@ require("content.events")
 require("content.trials")
 require("content.endings")
 
+-- Language packs built by `varis l10n build` ship with the game (packs/<tag>); a pack that is
+-- missing or does not match this content is simply not offered.
+for _, tag in ipairs {"fr"} do
+    pcall(narrative.load_pack, (__varis_root or ".") .. "/packs/" .. tag)
+end
+
 narrative.seal(G.CONTENT_VERSION)
 
 -- Toasts begin with the summer: character creation moves every number and is not news.

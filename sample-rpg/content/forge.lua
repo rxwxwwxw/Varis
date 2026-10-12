@@ -11,7 +11,6 @@ storylet bellows()
         because "You are too tired for that. Sleep, eat, or sit down for a while."
         title "Pump until she tells you to stop"
         effect do
-            local s = quality.get(:player, :strength)
             local bonus = (query bonus(:strength, ?n))()
             local gain = 4 + (bonus and bonus.n or 0)
             local v_strength = quality.get(:player, :strength)
@@ -21,17 +20,21 @@ storylet bellows()
             local s = quality.get(:player, :stamina)
             set quality(:player, :stamina, math.max(0, s - 2))
             adjust quality(:world, :slot) by 1
-            if s < 35 then
-                narrative.play(:r_bellows_1)
-            else
-                narrative.play(:r_bellows_2)
-            end
+            local seen = (query times(:bellows, ?k))()
+            local k = seen and seen.k or 0
+            set times(:bellows, k + 1)
+            narrative.play(logic.symbol("r_bellows_" .. math.min(k + 1, 3)))
         end
     end
 end
 
 scene r_bellows_1 {
     {kind=:narration, text="Your arms burn by the tenth minute and weep by the thirtieth. Mara says \"Even,\" four times, and by the end it is almost true."},
+    {kind="return"}
+}
+
+scene r_bellows_3 {
+    {kind=:narration, text="Mara stops you with two fingers on the lever. \"Listen,\" she says. The fire is breathing with you now. For a second it is not work at all."},
     {kind="return"}
 }
 

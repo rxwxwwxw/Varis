@@ -22,12 +22,25 @@ storylet catalog()
             local s = quality.get(:player, :stamina)
             set quality(:player, :stamina, math.max(0, s - 1))
             adjust quality(:world, :slot) by 1
-            narrative.play(:r_catalog)
+            local seen = (query times(:catalog, ?k))()
+            local k = seen and seen.k or 0
+            set times(:catalog, k + 1)
+            narrative.play(logic.symbol("r_catalog_" .. math.min(k + 1, 3)))
         end
     end
 end
 
-scene r_catalog {
+scene r_catalog_2 {
+    {kind=:narration, text="A box of pamphlets turns out to be entirely love poetry, anonymous and bad. You file it under Natural History and Pell does not correct you."},
+    {kind="return"}
+}
+
+scene r_catalog_3 {
+    {kind=:narration, text="By the end of the afternoon you can tell a forgery from a copy by smell. Pell lets you ink the date on the new index himself."},
+    {kind="return"}
+}
+
+scene r_catalog_1 {
     {kind=:narration, text="You sort by date, then by hand, then by what you suspect the author was ashamed of. Pell is quietly delighted, and pays you in coins and silence."},
     {kind="return"}
 }

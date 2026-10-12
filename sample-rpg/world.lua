@@ -30,6 +30,7 @@ function M.build_world()
         relation sale(item, cost)
         relation riddle(n, need)
         relation technique(name)
+        relation times(name, n) key(name)           -- how often an activity has been done
 
         -- Roads that are open: negation over a base relation.
         rule open_road(?a, ?b) :- road(?a, ?b), not broken(?a, ?b)
@@ -39,9 +40,9 @@ function M.build_world()
         -- Stratified negation over a recursive relation.
         rule isolated(?p) :- place(?p), at(:player, ?here), ?p ~= ?here, not reachable(?here, ?p)
 
-        -- Gossip spreads along friendships (recursion): who has heard of a rumour.
+        -- Gossip travels along friendships, from the first friend to the second (recursion).
         rule knows_of(?p, ?r) :- heard(?p, ?r)
-        rule knows_of(?p, ?r) :- friend(?p, ?q), knows_of(?q, ?r)
+        rule knows_of(?p, ?r) :- friend(?q, ?p), knows_of(?q, ?r)
 
         -- What the player's background and belongings add to training.
         rule owns(?s) :- trait(?k, ?s)
@@ -77,7 +78,7 @@ function M.build_world()
 
         -- Free time: slots remain today and the Trials have not begun.
         rule trials_time() :- quality(:world, :day, 10), quality(:world, :slot, ?t), ?t >= 3
-        rule free_time() :- quality(:world, :slot, ?t), ?t <= 3, not trials_time()
+        rule free_time() :- flag(:started), quality(:world, :slot, ?t), ?t <= 3, not trials_time()
 
         -- Zero-arity: derived time of day and the festival eve.
         rule evening() :- quality(:world, :slot, 3)

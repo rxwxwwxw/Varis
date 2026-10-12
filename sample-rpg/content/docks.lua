@@ -20,12 +20,25 @@ storylet unload()
             local s = quality.get(:player, :stamina)
             set quality(:player, :stamina, math.max(0, s - 3))
             adjust quality(:world, :slot) by 1
-            narrative.play(:r_unload)
+            local seen = (query times(:unload, ?k))()
+            local k = seen and seen.k or 0
+            set times(:unload, k + 1)
+            narrative.play(logic.symbol("r_unload_" .. math.min(k + 1, 3)))
         end
     end
 end
 
-scene r_unload {
+scene r_unload_2 {
+    {kind=:narration, text="The second boat is mostly eels. You learn that you can carry a crate of them on your shoulder if you do not think about the lid."},
+    {kind="return"}
+}
+
+scene r_unload_3 {
+    {kind=:narration, text="The boat-master tosses you a crate without asking. By the afternoon you are the one who is calling \"Fast\" to the newer hands."},
+    {kind="return"}
+}
+
+scene r_unload_1 {
     {kind=:narration, text="Sixty crates, two buckets of ice and a long afternoon. You are paid in coins and a smell you will carry for a week."},
     {kind="return"}
 }
@@ -50,12 +63,25 @@ storylet fish()
             local s = quality.get(:player, :stamina)
             set quality(:player, :stamina, math.min(10, s + 1))
             adjust quality(:world, :slot) by 1
-            narrative.play(:r_fish)
+            local seen = (query times(:fish, ?k))()
+            local k = seen and seen.k or 0
+            set times(:fish, k + 1)
+            narrative.play(logic.symbol("r_fish_" .. math.min(k + 1, 3)))
         end
     end
 end
 
-scene r_fish {
+scene r_fish_2 {
+    {kind=:narration, text="A heron stands twenty feet away and fishes better than you. You exchange a look, and it is entirely professional."},
+    {kind="return"}
+}
+
+scene r_fish_3 {
+    {kind=:narration, text="You catch a trout so large that you hold it up to be sure. Nobody is looking. You let it go, and feel better than if they had."},
+    {kind="return"}
+}
+
+scene r_fish_1 {
     {kind=:narration, text="You catch nothing for two hours, then something small and furious. The patience gets into your bones, and with it a kind of calm that has not been there in days."},
     {kind="return"}
 }

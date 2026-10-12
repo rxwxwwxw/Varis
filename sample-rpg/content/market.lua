@@ -66,12 +66,25 @@ storylet stall_work()
             local s = quality.get(:player, :stamina)
             set quality(:player, :stamina, math.max(0, s - 1))
             adjust quality(:world, :slot) by 1
-            narrative.play(:r_stall)
+            local seen = (query times(:stall, ?k))()
+            local k = seen and seen.k or 0
+            set times(:stall, k + 1)
+            narrative.play(logic.symbol("r_stall_" .. math.min(k + 1, 3)))
         end
     end
 end
 
-scene r_stall {
+scene r_stall_2 {
+    {kind=:narration, text="A man buys a cheese for the sole purpose of telling you it was not very good. You thank him for his custom and he is moved to buy another."},
+    {kind="return"}
+}
+
+scene r_stall_3 {
+    {kind=:narration, text="By noon you have regulars. By two, a small queue. The seller returns to find you with the till, a joke and nobody worried."},
+    {kind="return"}
+}
+
+scene r_stall_1 {
     {kind=:narration, text="You sell eleven wedges, one wheel and an opinion of the cheese that is entirely yours. The seller returns pink and cheerful and pays you six coins."},
     {kind="return"}
 }

@@ -8,7 +8,7 @@ kind = "d-unit"
 tags = ["unit"]
 timeout = 600
 expect_count = 8
-expect_results = 55
+expect_results = 56
 cases = [
   { id = "foundation", unit = "test_foundation", tier = "smoke" },
   { id = "parser", unit = "test_parser", tier = "smoke" },
@@ -133,6 +133,19 @@ cases = [
 
 # The complete sample game (ROADMAP decision D12): its own scripted check, and a golden transcript
 # with the final save text compared byte for byte.
+[[suite]]
+id = "sample-rpg"
+kind = "script"
+tier = "fast"
+tags = ["narrative", "sample-rpg"]
+timeout = 180
+cases = [
+  { id = "check", command = ["{candidate}", "check"], cwd = "sample-rpg" },
+  { id = "author-tests", command = ["{candidate}", "test"], cwd = "sample-rpg" },
+  { id = "random-bot", command = ["{candidate}", "main.lua", "3", "--bot"], cwd = "sample-rpg" },
+  { id = "catalog-current", command = ["{candidate}", "l10n", "extract", "--check"], cwd = "sample-rpg" },
+]
+
 [[suite]]
 id = "sample-game"
 kind = "script"

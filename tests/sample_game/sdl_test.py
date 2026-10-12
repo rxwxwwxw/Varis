@@ -19,7 +19,20 @@ def run(manifest, screenshot, expected=0, message=""):
     assert message in result.stdout + result.stderr, result.stdout + result.stderr
 
 
+def rpg():
+    """The whole-game player: title-less smoke of the hub, overlays, input and save/load."""
+    output = ROOT / "build/sdl/hollowbrook.bmp"
+    run(ROOT / "sample-rpg/presentation.json", output, message="checks passed")
+    data = output.read_bytes()
+    assert data[:2] == b"BM" and struct.unpack_from("<ii", data, 18) == (1280, 720)
+    offset = struct.unpack_from("<I", data, 10)[0]
+    assert len(set(data[offset:])) > 40
+    for leftover in ("autosave.json", "settings.json", "quicksave.json"):
+        (ROOT / "sample-rpg" / leftover).unlink(missing_ok=True)
+
+
 def main():
+    rpg()
     output = ROOT / "build/sdl/harbour.bmp"
     run(ROOT / "sample-vn/presentation.json", output, message="checks passed")
     data = output.read_bytes()

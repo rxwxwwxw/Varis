@@ -22,12 +22,25 @@ storylet chores()
             local s = quality.get(:player, :stamina)
             set quality(:player, :stamina, math.max(0, s - 2))
             adjust quality(:world, :slot) by 1
-            narrative.play(:r_chores)
+            local seen = (query times(:chores, ?k))()
+            local k = seen and seen.k or 0
+            set times(:chores, k + 1)
+            narrative.play(logic.symbol("r_chores_" .. math.min(k + 1, 3)))
         end
     end
 end
 
-scene r_chores {
+scene r_chores_2 {
+    {kind=:narration, text="The hens are in revolt. You negotiate, cluck back, and are paid in eggs and a long lecture on the east fence, which you did not touch."},
+    {kind="return"}
+}
+
+scene r_chores_3 {
+    {kind=:narration, text="Odile watches you carry the water without being asked. \"You have your mother's habit of not complaining,\" she says, and hands you a second slice of bread."},
+    {kind="return"}
+}
+
+scene r_chores_1 {
     {kind=:narration, text="Wood split, water hauled, the east fence propped with a plank you will have to apologise to later. Odile inspects it all and gives you three coins and a look you decide to treat as pride."},
     {kind="return"}
 }
@@ -93,12 +106,25 @@ storylet cook()
             local s = quality.get(:player, :stamina)
             set quality(:player, :stamina, math.min(10, s + 2))
             adjust quality(:world, :slot) by 1
-            narrative.play(:r_cook)
+            local seen = (query times(:cook, ?k))()
+            local k = seen and seen.k or 0
+            set times(:cook, k + 1)
+            narrative.play(logic.symbol("r_cook_" .. math.min(k + 1, 3)))
         end
     end
 end
 
-scene r_cook {
+scene r_cook_2 {
+    {kind=:narration, text="You try a soup. It is, at first, a rumour of a soup. By the second taste it has become something that belongs to the table."},
+    {kind="return"}
+}
+
+scene r_cook_3 {
+    {kind=:narration, text="Odile eats in silence, and then asks for the recipe. You tell her you have none, and she says that is exactly what she was afraid of."},
+    {kind="return"}
+}
+
+scene r_cook_1 {
     {kind=:narration, text="The onions are a triumph. The cheese is a compromise. Odile eats two helpings and says nothing, which from her is a song."},
     {kind="return"}
 }

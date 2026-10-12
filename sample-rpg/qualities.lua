@@ -13,29 +13,60 @@ quality.define(:slot,     {initial = 1,  minimum = 1, maximum = 4,   label = "Ti
 quality.define(:trust,    {initial = 0,  minimum = -5, maximum = 5,  label = "Trust", visible = false})
 quality.define(:fame,     {initial = 0,  minimum = 0, maximum = 10,  label = "Standing in town"})
 
--- Display labels (templates show these for symbols).
-for sym, label in pairs {
-    [:house] = "Aunt Odile's house", [:square] = "the town square", [:market] = "the market",
-    [:forge] = "Mara's forge", [:archive] = "the archive", [:tavern] = "the Gilded Heron",
-    [:docks] = "the docks", [:quarry] = "the old quarry", [:green] = "the Festival Green",
-    [:mara] = "Mara", [:pell] = "Archivist Pell", [:odile] = "Aunt Odile", [:tilly] = "Tilly",
-    [:hask] = "Constable Hask", [:dane] = "Dane Whitlock",
-    [:strength] = "Strength", [:wits] = "Wits", [:charm] = "Charm", [:grit] = "Grit",
-    [:whetstone] = "a whetstone", [:tonic] = "a bottle of tonic", [:ribbon] = "a festival ribbon",
-    [:spectacles] = "a pair of spectacles", [:leverage] = "Mara's leverage trick",
-    [:quarry_map] = "the quarry map", [:cache_ring] = "the signet ring",
-    [:farm] = "farming folk", [:merchant] = "merchants", [:scholar] = "scholars",
-    [:dock] = "dock folk", [:gentry] = "fallen gentry",
-    [:nerdy] = "the bookish one", [:athletic] = "the athletic one", [:charming] = "the charmer",
-    [:loner] = "the scrappy loner",
-    [:night_owl] = "Night owl", [:early_riser] = "Early riser", [:stubborn] = "Stubborn",
-    [:animal_friend] = "Animal friend", [:light_sleeper] = "Light sleeper", [:sweet_tooth] = "Sweet tooth",
-    [:hero] = "the town's hero", [:smith] = "Mara's apprentice at the forge", [:scribe] = "second keeper of the archive",
-    [:troupe] = "a place with the touring players", [:warden] = "a badge on the town watch",
-    [:quiet] = "a quiet summer and a ticket home", [:spectator] = "watch from the crowd",
-    [:carry_barrels] = "barrels", [:copy_ledgers] = "ledgers", [:greet_visitors] = "visitors", [:mind_the_ferry] = "the ferry",
-    [:brewer] = "Old Brewer Gant", [:tailor] = "the tailor", [:dane_cousin] = "Dane's cousin",
-} do
-    narrative.name(sym, label)
-end
+-- Display labels: templates show these for symbols (and the catalog extracts each one).
+narrative.name(:house, "Aunt Odile's house")
+narrative.name(:square, "the town square")
+narrative.name(:market, "the market")
+narrative.name(:forge, "Mara's forge")
+narrative.name(:archive, "the archive")
+narrative.name(:tavern, "the Gilded Heron")
+narrative.name(:docks, "the docks")
+narrative.name(:quarry, "the old quarry")
+narrative.name(:green, "the Festival Green")
+narrative.name(:mara, "Mara")
+narrative.name(:pell, "Archivist Pell")
+narrative.name(:odile, "Aunt Odile")
+narrative.name(:tilly, "Tilly")
+narrative.name(:hask, "Constable Hask")
+narrative.name(:dane, "Dane Whitlock")
+narrative.name(:strength, "Strength")
+narrative.name(:wits, "Wits")
+narrative.name(:charm, "Charm")
+narrative.name(:grit, "Grit")
+narrative.name(:whetstone, "a whetstone")
+narrative.name(:tonic, "a bottle of tonic")
+narrative.name(:ribbon, "a festival ribbon")
+narrative.name(:spectacles, "a pair of spectacles")
+narrative.name(:leverage, "Mara's leverage trick")
+narrative.name(:quarry_map, "the quarry map")
+narrative.name(:cache_ring, "the signet ring")
+narrative.name(:farm, "farming folk")
+narrative.name(:merchant, "merchants")
+narrative.name(:scholar, "scholars")
+narrative.name(:dock, "dock folk")
+narrative.name(:gentry, "fallen gentry")
+narrative.name(:nerdy, "the bookish one")
+narrative.name(:athletic, "the athletic one")
+narrative.name(:charming, "the charmer")
+narrative.name(:loner, "the scrappy loner")
+narrative.name(:night_owl, "Night owl")
+narrative.name(:early_riser, "Early riser")
+narrative.name(:stubborn, "Stubborn")
+narrative.name(:animal_friend, "Animal friend")
+narrative.name(:light_sleeper, "Light sleeper")
+narrative.name(:sweet_tooth, "Sweet tooth")
+narrative.name(:hero, "the town's hero")
+narrative.name(:smith, "Mara's apprentice at the forge")
+narrative.name(:scribe, "second keeper of the archive")
+narrative.name(:troupe, "a place with the touring players")
+narrative.name(:warden, "a badge on the town watch")
+narrative.name(:quiet, "a quiet summer and a ticket home")
+narrative.name(:spectator, "watch from the crowd")
+narrative.name(:carry_barrels, "barrels")
+narrative.name(:copy_ledgers, "ledgers")
+narrative.name(:greet_visitors, "visitors")
+narrative.name(:mind_the_ferry, "the ferry")
+narrative.name(:brewer, "Old Brewer Gant")
+narrative.name(:tailor, "the tailor")
+narrative.name(:dane_cousin, "Dane's cousin")
 narrative.formatter("nil", function() return "nothing" end)

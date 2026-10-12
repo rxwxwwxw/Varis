@@ -118,12 +118,25 @@ storylet eavesdrop()
             local v_charm = quality.get(:player, :charm)
             set quality(:player, :charm, math.min(100, v_charm + 1))
             adjust quality(:world, :slot) by 1
-            narrative.play(:r_eavesdrop)
+            local seen = (query times(:eavesdrop, ?k))()
+            local k = seen and seen.k or 0
+            set times(:eavesdrop, k + 1)
+            narrative.play(logic.symbol("r_eavesdrop_" .. math.min(k + 1, 3)))
         end
     end
 end
 
-scene r_eavesdrop {
+scene r_eavesdrop_2 {
+    {kind=:narration, text="Two sisters argue in whispers about a will. A brewer swears he saw the festival banner on a ladder at midnight. A boy is explaining the Trials to a younger boy and getting it magnificently wrong."},
+    {kind="return"}
+}
+
+scene r_eavesdrop_3 {
+    {kind=:narration, text="The room is quieter tonight. You hear the clink of a spoon, the fiddle tuning, a single laugh, and in the pauses the whole of a town breathing."},
+    {kind="return"}
+}
+
+scene r_eavesdrop_1 {
     {kind=:narration, text="A carter complains about bridge tolls. A tailor's wife complains about her husband's apprentices. A girl in the corner is learning the fiddle from a book. You leave with a head full of a town."},
     {kind="return"}
 }

@@ -111,6 +111,7 @@ class GameHost {
             openLibs(candidate);
             enum bootstrap = q"LUA
 local cfg, root = ...
+__varis_root = root
 package.path = root .. "/?.lua;" .. root .. "/?/init.lua;" .. package.path
 local entry = require(cfg.entry)
 if cfg.language then narrative.source_language(cfg.language) end
@@ -223,7 +224,8 @@ LUA";
                     HudStat stat;
                     stat.entity = entity;
                     stat.id = definition.id;
-                    stat.label = definition.label.length ? definition.label : definition.id;
+                    stat.label = translated("quality." ~ definition.id ~ ".label",
+                            definition.label.length ? definition.label : definition.id);
                     stat.value = value;
                     bool bound;
                     stat.minimum = numberOf(definition.minimum, bound);
@@ -279,7 +281,8 @@ LUA";
                 next.beat.kind = nameOf(field(beat, "kind"));
                 next.beat.text = nameOf(field(beat, "text"));
                 next.beat.character = nameOf(field(beat, "character"));
-                next.beat.speaker = nameOf(field(field(beat, "speaker"), "name"));
+                next.beat.speaker = translated("character." ~ next.beat.character ~ ".name",
+                        nameOf(field(field(beat, "speaker"), "name")));
                 foreach (choice; sequence(field(beat, "choices")))
                     next.beat.choices ~= SceneChoice(field(choice, "id"), nameOf(field(choice, "text")));
             } else {
@@ -349,10 +352,10 @@ LUA";
             import std.conv : to;
             import std.format : format;
 
-            string label = definition.label.length ? definition.label : name;
+            string label = translated("quality." ~ name ~ ".label", definition.label.length ? definition.label : name);
             string amount = format("%s%d", delta > 0 ? "+" : "", cast(long) delta);
             if (entity != "player" && entity != "world") {
-                auto who = session.registry.display(state.getSymbol(entity));
+                auto who = session.registry.displayIn(language, state.getSymbol(entity));
                 toasts ~= Toast(format("%s %s: %s", who, label, amount), delta > 0);
             } else if (definition.visible)
                 toasts ~= Toast(format("%s %s", amount, label), delta > 0);
@@ -548,6 +551,14 @@ LUA";
     string display(string symbolName) {
         if (session is null)
             return symbolName;
-        return session.registry.display(state.getSymbol(symbolName));
+        return session.registry.displayIn(language, state.getSymbol(symbolName));
+    }
+
+    /// The text of a plain message (a label or a name) in the current language, or `fallback`.
+    private string translated(string key, string fallback) {
+        if (language.length && session !is null)
+            if (auto message = session.registry.translation(language, key))
+                return message.literalText;
+        return fallback;
     }
 }

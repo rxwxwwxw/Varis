@@ -1279,6 +1279,15 @@ private int smokeGame(GamePlayer player, string screenshot) {
                 }
                 if (!player.afterBoundary())
                     return 1;
+                // VARIS_SMOKE_OVERLAY=map|journal|sheet|help|pause|history captures that screen instead.
+                import std.process : environment;
+
+                foreach (o; [
+                    Overlay.sheet, Overlay.journal, Overlay.map, Overlay.help, Overlay.history,
+                    Overlay.pause
+                ])
+                    if (environment.get("VARIS_SMOKE_OVERLAY", "") == to!string(o))
+                        player.overlay = o;
                 player.draw();
                 if (!v_capture(screenshot.toStringz)) {
                     writeln(fromStringz(v_error()).idup);

@@ -120,12 +120,25 @@ storylet stargaze()
             local s = quality.get(:player, :stamina)
             set quality(:player, :stamina, math.min(10, s + 2))
             adjust quality(:world, :slot) by 1
-            narrative.play(:r_stars)
+            local seen = (query times(:stars, ?k))()
+            local k = seen and seen.k or 0
+            set times(:stars, k + 1)
+            narrative.play(logic.symbol("r_stars_" .. math.min(k + 1, 3)))
         end
     end
 end
 
-scene r_stars {
+scene r_stars_2 {
+    {kind=:narration, text="A meteor draws a line of white across the bowl of the sky, and is gone before you can wish for anything useful."},
+    {kind="return"}
+}
+
+scene r_stars_3 {
+    {kind=:narration, text="You fall asleep, and wake with frost on your sleeve and the whole sky turned a quarter-circle. You had forgotten you had not been anywhere."},
+    {kind="return"}
+}
+
+scene r_stars_1 {
     {kind=:narration, text="The quarry holds the dark like a bowl. You count satellites that are not there yet and the names of things you have never been told. You leave a little lighter."},
     {kind="return"}
 }
@@ -148,12 +161,25 @@ storylet quarry_train()
             local s = quality.get(:player, :stamina)
             set quality(:player, :stamina, math.max(0, s - 2))
             adjust quality(:world, :slot) by 1
-            narrative.play(:r_steps)
+            local seen = (query times(:steps, ?k))()
+            local k = seen and seen.k or 0
+            set times(:steps, k + 1)
+            narrative.play(logic.symbol("r_steps_" .. math.min(k + 1, 3)))
         end
     end
 end
 
-scene r_steps {
+scene r_steps_2 {
+    {kind=:narration, text="Rain makes the steps a different animal. You take them a little more slowly, and a little more carefully, and come down in a better mood than you went up."},
+    {kind="return"}
+}
+
+scene r_steps_3 {
+    {kind=:narration, text="You run them with your eyes shut for the last fifty. Your feet know every one by now."},
+    {kind="return"}
+}
+
+scene r_steps_1 {
     {kind=:narration, text="On the second hundred, your thoughts run out. On the two hundred and eleventh you stand over the whole town and feel exactly as tall as you need to be."},
     {kind="return"}
 }

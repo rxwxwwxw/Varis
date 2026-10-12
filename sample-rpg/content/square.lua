@@ -57,12 +57,25 @@ storylet gossip()
             local f = quality.get(:player, :fame)
             set quality(:player, :fame, math.min(10, f + 1))
             adjust quality(:world, :slot) by 1
-            narrative.play(:r_gossip)
+            local seen = (query times(:gossip, ?k))()
+            local k = seen and seen.k or 0
+            set times(:gossip, k + 1)
+            narrative.play(logic.symbol("r_gossip_" .. math.min(k + 1, 3)))
         end
     end
 end
 
-scene r_gossip {
+scene r_gossip_2 {
+    {kind=:narration, text="The bench is arguing about whether the baker's bread is better since he stopped talking to his brother. You contribute a position, and are surprised to find you hold it."},
+    {kind="return"}
+}
+
+scene r_gossip_3 {
+    {kind=:narration, text="They make room for you without being asked. Somebody passes you a bun. For the first time you hear the gossip not as news but as the sound the town makes to know it is alive."},
+    {kind="return"}
+}
+
+scene r_gossip_1 {
     {kind=:narration, text="You learn a great deal about a woman's marriage and one useful thing about a man's debts. By the end, you are being invited to a funeral, and you are going."},
     {kind="return"}
 }

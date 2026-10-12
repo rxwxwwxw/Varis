@@ -9,6 +9,7 @@
 */
 module tests.unit.test_presentation;
 import varis.services.presentation;
+import varis.services.gamehost;
 import varis.narrative.scenes : nameOf, field;
 import varis.types;
 import tests.unit.unit_runner : UnitMain;
@@ -73,3 +74,47 @@ scene start {
 }
 
 mixin UnitMain;
+
+@("gameHostHub") unittest {
+    // The whole-game host over a project: scenes, the creation hub, the status panel, a gated
+    // choice with its reason, saves, and the language switch. Run from the repository root.
+    auto host = new GameHost;
+    assert(host.loadProject("sample-rpg", "prologue"), host.error);
+    assert(host.newGame(7), host.error);
+    // Prologue: media beats, a name input, a menu, then the creation storylets.
+    while (host.view.inScene) {
+        auto kind = host.view.beat.kind;
+        bool ok;
+        if (kind == "input")
+            ok = host.advance(LuaValue("Rowan"));
+        else if (kind == "menu")
+            ok = host.advance(host.view.beat.choices[0].id);
+        else
+            ok = host.advance();
+        assert(ok, host.error);
+    }
+    import std.conv : to;
+
+    assert(host.view.stories.length == 1 && host.view.stories[0].id == "family",
+            host.view.stories.length.to!string ~ " " ~ (host.view.stories.length ? host.view.stories[0].id : "") ~ " " ~ host
+            .error);
+    assert(host.view.hud.length > 0 && host.view.values["strength"] == 15);
+    // Inspection is inert: refreshing a scene boundary changes nothing; saving twice is stable.
+    string first, second;
+    assert(host.save(first) && host.save(second) && first == second);
+    // Choosing: a family adds to the stats, and the toast says so.
+    assert(host.choose(0, 0), host.error);
+    assert(host.view.values["strength"] == 30);
+    assert(host.view.stories[0].id == "temper");
+    // A restored game continues from the same place.
+    string saved;
+    assert(host.save(saved) && host.restore(saved), host.error);
+    assert(host.view.stories[0].id == "temper");
+    // French changes words, not state.
+    string english = host.view.stories[0].title;
+    assert(host.setLanguage("fr"), host.error);
+    assert(host.view.stories[0].title != english && host.view.stories[0].id == "temper");
+    assert(host.setLanguage(""), host.error);
+    assert(host.view.stories[0].title == english);
+    assert(!host.choose(0, 99)); // No such choice: a status, not a throw.
+}
