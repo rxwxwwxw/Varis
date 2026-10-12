@@ -242,8 +242,10 @@ The frontend (`ast`, `lexer`, `parser`) and the compiler know the relational and
 
 - **Finite relations**: Fixed-arity tuple sets use raw Lua equality without `__eq`; `nil` is valid and NaN is prohibited. Preserve separate base and derived membership, including zero-arity tuples.
 - **Validation and atomicity**: Check arity, variable safety, world/local ownership, and stratification before publishing a rule. Failed fact operations and rule registrations leave that operation's logical program changes uncommitted, including implicit declarations.
-- **Evaluation today**: Full recomputation of the query dependency closure from base facts, reaching a least fixed point within each stratum: every query copies its dependency facts and evaluates naively, with no cache or index, and each candidate binding is an associative array keyed by variable name. This is the **correctness reference**. Adding facts to negated relations and retracting facts must invalidate stale derivations.
-- **Evaluation planned (track W)**: shared immutable fact storage, compiled slot-based plans with indexes, semi-naive recursion, per-version caches. Publish only successfully completed caches, keyed by relevant world/local versions. Keep the naive evaluator as a **test oracle**: in test builds both evaluators answer every query and the result sets must be equal.
+- **Evaluation** (`logic/evaluate.d`, `logic/store.d`): facts are read from shared immutable `FactTable`s; a conjunction compiles to a slot-based plan whose positive atoms probe hash indexes; recursive strata are evaluated semi-naively; derived relations are cached per closure, keyed by the identity of the rules and of the base tables. Only successfully completed results are published, and closures whose rules call Lua (guards, aggregate expressions) are never cached. Adding facts to negated relations and retracting facts replace the relation's table, which invalidates every cache entry that read it.
+- **Order inside a conjunction is part of the behaviour**: positive atoms are joined first, then aggregates, comparisons, guards and negated atoms are applied, each to all surviving candidates before the next kind. Do not push a comparison or guard into the join: it would change which candidates raise errors or run author code.
+- **Writes**: every write to `Relation.baseFacts` or `keyIndex` goes through `ownFacts`, `adoptFacts` or `clearFacts` (the fact set may be shared with a cloned world, and the cached table must be dropped).
+- **Oracle** (`logic/naive.d`): the original naive evaluator is the correctness reference. `VARIS_LOGIC_ORACLE=1` makes the runtime answer every query with both and fail on a difference; the `logic-oracle` suite runs that way. Do not optimize the oracle. A change to evaluation is not done until the oracle suite passes.
 - **Worlds**: Each state owns `logic.global`. Inheritance snapshots facts/rules and rebinds inherited relation references to the child. Referenced Lua objects are shared by identity. Rules cannot depend on another world; world-owned rules cannot retain local relation dependencies.
 - **Lexical context**: Use a separate relation namespace and hidden lexical slots/upvalues for local handles and world-block defaults. Local relations shadow named world relations; ordinary Lua locals do not shadow relations. Resolve rule/query references once so later shadowing does not retarget them.
 - **Compilation**: Store immutable declarative templates on `Prototype` and lower to dedicated VM instructions calling engine APIs. Evaluate each syntactic relational constant argument once to exactly one value; do not expand the final Lua call or vararg.
@@ -289,13 +291,13 @@ Use this table to avoid coding against a design that has not landed.
 | Instructions executed | `execCode` = canonical 32-byte instructions plus a final `Return` | Compact specialized encoding derived from `code` | L3 |
 | Executors | `executeFrame` and `executeDeepFrame`, handlers copied by hand | One handler source; fast and instrumented variants | S1 |
 | Core and world model | Core imports `logic` and `narrative`; every Lua call maintains a lexical world | Core knows neither; world model plugs in through an extension table | S1 |
-| Fact storage | `bool[RelTuple]` per relation, copied per query | Shared immutable rows with indexes | W1 |
-| Query evaluation | Naive fixpoint, nested loops, bindings keyed by variable name | Compiled slot plans, indexes, semi-naive, per-version cache | W2–W4 |
+| Fact storage | `bool[RelTuple]` per relation for writes, plus a shared immutable `FactTable` with indexes for reads (`logic/store.d`); cloned worlds share fact sets copy-on-write | Same | W1 (done) |
+| Query evaluation | Compiled slot plans, index probes, semi-naive recursion, derived relations cached per closure (`logic/evaluate.d`); the naive evaluator is the oracle (`logic/naive.d`, `VARIS_LOGIC_ORACLE=1`) | Same, plus storylet indexing | W2–W4 (done), W5 |
 | Sample game | In `make test` (suite `sample-game`: its check plus a golden transcript and save, `tests/sample_game/`) | Same | S0 (done) |
 | Debugging | Lua `debug` library; `narrative.explain`/`observe`/`analyze` from scripts | Workbench debugger at source and story level | Milestone 44 |
 | Tools | CLI and REPL (`cli.d`) | `varis check`, language services, `varis serve` | Milestones 30–33, 42–43 |
 | Core speed | 0.6–2.4× C Lua; outliers 37× (`pcall_error`), 8× (`deep_recursion`) | ≤ 1.0×, then below | L, X |
-| Turn latency (reference-scale game, M1) | 15 ms without recursion, 840 ms with one recursive rule | 5 ms | W |
+| Turn latency (reference-scale game, M1) | 3.2 ms with or without a recursive rule (was 15 ms and 840 ms) | 5 ms on the stand-in; real hardware unmeasured | W, M |
 
 ---
 
@@ -322,7 +324,9 @@ Use this table to avoid coding against a design that has not landed.
 | [`source/varis/logic/model.d`](source/varis/logic/model.d) | world model | ✅ Phase 6 | Tuple/term/goal/rule IR, identities, immutable snapshots |
 | [`source/varis/logic/world.d`](source/varis/logic/world.d) | world model | ✅ Phase 6 | Worlds, local relations, versions, atomic mutation, inheritance, transactions |
 | [`source/varis/logic/validate.d`](source/varis/logic/validate.d) | world model | ✅ Phase 6 | Safety, ownership, arity, signed dependencies, SCCs/strata |
-| [`source/varis/logic/evaluate.d`](source/varis/logic/evaluate.d) | world model | ✅ Phase 6 | Joins, constraints, guards, fixed-point evaluation (naive; future test oracle) |
+| [`source/varis/logic/evaluate.d`](source/varis/logic/evaluate.d) | world model | ✅ Phase 6, rewritten in stage W | Compiled plans, index joins, semi-naive fixed point, derived-relation cache |
+| [`source/varis/logic/store.d`](source/varis/logic/store.d) | world model | ✅ stage W | `FactTable`: shared immutable fact rows with hash indexes |
+| [`source/varis/logic/naive.d`](source/varis/logic/naive.d) | world model | ✅ Phase 6 | The original naive evaluator, kept as the test oracle |
 | [`source/varis/logic/query.d`](source/varis/logic/query.d) | world model | ✅ Phase 6 | Snapshot iterators, projection, immutable binding records |
 | [`source/varis/lib/logic.d`](source/varis/lib/logic.d) | world model | ✅ Phase 6 | `logic` library and global `symbol` |
 | `source/varis/narrative/{registry,templates,codec,fingerprint,session,persistence,observe,diagnostics,analysis}.d` | narrative | ✅ Phase 7 | Sealed content, sessions, decks, choices, actions, saves and replay, explanations, subscriptions, bounded analysis |

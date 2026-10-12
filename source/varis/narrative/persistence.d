@@ -399,7 +399,7 @@ Session loadSession(LuaState state, string saved, LuaValue factory) {
                         "protected": entry["protected"]
                 ])))
                 throw new LuaException("incompatible relation schema: " ~ name);
-            relation.baseFacts = null;
+            relation.clearFacts();
             relation.keyIndex = null;
             foreach (encoded; entry["facts"].array) {
                 LuaValue[] values;
@@ -430,7 +430,7 @@ Session loadSession(LuaState state, string saved, LuaValue factory) {
             historyValues[canonicalPersisted(immutableSequence(tuple.values))] = true;
         if (historyValues.length != data.events.length)
             throw new LuaException("saved event relation/history mismatch");
-        history.baseFacts = null;
+        history.clearFacts();
         foreach (event; data.events) {
             auto tuple = RelTuple([
                 LuaValue(cast(long) event.sequence), LuaValue(cast(long) event.turn),

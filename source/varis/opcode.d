@@ -98,7 +98,7 @@ enum OpCode {
     MakeQuery // a, bx         : R[a] = create query iterator from query template bx
 }
 
-import varis.logic.model : CompareOp, TermKind, GoalKind;
+import varis.logic.model : CompareOp, TermKind, GoalKind, PlanHolder;
 
 /// Template for a relational term
 struct TermTemplate {
@@ -155,6 +155,8 @@ class QueryTemplate {
     GoalTemplate[] goals;
     string[] returnedVarNames;
     bool isBraced;
+    bool safetyChecked; // validateQuerySafety succeeded once for this shape
+    PlanHolder planHolder; // compiled join plan reused by every query made from this template
 }
 
 /// An instruction struct with register addresses and constant flags

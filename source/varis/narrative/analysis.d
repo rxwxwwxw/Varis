@@ -251,7 +251,7 @@ private class AnalysisClone {
         copy.persistentIdentity = original.persistentIdentity;
         foreach (name, relation; copy.relations) {
             auto sourceRelation = original.relations[name];
-            relation.baseFacts = null;
+            relation.clearFacts();
             relation.keyIndex = null;
             relation.version_ = sourceRelation.version_;
             if (name == "quality")

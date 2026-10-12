@@ -2467,7 +2467,7 @@ struct VM {
                         throw new LuaException(format("relation '%s' expects arity %d, got %d", rel.name, rel.arity, terms
                                 .length));
                     }
-                    gRef = new RelationRef(rel.name, rel.arity, gw.id.to!string, rel.id, false);
+                    gRef = new RelationRef(rel.name, rel.arity, gw.idText, rel.id, false);
                     closureRels[rel.id] = rel;
                     gRef.resolvedRelation = rel;
                 }
@@ -3130,8 +3130,15 @@ struct VM {
 
             concreteGoals = instantiateGoalsStatic(state, proto, closure, registers, findUp, qTemp.goals, null, closureRels);
 
-            validateQuerySafety(concreteGoals);
+            // Safety depends only on the template's shape, so a template is checked once.
+            if (!qTemp.safetyChecked) {
+                validateQuerySafety(concreteGoals);
+                qTemp.safetyChecked = true;
+            }
             auto qIter = new QueryIterator(state, concreteGoals, qTemp.returnedVarNames, closureRels, closureRules);
+            if (qTemp.planHolder is null)
+                qTemp.planHolder = new PlanHolder;
+            qIter.planHolder = qTemp.planHolder;
             registers[a] = createCallableQueryIterator(state, qIter);
             break;
 

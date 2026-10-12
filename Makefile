@@ -39,6 +39,8 @@ SRC_FILES = source/varis/package.d \
             source/varis/logic/world.d \
             source/varis/logic/validate.d \
             source/varis/logic/evaluate.d \
+            source/varis/logic/store.d \
+            source/varis/logic/naive.d \
             source/varis/logic/query.d \
             source/varis/narrative/codec.d \
             source/varis/narrative/templates.d \

@@ -142,6 +142,7 @@ class QueryIterator {
 
     bool evaluated = false;
     bool isInvalid = false;
+    PlanHolder planHolder; // optional: the originating template's plan cache
     size_t currentIndex = 0;
     BindingRecord[] resultRecords;
 
@@ -170,10 +171,9 @@ class QueryIterator {
                 throw new LuaException(format("missing query dependency relation '%s'", reference.name));
             }
             auto visible = visibleRelation(rel);
+            // The snapshot shares the relation's immutable fact table; nothing is copied.
             auto clonedRel = new Relation(rel.id, rel.name, rel.arity, rel.ownerWorld, rel.isLocal);
-            foreach (tuple, _; visible.baseFacts) {
-                clonedRel.baseFacts[tuple] = true;
-            }
+            clonedRel.frozenTable = visible.factTable();
             this.snapshotRels[rel.id] = clonedRel;
 
             void includeRule(Rule rule) {
@@ -213,7 +213,7 @@ class QueryIterator {
             evaluated = true;
             try {
                 auto evaluator = Evaluator(state);
-                auto rawResults = evaluator.evaluateQuery(goals, snapshotRels, snapshotRules, returnedVarNames);
+                auto rawResults = evaluator.evaluateQuery(goals, snapshotRels, snapshotRules, returnedVarNames, null, planHolder);
                 foreach (res; rawResults) {
                     resultRecords ~= new BindingRecord(res);
                 }

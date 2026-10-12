@@ -208,6 +208,7 @@ class LuaState {
     string[LuaFunction] standardNativePaths;
     LuaFunction[string] standardNativeFunctions;
     AnalysisBudget analysisBudget;
+    Object logicCache; // owned by varis.logic.evaluate (derived relations per closure)
     // Per-Fiber so a suspended ordinary coroutine cannot leak its call context.
     World mainCallWorld;
 

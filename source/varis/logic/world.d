@@ -14,6 +14,7 @@ import varis.types;
 import varis.table;
 import varis.exception : LuaException;
 import varis.logic.model;
+import varis.logic.store : FactTable;
 import std.format : format;
 import std.conv : to;
 import core.thread : Fiber;
@@ -192,9 +193,7 @@ class Transaction {
                 foreach (original, copy; overlays) {
                     if (original.version_ == copy.version_)
                         continue;
-                    original.baseFacts = copy.baseFacts;
-                    original.keyIndex = copy.keyIndex;
-                    original.version_ = copy.version_;
+                    original.adoptFacts(copy);
                     changed = true;
                 }
                 if (changed) {
@@ -254,6 +253,13 @@ class Relation {
     int arity;
     World ownerWorld; // null if local relation
     bool[RelTuple] baseFacts;
+    /// `baseFacts` and `keyIndex` are shared with another relation (a world snapshot): copy before
+    /// the first write. Both sharers carry the flag.
+    bool factsShared;
+    /// Immutable table of the base facts, built on demand and shared with snapshots and queries.
+    private FactTable cachedTable;
+    /// Set on a query's snapshot relation: the facts as they were at query construction.
+    FactTable frozenTable;
     Rule[] rules;
     string[] columns;
     size_t[] keyColumns;
@@ -270,6 +276,44 @@ class Relation {
         this.ownerWorld = ownerWorld;
         this.isLocal = isLocal;
         this.version_ = 1;
+    }
+
+    /// The base facts as an immutable table. It is rebuilt only after the facts changed, so
+    /// queries, snapshots and worlds cloned from this one share it instead of copying facts.
+    FactTable factTable() {
+        if (frozenTable !is null)
+            return frozenTable;
+        // Every write goes through ownFacts/adoptFacts/clearFacts, which drop the table. The length
+        // test is a second line of defence for code that fills `baseFacts` directly after clearFacts.
+        if (cachedTable is null || cachedTable.rows.length != baseFacts.length)
+            cachedTable = FactTable.frozenFrom(baseFacts.keys, arity);
+        return cachedTable;
+    }
+
+    /// Transaction commit: take over the overlay's facts (the overlay is not used afterwards).
+    void adoptFacts(Relation overlay) {
+        baseFacts = overlay.baseFacts;
+        keyIndex = overlay.keyIndex;
+        factsShared = overlay.factsShared;
+        version_ = overlay.version_;
+        cachedTable = null;
+    }
+
+    /// Discards all base facts (restore paths that refill the relation directly).
+    void clearFacts() {
+        baseFacts = null;
+        factsShared = false;
+        cachedTable = null;
+    }
+
+    /// Called before every write to `baseFacts` or `keyIndex`.
+    private void ownFacts() {
+        if (factsShared) {
+            baseFacts = baseFacts.dup;
+            keyIndex = keyIndex.dup;
+            factsShared = false;
+        }
+        cachedTable = null;
     }
 
     RelTuple tupleKey(RelTuple tuple) {
@@ -306,8 +350,10 @@ class Relation {
         if (auto old = key in keyIndex) {
             if (*old == tuple)
                 return false;
-            baseFacts.remove(*old);
+            ownFacts();
+            baseFacts.remove(*(key in keyIndex));
         }
+        ownFacts();
         keyIndex[key] = tuple;
         baseFacts[tuple] = true;
         version_++;
@@ -394,8 +440,10 @@ class Relation {
             auto key = tupleKey(tuple);
             if (key in keyIndex)
                 throw new LuaException(format("relation '%s': conflicting fact for existing key", name));
+            ownFacts();
             keyIndex[key] = tuple;
         }
+        ownFacts();
         baseFacts[tuple] = true;
         version_++;
         return true;
@@ -416,6 +464,7 @@ class Relation {
             throw new LuaException(format("relation '%s' expects arity %d, got %d", name, arity, tuple.length));
         }
         if (tuple in baseFacts) {
+            ownFacts();
             if (keyColumns.length)
                 keyIndex.remove(tupleKey(tuple));
             baseFacts.remove(tuple);
@@ -437,6 +486,7 @@ class Relation {
             }
         }
         if (tuple !in baseFacts) {
+            ownFacts();
             baseFacts[tuple] = true;
             version_++;
         }
@@ -462,11 +512,12 @@ class Relation {
         clone.validateTuple = validateTuple;
         clone.columns = columns.dup;
         clone.keyColumns = keyColumns.dup;
-        clone.keyIndex = keyIndex.dup;
-        foreach (tuple, _; baseFacts) {
-            clone.baseFacts[tuple] = true;
-        }
+        // Share the fact set; whichever side writes first makes its own copy (see ownFacts).
+        clone.keyIndex = keyIndex;
+        clone.baseFacts = baseFacts;
+        clone.factsShared = factsShared = baseFacts !is null || keyIndex !is null;
         clone.version_ = this.version_;
+        clone.cachedTable = factTable();
         return clone;
     }
 }
@@ -484,6 +535,15 @@ class World {
 
     Transaction transactionOwner;
     Object narrativeOwner;
+    private string idText_;
+
+    /// `id` as text (the world qualifier of relation references), computed once.
+    string idText() {
+        if (idText_.length == 0)
+            idText_ = id.to!string;
+        return idText_;
+    }
+
     string persistentIdentity;
     string narrativeProgramVersion;
     string narrativeProgramFingerprint;
@@ -663,7 +723,7 @@ class World {
             if (headCloneRel is null)
                 continue;
 
-            auto reboundHeadRef = new RelationRef(rule.headRel.name, rule.headRel.arity, child.id.to!string, headCloneRel
+            auto reboundHeadRef = new RelationRef(rule.headRel.name, rule.headRel.arity, child.idText, headCloneRel
                     .id);
             reboundHeadRef.resolvedRelation = headCloneRel;
 
@@ -674,7 +734,7 @@ class World {
                     if (g.relRef !is null) {
                         auto targetRel = child.relations.get(g.relRef.name, null);
                         size_t targetId = targetRel ? targetRel.id : g.relRef.relId;
-                        newGoal.relRef = new RelationRef(g.relRef.name, g.relRef.arity, child.id.to!string, targetId);
+                        newGoal.relRef = new RelationRef(g.relRef.name, g.relRef.arity, child.idText, targetId);
                         newGoal.relRef.resolvedRelation = targetRel;
                         newGoal.terms = g.terms.dup;
                     } else if (g.kind == GoalKind.Comparison) {
@@ -703,6 +763,7 @@ class World {
             auto reboundGoals = rebound(rule.bodyGoals);
 
             auto reboundRule = new Rule(reboundHeadRef, rule.headTerms.dup, reboundGoals, g_nextRuleId++);
+            reboundRule.origin = rule.origin is null ? rule : rule.origin;
             reboundRule.numVariables = rule.numVariables;
             reboundRule.variableNames = rule.variableNames.dup;
 

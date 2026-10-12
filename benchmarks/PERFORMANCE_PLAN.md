@@ -269,8 +269,48 @@ slower, and `core.fib` measurably faster (the call path lost the world lookup).
 
 ### Track W — World model (milestone 35)
 
-Write the new evaluator as a kernel in the style of §4, next to the old one. Keep the old
-evaluator as a **test oracle** (§7) until W3 has shipped and soaked. `logic/` is about 2,100
+**Status: W0–W4 done October 11, 2026; W5 not started.** Measured on the same machine, release
+build, median `present()`:
+
+| Game | Before | After |
+| --- | ---: | ---: |
+| 100 rooms, 200 storylets | 3.1 ms | 0.7 ms |
+| 100 rooms, 1000 storylets | 14.6 ms | 3.1 ms |
+| 100 rooms, 200 storylets, recursive `reachable` | 836 ms | 0.7 ms |
+| 100 rooms, 1000 storylets, recursive `reachable` | 840 ms | 3.2 ms |
+
+`choose()` went from 0.6 ms to 0.1 ms. Benchmark groups: `datalog.transitive_closure` 0.524 s →
+0.004 s, `scenarios.03_transitive_closure` 1.4 s → 0.012 s, `narrative_scale.reference_game`
+4.3 s → 0.09 s; the `datalog_comp` programs now run in 0.10–0.18× of Soufflé's time (process
+start-up included on both sides). Gates were re-derived from these numbers.
+
+What was built, and where:
+
+- `logic/store.d`: `FactTable` (append-only rows, lazily built hash indexes per set of bound
+  columns). `Relation.factTable()` returns an immutable table that is rebuilt only after a write;
+  snapshots, queries and cloned worlds share it. `World.cloneSnapshot` shares the fact set itself
+  and copies on the first write (`Relation.ownFacts`). Every write to `baseFacts` or `keyIndex`
+  must go through `ownFacts`, `adoptFacts` or `clearFacts`.
+- `logic/evaluate.d`: conjunctions compile to slot-based `Plan`s; positive atoms probe indexes;
+  recursive strata run semi-naively; derived relations are cached per closure, keyed by the
+  identity of the rules (`Rule.origin`) and base tables (`DerivedCache`, on `LuaState.logicCache`).
+  Closures whose rules call Lua (guards, aggregate expressions) are not cached, so author code
+  runs as often as before. A query template keeps its plan (`QueryTemplate.planHolder`) and is
+  safety-checked once.
+- `logic/naive.d`: the previous evaluator, unchanged in behaviour, as the oracle. With
+  `VARIS_LOGIC_ORACLE=1` every query is answered by both and the result sets must be equal; the
+  `logic-oracle` test suite runs the scenarios, the acceptance programs and the sample game that
+  way.
+- The order of goal kinds inside a conjunction is unchanged (positive atoms, aggregates,
+  comparisons, guards, negated atoms, each over all candidates), so errors and guard calls
+  happen for the same candidates. Result order and the number of guard calls in recursive rules
+  may differ; both were already unspecified.
+
+Still open: peak RSS on the 1000-storylet game rose from 94 MB to about 125 MB (index and
+candidate buffers; stage M), and a presentation still builds, validates and runs one query per
+storylet (about 3 µs each), which is what W5 removes.
+
+The new evaluator was written next to the old one, which stays as a **test oracle** (§7). `logic/` is about 2,100
 lines, so this track is also where the kernel conventions (status type, growable buffers, hash
 sets over value rows) are settled before they are used in the much larger `vm.d`.
 

@@ -213,6 +213,11 @@ class Goal {
     }
 }
 
+/// Where a query template keeps its compiled plan between queries (owned by logic.evaluate).
+final class PlanHolder {
+    Object plan;
+}
+
 /// Rule definition
 class Rule {
     RelationRef headRel;
@@ -221,6 +226,9 @@ class Rule {
     size_t id;
     int numVariables = 0;
     string[] variableNames;
+    /// The rule this one was rebound from when a world was cloned (null for an authored rule).
+    /// Clones of one rule derive the same tuples from the same facts, so caches key on the origin.
+    Rule origin;
 
     this(RelationRef headRel, Term[] headTerms, Goal[] bodyGoals, size_t id = 0) {
         this.headRel = headRel;

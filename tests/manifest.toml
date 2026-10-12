@@ -143,6 +143,18 @@ cases = [
   { id = "golden", command = ["python3", "tests/sample_game/check_golden.py", "{candidate}"] },
 ]
 
+# Every query of the relational programs and the sample game answered by both evaluators
+# (VARIS_LOGIC_ORACLE=1): the result sets must be equal.
+[[suite]]
+id = "logic-oracle"
+kind = "script"
+tier = "fast"
+tags = ["datalog", "oracle"]
+timeout = 600
+cases = [
+  { id = "naive-agrees", command = ["python3", "tests/datalog/oracle_check.py", "{candidate}"] },
+]
+
 [[suite]]
 id = "selftest"
 kind = "script"
