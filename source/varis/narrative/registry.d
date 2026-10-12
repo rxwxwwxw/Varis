@@ -24,6 +24,9 @@ import std.algorithm : sort;
 import std.digest.sha : sha256Of;
 import std.digest : toHexString;
 
+/// Installed by `varis.narrative.vmops`: computes `ContentDefinition.legacyFingerprint`.
+__gshared string function(ContentDefinition) legacyFingerprintHook;
+
 class ContentDefinition {
     string kind;
     string id;
@@ -37,8 +40,19 @@ class ContentDefinition {
     NarrativeTemplate titleTemplate;
     NarrativeTemplate textTemplate;
     string fingerprint;
-    /// The identity first-format saves recorded: wording included. Only to read those saves.
-    string legacyFingerprint;
+    /// The identity first-format saves recorded: wording included. Computed on first use, by the
+    /// hook the narrative layer installs; only reading a first-format save needs it.
+    string legacyFingerprint() {
+        if (legacyFingerprint_ is null && legacyFingerprintHook !is null)
+            legacyFingerprint_ = legacyFingerprintHook(this);
+        return legacyFingerprint_;
+    }
+
+    void legacyFingerprint(string value) {
+        legacyFingerprint_ = value;
+    }
+
+    private string legacyFingerprint_;
     /// Lazily built by Session.instances (stage W5): a fact that must hold for this definition
     /// to have any instance, when its availability is a plain query. Not part of the content.
     Object availabilityFilter;
@@ -99,8 +113,6 @@ class ContentRegistry {
     private LuaValue[string] formatters_;
     private bool sealed_;
     string contentVersion;
-    /// What `contentVersion` was before wording left it (first-format saves); equal when explicit.
-    string legacyContentVersion;
     /// The language the authored text is written in (its plural rules apply to source templates).
     string sourceLanguage = "en";
     bool explicitContentVersion;
@@ -448,7 +460,6 @@ class ContentRegistry {
     void copyForAnalysis(ContentRegistry destination, LuaValue delegate(LuaValue) cloneValue,
             ContentDefinition delegate(ContentDefinition) cloneDefinition) {
         destination.contentVersion = contentVersion;
-        destination.legacyContentVersion = legacyContentVersion;
         destination.explicitContentVersion = explicitContentVersion;
         destination.decks_ = decks_.dup;
         destination.explicitDecks = explicitDecks.dup;
@@ -474,6 +485,36 @@ class ContentRegistry {
         destination.sealed_ = sealed_;
     }
 
+    private static string manifestDigest(string[] entries) {
+        entries.sort;
+        string text;
+        foreach (entry; entries)
+            text ~= entry.length.to!string ~ ":" ~ entry;
+        return text.sha256Of.toHexString.idup;
+    }
+
+    /// The content version as first-format saves recorded it, with wording in it. Computed on
+    /// demand: only reading such a save needs it.
+    string legacyContentVersion() {
+        if (explicitContentVersion)
+            return contentVersion;
+        string[] entries;
+        foreach (definition; storylets_.values ~ actions_.values)
+            entries ~= definition.kind ~ ":" ~ definition.id ~ ":" ~ definition.legacyFingerprint;
+        foreach (name, definition; decks_)
+            entries ~= "deck:" ~ name ~ ":" ~ definition.draw.to!string ~ ":" ~ definition.replacement.to!string;
+        foreach (name, definition; qualities_)
+            entries ~= "quality:" ~ name ~ ":" ~ canonicalScalar(definition.initial) ~ ":" ~ canonicalScalar(
+                    definition.minimum) ~ ":" ~ canonicalScalar(
+                    definition.maximum) ~ ":" ~ definition.visible.to!string
+                ~ ":" ~ definition.label;
+        foreach (name, label; names_)
+            entries ~= "name:" ~ name ~ ":" ~ label;
+        foreach (name; handlers_.keys)
+            entries ~= "handler:" ~ name;
+        return manifestDigest(entries);
+    }
+
     void seal(string authoredVersion = "") {
         if (sealed_) {
             if (authoredVersion.length && authoredVersion != contentVersion)
@@ -491,44 +532,22 @@ class ContentRegistry {
                 throw failure;
             }
         }
-        // The identity of the content, twice: as it is now (wording excluded), and as saves of the
-        // first format recorded it (wording included), so that those can still be read.
-        string[] manifests, legacyManifests;
-        foreach (definition; storylets_.values ~ actions_.values) {
+        // The identity of the content: wording (titles, texts, names, labels) is not part of it.
+        string[] manifests;
+        foreach (definition; storylets_.values ~ actions_.values)
             manifests ~= definition.kind ~ ":" ~ definition.id ~ ":" ~ definition.fingerprint;
-            legacyManifests ~= definition.kind ~ ":" ~ definition.id ~ ":" ~ definition.legacyFingerprint;
-        }
-        foreach (name, definition; decks_) {
-            auto entry = "deck:" ~ name ~ ":" ~ definition.draw.to!string ~ ":" ~ definition.replacement.to!string;
-            manifests ~= entry;
-            legacyManifests ~= entry;
-        }
-        foreach (name, definition; qualities_) {
-            auto entry = "quality:" ~ name ~ ":" ~ canonicalScalar(definition.initial) ~ ":" ~ canonicalScalar(
+        foreach (name, definition; decks_)
+            manifests ~= "deck:" ~ name ~ ":" ~ definition.draw.to!string ~ ":" ~ definition.replacement.to!string;
+        foreach (name, definition; qualities_)
+            manifests ~= "quality:" ~ name ~ ":" ~ canonicalScalar(definition.initial) ~ ":" ~ canonicalScalar(
                     definition.minimum) ~ ":" ~ canonicalScalar(definition.maximum) ~ ":" ~ definition
                 .visible.to!string;
-            manifests ~= entry;
-            legacyManifests ~= entry ~ ":" ~ definition.label;
-        }
-        foreach (name, label; names_) {
+        foreach (name, label; names_)
             manifests ~= "name:" ~ name;
-            legacyManifests ~= "name:" ~ name ~ ":" ~ label;
-        }
-        foreach (name; handlers_.keys) {
+        foreach (name; handlers_.keys)
             manifests ~= "handler:" ~ name;
-            legacyManifests ~= "handler:" ~ name;
-        }
-        string digest(string[] entries) {
-            entries.sort;
-            string text;
-            foreach (entry; entries)
-                text ~= entry.length.to!string ~ ":" ~ entry;
-            return text.sha256Of.toHexString.idup;
-        }
-
         explicitContentVersion = authoredVersion.length != 0;
-        contentVersion = authoredVersion.length ? authoredVersion : digest(manifests);
-        legacyContentVersion = authoredVersion.length ? authoredVersion : digest(legacyManifests);
+        contentVersion = authoredVersion.length ? authoredVersion : manifestDigest(manifests);
         sealed_ = true;
     }
 }

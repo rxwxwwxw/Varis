@@ -111,9 +111,21 @@ private string definitionFingerprint(ContentDefinition definition, bool legacy) 
         if (!legacy && (name == "title" || name == "text")) {
             auto value = definition.options[name];
             if (isString(value)) {
+                auto text = value.match!((string s) => s, _ => "");
+                // Text with no tag has no structure; most titles are such.
+                bool tagged;
+                foreach (char c; text)
+                    if (c == '{') {
+                        tagged = true;
+                        break;
+                    }
+                if (!tagged) {
+                    result ~= ":template:" ~ name ~ ":";
+                    continue;
+                }
                 TranslationTemplate parsed;
                 string error;
-                if (parseTranslation(value.match!((string s) => s, _ => ""), parsed, error)) {
+                if (parseTranslation(text, parsed, error)) {
                     result ~= ":template:" ~ name ~ ":" ~ parsed.structure();
                     continue;
                 }

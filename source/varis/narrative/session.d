@@ -227,13 +227,19 @@ final class MessageRender {
 }
 
 final class ChoiceRender {
-    LuaValue[string] fields; // everything except `title` and `text`
+    LuaValue id;
+    LuaValue instanceKey;
+    LuaValue bindings; // immutable record
+    LuaValue token;
     MessageRender title;
     MessageRender text;
 }
 
 final class StoryRender {
-    LuaValue[string] fields;
+    LuaValue id;
+    LuaValue instanceKey;
+    LuaValue bindings;
+    LuaValue worldVersion;
     MessageRender title;
     MessageRender text;
     ChoiceRender[] choices;
@@ -616,19 +622,28 @@ class Session : TransactionParticipant {
         }
 
         LuaValue[] stories;
+        stories.reserve(data.stories.length);
         foreach (story; data.stories) {
             LuaValue[] choices;
-            foreach (choice; story.choices) {
-                auto fields = choice.fields.dup;
-                fields["title"] = LuaValue(text(choice.title));
-                fields["text"] = LuaValue(text(choice.text));
-                choices ~= immutableRecord(fields);
-            }
-            auto fields = story.fields.dup;
-            fields["title"] = LuaValue(text(story.title));
-            fields["text"] = LuaValue(text(story.text));
-            fields["choices"] = immutableSequence(choices);
-            stories ~= immutableRecord(fields);
+            choices.reserve(story.choices.length);
+            foreach (choice; story.choices)
+                choices ~= immutableRecord([
+                "id": choice.id,
+                "instance_key": choice.instanceKey,
+                "bindings": choice.bindings,
+                "title": LuaValue(text(choice.title)),
+                "text": LuaValue(text(choice.text)),
+                "token": choice.token
+            ]);
+            stories ~= immutableRecord([
+                "id": story.id,
+                "instance_key": story.instanceKey,
+                "bindings": story.bindings,
+                "title": LuaValue(text(story.title)),
+                "text": LuaValue(text(story.text)),
+                "world_version": story.worldVersion,
+                "choices": immutableSequence(choices)
+            ]);
         }
         LuaValue[string] fields = [
             "turn": data.turn,
@@ -788,23 +803,19 @@ class Session : TransactionParticipant {
                                 return cast(LuaValue[])[];
                             })));
                     auto choiceRender = new ChoiceRender();
-                    choiceRender.fields = [
-                        "id": state.getSymbol(definition.id),
-                        "instance_key": LuaValue(choice.key),
-                        "bindings": immutableRecord(choice.bindings),
-                        "token": LuaValue(new LuaUserData(token, tokenMetatable))
-                    ];
+                    choiceRender.id = state.getSymbol(definition.id);
+                    choiceRender.instanceKey = LuaValue(choice.key);
+                    choiceRender.bindings = immutableRecord(choice.bindings);
+                    choiceRender.token = LuaValue(new LuaUserData(token, tokenMetatable));
                     auto choiceKey = storyId ~ "." ~ definition.id;
                     choiceRender.title = message(choiceKey ~ ".title", definition.titleTemplate, choice.bindings, choiceTitleVars);
                     choiceRender.text = message(choiceKey ~ ".text", definition.textTemplate, choice.bindings, choiceTextVars);
                     storyRender.choices ~= choiceRender;
                 }
-            storyRender.fields = [
-                "id": state.getSymbol(story.definition.id),
-                "instance_key": LuaValue(story.key),
-                "bindings": immutableRecord(story.bindings),
-                "world_version": LuaValue(cast(long) story.worldVersion)
-            ];
+            storyRender.id = state.getSymbol(story.definition.id);
+            storyRender.instanceKey = LuaValue(story.key);
+            storyRender.bindings = immutableRecord(story.bindings);
+            storyRender.worldVersion = LuaValue(cast(long) story.worldVersion);
             storyRenders ~= storyRender;
         }
         auto renderData = new PresentationRender();

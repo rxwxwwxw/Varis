@@ -305,8 +305,8 @@ Session loadSession(LuaState state, string saved, LuaValue factory) {
         state.narrativeRegistry.seal();
         // A first-format save is validated as it was written: with wording in the identity. A
         // mismatch is never silently accepted in either format.
-        auto expectedContent = firstFormat ? state.narrativeRegistry.legacyContentVersion
-            : state.narrativeRegistry.contentVersion;
+        auto expectedContent = firstFormat ? state.narrativeRegistry.legacyContentVersion() : state
+            .narrativeRegistry.contentVersion;
         if (input["content"].str != expectedContent || input["content_fingerprint"].str != portableRegistryFingerprint(
                 state.narrativeRegistry, firstFormat))
             throw new LuaException("incompatible narrative content version or fingerprint");

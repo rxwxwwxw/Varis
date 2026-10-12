@@ -27,7 +27,8 @@ import varis.logic.model;
 import varis.logic.world;
 import varis.logic.validate;
 import varis.logic.query;
-import varis.narrative.registry : ContentRegistry, ContentDefinition, DeckDefinition, narrativeRegistry;
+import varis.narrative.registry : ContentRegistry, ContentDefinition, DeckDefinition, narrativeRegistry,
+    legacyFingerprintHook;
 
 shared static this() {
     declarativeOpHook = &declarativeOp;
@@ -143,7 +144,7 @@ private void declarativeOp(LuaState state, LuaClosure closure, Prototype proto, 
             import varis.narrative.fingerprint : contentFingerprint, legacyContentFingerprint;
 
             content.fingerprint = contentFingerprint(content);
-            content.legacyFingerprint = legacyContentFingerprint(content);
+            legacyFingerprintHook = &legacyContentFingerprint;
             return content;
         }
 
