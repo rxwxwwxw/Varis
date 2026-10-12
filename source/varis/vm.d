@@ -365,6 +365,333 @@ private void refreshAttention() {
     vmAttention = vmSlowMode || openFrameTransactions != 0;
 }
 
+// Opcode handlers shared by VM.executeFrame and VM.executeDeepFrame, expanded into both
+// dispatch switches (string mixins), so the two executors cannot drift apart. They use only names
+// both functions define: state, closure, proto, registers, ip, codeBase, top, instr, frameThread and
+// the frame's nested helpers. Handlers that differ between the executors (calls, returns,
+// transactions) stay in the functions themselves.
+// Nop, Move, LoadNil, LoadBool, LoadInt, LoadK, GetGlobal, SetGlobal, GetUpval, SetUpval, NewTable, GetTable, SetTable, SetList, Self, Add, Sub, Mul, Div, Concat, Not, Len, Unm, BNot, Jmp, Eq, Test, TestSet
+private enum string sharedOpcodeCases1 = q{
+                case OpCode.Nop:
+                    break;
+
+                case OpCode.Move:
+                    copyValue(registers[instr.a], registers[instr.b]);
+                    break;
+
+                case OpCode.LoadNil:
+                    for (int i = instr.a; i <= instr.a + instr.b; ++i) {
+                        registers[i] = luaNil();
+                    }
+                    break;
+
+                case OpCode.LoadBool:
+                    registers[instr.a] = luaValue(instr.b != 0);
+                    if (instr.c != 0)
+                        ip++;
+                    break;
+
+                case OpCode.LoadInt:
+                    registers[instr.a] = luaValue(cast(long) instr.sBx);
+                    break;
+
+                case OpCode.LoadK:
+                    copyValue(registers[instr.a], proto.constants[instr.b]);
+                    break;
+
+                case OpCode.GetGlobal: {
+                        // Plain global table (or an _ENV upvalue holding one) with a cached node.
+                        auto nameConstant = &proto.constants[instr.b];
+                        LuaTable environment;
+                        if (instr.c < 0) {
+                            auto upvalue = closure.upvalues[-instr.c - 1].ptr();
+                            if (upvalue.isTable)
+                                environment = upvalue.asTable;
+                        } else if (instr.c == 0)
+                            environment = state.globals;
+                        if (environment !is null && nameConstant.isString) {
+                            auto found = environment.findStringHinted(nameConstant.asString, proto.lookupHints[cast(int)(ip - codeBase) - 1]);
+                            if (found !is null && !found.isNil) {
+                                copyValue(registers[instr.a], *found);
+                                break;
+                            }
+                        }
+                    }
+                    execGetGlobal(state, closure, proto, registers, instr, cast(int)(ip - codeBase) - 1);
+                    break;
+
+                case OpCode.SetGlobal:
+                    execSetGlobal(state, closure, proto, registers, instr, cast(int)(ip - codeBase) - 1);
+                    break;
+
+                case OpCode.GetUpval:
+                    if (instr.b < closure.upvalues.length) {
+                        copyValue(registers[instr.a], *closure.upvalues[instr.b].ptr());
+                    }
+                    break;
+
+                case OpCode.SetUpval:
+                    if (instr.b < closure.upvalues.length) {
+                        copyValue(*closure.upvalues[instr.b].ptr(), registers[instr.a]);
+                    }
+                    break;
+
+                case OpCode.NewTable:
+                    registers[instr.a] = luaNil(); // the old value is dead; do not keep it across a collection
+                    state.allocationTick();
+                    newTableInto(registers[instr.a], proto.newTableSizes[cast(int)(ip - codeBase) - 1]);
+                    break;
+
+                case OpCode.GetTable: {
+                        // Array-part hit with an integer key: no call, no metatable lookup.
+                        auto container = &registers[instr.b];
+                        auto key = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
+                        if (container.isTable && key.isInteger) {
+                            auto elements = container.asTable.arrayPart;
+                            ulong slot = cast(ulong) key.asInteger - 1;
+                            if (slot < elements.length && !elements[slot].isNil) {
+                                copyValue(registers[instr.a], elements[slot]);
+                                break;
+                            }
+                        }
+                    }
+                    execGetTable(state, proto, registers, instr, cast(int)(ip - codeBase) - 1);
+                    break;
+
+                case OpCode.SetTable: {
+                        auto container = &registers[instr.a];
+                        auto key = instr.bIsK ? &proto.constants[instr.b] : &registers[instr.b];
+                        if (container.isTable && key.isInteger) {
+                            auto table = container.asTable;
+                            ulong slot = cast(ulong) key.asInteger - 1;
+                            auto value = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
+                            if (table.metatable is null && slot < table.arrayPart.length && !value.isNil) {
+                                copyValue(table.arrayPart[slot], *value);
+                                break;
+                            }
+                        }
+                    }
+                    execSetTable(state, proto, registers, instr, cast(int)(ip - codeBase) - 1);
+                    break;
+
+                case OpCode.SetList:
+                    execSetList(registers, instr.a, instr.b, instr.c, top);
+                    break;
+
+                case OpCode.Self:
+                    execSelf(state, proto, registers, instr, cast(int)(ip - codeBase) - 1);
+                    break;
+
+                    // Arithmetic, bitwise and concatenation operations. Same-type integer/float
+                    // operands are handled inline; everything else takes the generic path.
+                case OpCode.Add:
+                    mixin(fastArithmetic("+"));
+                    execArith(state, proto, registers, instr);
+                    break;
+                case OpCode.Sub:
+                    mixin(fastArithmetic("-"));
+                    execArith(state, proto, registers, instr);
+                    break;
+                case OpCode.Mul:
+                    mixin(fastArithmetic("*"));
+                    execArith(state, proto, registers, instr);
+                    break;
+                case OpCode.Div, OpCode.IDiv, OpCode.Mod, OpCode.Pow,
+                    OpCode.BAnd, OpCode.BOr, OpCode.BXor, OpCode.Shl, OpCode.Shr:
+                    execArith(state, proto, registers, instr);
+                    break;
+                case OpCode.Concat:
+                    if ((instr.bIsK || instr.a != instr.b) && (instr.cIsK || instr.a != instr.c))
+                        registers[instr.a] = luaNil();
+                    state.allocationTick();
+                    execArith(state, proto, registers, instr);
+                    break;
+
+                    // Unary operations
+                case OpCode.Not:
+                    setBoolean(registers[instr.a], !registers[instr.b].isTruthy);
+                    break;
+                case OpCode.Len: {
+                        auto operand = &registers[instr.b];
+                        if (operand.isTable && operand.asTable.metatable is null) {
+                            setInteger(registers[instr.a], operand.asTable.rawLen());
+                            break;
+                        }
+                        if (operand.isString) {
+                            setInteger(registers[instr.a], cast(long) operand.asString.length);
+                            break;
+                        }
+                    }
+                    execUnary(state, registers, instr);
+                    break;
+                case OpCode.Unm: {
+                        auto operand = &registers[instr.b];
+                        if (operand.isInteger) {
+                            setInteger(registers[instr.a], cast(long)(0UL - cast(ulong) operand.asInteger));
+                            break;
+                        }
+                        if (operand.isFloat) {
+                            setFloat(registers[instr.a], -operand.asFloat);
+                            break;
+                        }
+                    }
+                    execUnary(state, registers, instr);
+                    break;
+                case OpCode.BNot:
+                    execUnary(state, registers, instr);
+                    break;
+
+                    // Jumps & Comparisons
+                case OpCode.Jmp:
+                    ip += instr.sBx;
+                    break;
+
+                case OpCode.Eq, OpCode.Lt, OpCode.Le: {
+                        auto left = instr.aIsK ? &proto.constants[instr.a] : &registers[instr.a];
+                        auto right = instr.bIsK ? &proto.constants[instr.b] : &registers[instr.b];
+                        bool outcome;
+                        if (left.isInteger && right.isInteger) {
+                            long x = left.asInteger, y = right.asInteger;
+                            outcome = op == OpCode.Eq ? x == y : op == OpCode.Lt ? x < y : x <= y;
+                        } else if (left.isFloat && right.isFloat) {
+                            double x = left.asFloat, y = right.asFloat;
+                            outcome = op == OpCode.Eq ? x == y : op == OpCode.Lt ? x < y : x <= y;
+                        } else {
+                            outcome = execCompare(state, proto, registers, instr);
+                        }
+                        if (outcome != (instr.c != 0))
+                            ip++;
+                    }
+                    break;
+
+                case OpCode.Test:
+                    if (isTruthy(registers[instr.a]) == (instr.c != 0)) {
+                        ip += instr.sBx;
+                    }
+                    break;
+
+                case OpCode.TestSet:
+                    if (isTruthy(registers[instr.b]) == (instr.c != 0)) {
+                        registers[instr.a] = registers[instr.b];
+                        ip += instr.sBx;
+                    }
+                    break;
+
+                    // Calls and Returns
+};
+
+// ForPrep, ForLoop, TForCall, TForLoop, Closure, Vararg, Close, ToClose, BeginTransaction, EndTransaction, Rollback, DefineContent
+private enum string sharedOpcodeCases2 = q{
+                case OpCode.ForPrep:
+                    if (forPrepare(state, registers, instr.a))
+                        ip += instr.sBx;
+                    break;
+
+                case OpCode.ForLoop: {
+                        // Prepared integer loops keep the remaining iteration count in R[a+1].
+                        auto control = &registers[instr.a];
+                        if (control[2].isInteger) {
+                            long count = control[1].asInteger;
+                            if (count > 0) {
+                                long index = control[0].asInteger + control[2].asInteger;
+                                setInteger(control[1], count - 1);
+                                setInteger(control[0], index);
+                                setInteger(control[3], index);
+                                ip += instr.sBx;
+                            }
+                        } else if (forStep(registers, instr.a))
+                            ip += instr.sBx;
+                    }
+                    break;
+
+                    // Generic For
+                case OpCode.TForCall:
+                    execTForCall(state, registers, instr.a, instr.c, frameThread.hookFunction is null);
+                    break;
+
+                case OpCode.TForLoop:
+                    if (!isNil(registers[instr.a + 2])) {
+                        copyValue(registers[instr.a], registers[instr.a + 2]);
+                        ip += instr.sBx;
+                    }
+                    break;
+
+                    // Closures and Upvalues
+                case OpCode.Closure:
+                    registers[instr.a] = luaNil();
+                    state.allocationTick();
+                    execClosure(closure, proto, registers, instr.a, instr.b, &findOrCreateUpvalue);
+                    break;
+
+                case OpCode.Vararg:
+                    int numWanted = instr.b - 1;
+                    if (numWanted >= 0) {
+                        for (int i = 0; i < numWanted; ++i) {
+                            if (instr.a + i >= registers.length)
+                                growRegisters(instr.a + i + 8);
+                            registers[instr.a + i] = (i < varargs.length) ? varargs[i] : luaNil();
+                        }
+                        top = instr.a + numWanted;
+                    } else {
+                        if (instr.a + varargs.length >= registers.length) {
+                            growRegisters(instr.a + varargs.length + 8);
+                        }
+                        for (size_t i = 0; i < varargs.length; ++i) {
+                            registers[instr.a + i] = varargs[i];
+                        }
+                        top = instr.a + cast(int) varargs.length;
+                    }
+                    break;
+
+                case OpCode.Close:
+                    closeValuesFrom(instr.a);
+                    break;
+
+                case OpCode.ToClose:
+                    if (isNil(registers[instr.a]) || (registers[instr.a].typeOf() == LuaType.Boolean && !isTruthy(
+                            registers[instr.a])))
+                        break;
+                    auto closeMetatable = state.getMetatable(registers[instr.a]);
+                    if (closeMetatable is null || isNil(closeMetatable.rawget(LuaValue("__close")))) {
+                        string variable = "?";
+                        foreach (local; proto.debugLocals)
+                            if (local.register == instr.a && local.startPC <= cast(int)(ip - codeBase) - 1 && cast(int)(ip - codeBase) - 1 < local.endPC)
+                                variable = local.name;
+                        throw new LuaException("variable '" ~ variable ~ "' got a non-closable value");
+                    }
+                    toClose ~= instr.a;
+                    break;
+
+                case OpCode.BeginTransaction:
+                    World transactionWorld = instr.a < 0 ? state.globalWorld
+                        : unwrapWorld(registers[instr.a]);
+                    frameTransactions ~= FrameTransaction(new Transaction(transactionWorld), cast(int)(ip - codeBase), instr.b, instr.c);
+                    ++openFrameTransactions;
+                    vmAttention = true;
+                    break;
+                case OpCode.EndTransaction:
+                    frameTransactions[$ - 1].transaction.finish(true);
+                    frameTransactions.length--;
+                    --openFrameTransactions;
+                    break;
+                case OpCode.Rollback:
+                    if (!frameTransactions.length)
+                        throw new LuaException("rollback outside a transaction");
+                    auto rolledBack = frameTransactions[$ - 1];
+                    closeValuesFrom(rolledBack.firstRegister);
+                    rolledBack.transaction.finish(false);
+                    ip = codeBase + rolledBack.endPC;
+                    frameTransactions.length--;
+                    --openFrameTransactions;
+                    break;
+
+                case OpCode.DefineContent, OpCode.DefineDeck, OpCode.LoadSymbol, OpCode.NewLocalRel, OpCode.DeclRel,
+                    OpCode.SetFact, OpCode.DeleteKey, OpCode.AdjustKey, OpCode.AddFact, OpCode.RetractFact,
+                    OpCode.RegRule, OpCode.MakeQuery:
+                    declarativeOp(state, closure, proto, registers, &findOrCreateUpvalue, instr);
+                    break;
+};
+
 /// Lua frames of native recursion after which calls run in `executeDeepFrame`.
 private enum size_t inlineDepthThreshold = 150;
 
@@ -800,559 +1127,255 @@ struct VM {
                 auto op = instr.op;
 
                 switch (op) {
-                case OpCode.Nop:
-                    break;
+                    mixin(sharedOpcodeCases1);
 
-                case OpCode.Move:
-                    copyValue(registers[instr.a], registers[instr.b]);
-                    break;
-
-                case OpCode.LoadNil:
-                    for (int i = instr.a; i <= instr.a + instr.b; ++i) {
-                        registers[i] = luaNil();
-                    }
-                    break;
-
-                case OpCode.LoadBool:
-                    registers[instr.a] = luaValue(instr.b != 0);
-                    if (instr.c != 0)
-                        ip++;
-                    break;
-
-                case OpCode.LoadInt:
-                    registers[instr.a] = luaValue(cast(long) instr.sBx);
-                    break;
-
-                case OpCode.LoadK:
-                    copyValue(registers[instr.a], proto.constants[instr.b]);
-                    break;
-
-                case OpCode.GetGlobal: {
-                        // Plain global table (or an _ENV upvalue holding one) with a cached node.
-                        auto nameConstant = &proto.constants[instr.b];
-                        LuaTable environment;
-                        if (instr.c < 0) {
-                            auto upvalue = closure.upvalues[-instr.c - 1].ptr();
-                            if (upvalue.isTable)
-                                environment = upvalue.asTable;
-                        } else if (instr.c == 0)
-                            environment = state.globals;
-                        if (environment !is null && nameConstant.isString) {
-                            auto found = environment.findStringHinted(nameConstant.asString, proto.lookupHints[curPC() - 1]);
-                            if (found !is null && !found.isNil) {
-                                copyValue(registers[instr.a], *found);
-                                break;
+                case OpCode.TailCall: {
+                        checkCallable(state, registers[instr.a]);
+                        if (isNativeFunction(registers[instr.a])) {
+                            // A C function is called in place, as a regular call (lua 5.4 precallC):
+                            // its errors are attributed to this frame and call site.
+                            int nativeArgs = instr.b == 0 ? top - instr.a - 1 : instr.b - 1;
+                            auto nativeFunction = registers[instr.a].asFunction;
+                            if (nativeFunction.fastCall !is null && frameThread.hookFunction is null) {
+                                // Hot built-ins (`return setmetatable(...)`) run straight on the registers.
+                                int produced = nativeFunction.fastCall(cast(void*) state, registers, instr.a, nativeArgs);
+                                if (produced < -1) {
+                                    // Results that did not fit the registers were stashed.
+                                    auto stashed = state.stashedResults;
+                                    state.stashedResults = null;
+                                    closeValuesFrom(0);
+                                    return stashed.dup;
+                                }
+                                if (produced >= 0) {
+                                    closeValuesFrom(0);
+                                    if (produced == 0)
+                                        return [];
+                                    if (frameThread.returnBuffers.length <= registerDepth)
+                                        frameThread.returnBuffers.length = registerDepth + 1;
+                                    if (frameThread.returnBuffers[registerDepth].length < cast(size_t) produced)
+                                        frameThread.returnBuffers[registerDepth] = new LuaValue[produced];
+                                    auto buffer = frameThread.returnBuffers[registerDepth][0 .. produced];
+                                    for (int i = 0; i < produced; ++i)
+                                        copyValue(buffer[i], registers[instr.a + i]);
+                                    return buffer;
+                                }
                             }
+                            debugLimit = instr.a;
+                            auto nativeResults = doCall(state, closure, proto, registers, instr.a, nativeArgs, curPC() - 1);
+                            debugLimit = proto.maxStackSize;
+                            closeValuesFrom(0);
+                            state.debugHook("return", -1, nativeResults, true);
+                            return nativeResults;
                         }
-                    }
-                    execGetGlobal(state, closure, proto, registers, instr, curPC() - 1);
-                    break;
-
-                case OpCode.SetGlobal:
-                    execSetGlobal(state, closure, proto, registers, instr, curPC() - 1);
-                    break;
-
-                case OpCode.GetUpval:
-                    if (instr.b < closure.upvalues.length) {
-                        copyValue(registers[instr.a], *closure.upvalues[instr.b].ptr());
-                    }
-                    break;
-
-                case OpCode.SetUpval:
-                    if (instr.b < closure.upvalues.length) {
-                        copyValue(*closure.upvalues[instr.b].ptr(), registers[instr.a]);
-                    }
-                    break;
-
-                case OpCode.NewTable:
-                    registers[instr.a] = luaNil(); // the old value is dead; do not keep it across a collection
-                    state.allocationTick();
-                    newTableInto(registers[instr.a], proto.newTableSizes[curPC() - 1]);
-                    break;
-
-                case OpCode.GetTable: {
-                        // Array-part hit with an integer key: no call, no metatable lookup.
-                        auto container = &registers[instr.b];
-                        auto key = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
-                        if (container.isTable && key.isInteger) {
-                            auto elements = container.asTable.arrayPart;
-                            ulong slot = cast(ulong) key.asInteger - 1;
-                            if (slot < elements.length && !elements[slot].isNil) {
-                                copyValue(registers[instr.a], elements[slot]);
-                                break;
-                            }
-                        }
-                    }
-                    execGetTable(state, proto, registers, instr, curPC() - 1);
-                    break;
-
-                case OpCode.SetTable: {
-                        auto container = &registers[instr.a];
-                        auto key = instr.bIsK ? &proto.constants[instr.b] : &registers[instr.b];
-                        if (container.isTable && key.isInteger) {
-                            auto table = container.asTable;
-                            ulong slot = cast(ulong) key.asInteger - 1;
-                            auto value = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
-                            if (table.metatable is null && slot < table.arrayPart.length && !value.isNil) {
-                                copyValue(table.arrayPart[slot], *value);
-                                break;
-                            }
-                        }
-                    }
-                    execSetTable(state, proto, registers, instr, curPC() - 1);
-                    break;
-
-                case OpCode.SetList:
-                    execSetList(registers, instr.a, instr.b, instr.c, top);
-                    break;
-
-                case OpCode.Self:
-                    execSelf(state, proto, registers, instr, curPC() - 1);
-                    break;
-
-                    // Arithmetic, bitwise and concatenation operations. Same-type integer/float
-                    // operands are handled inline; everything else takes the generic path.
-                case OpCode.Add:
-                    mixin(fastArithmetic("+"));
-                    execArith(state, proto, registers, instr);
-                    break;
-                case OpCode.Sub:
-                    mixin(fastArithmetic("-"));
-                    execArith(state, proto, registers, instr);
-                    break;
-                case OpCode.Mul:
-                    mixin(fastArithmetic("*"));
-                    execArith(state, proto, registers, instr);
-                    break;
-                case OpCode.Div, OpCode.IDiv, OpCode.Mod, OpCode.Pow,
-                    OpCode.BAnd, OpCode.BOr, OpCode.BXor, OpCode.Shl, OpCode.Shr:
-                    execArith(state, proto, registers, instr);
-                    break;
-                case OpCode.Concat:
-                    if ((instr.bIsK || instr.a != instr.b) && (instr.cIsK || instr.a != instr.c))
-                        registers[instr.a] = luaNil();
-                    state.allocationTick();
-                    execArith(state, proto, registers, instr);
-                    break;
-
-                    // Unary operations
-                case OpCode.Not:
-                    setBoolean(registers[instr.a], !registers[instr.b].isTruthy);
-                    break;
-                case OpCode.Len: {
-                        auto operand = &registers[instr.b];
-                        if (operand.isTable && operand.asTable.metatable is null) {
-                            setInteger(registers[instr.a], operand.asTable.rawLen());
-                            break;
-                        }
-                        if (operand.isString) {
-                            setInteger(registers[instr.a], cast(long) operand.asString.length);
-                            break;
-                        }
-                    }
-                    execUnary(state, registers, instr);
-                    break;
-                case OpCode.Unm: {
-                        auto operand = &registers[instr.b];
-                        if (operand.isInteger) {
-                            setInteger(registers[instr.a], cast(long)(0UL - cast(ulong) operand.asInteger));
-                            break;
-                        }
-                        if (operand.isFloat) {
-                            setFloat(registers[instr.a], -operand.asFloat);
-                            break;
-                        }
-                    }
-                    execUnary(state, registers, instr);
-                    break;
-                case OpCode.BNot:
-                    execUnary(state, registers, instr);
-                    break;
-
-                    // Jumps & Comparisons
-                case OpCode.Jmp:
-                    ip += instr.sBx;
-                    break;
-
-                case OpCode.Eq, OpCode.Lt, OpCode.Le: {
-                        auto left = instr.aIsK ? &proto.constants[instr.a] : &registers[instr.a];
-                        auto right = instr.bIsK ? &proto.constants[instr.b] : &registers[instr.b];
-                        bool outcome;
-                        if (left.isInteger && right.isInteger) {
-                            long x = left.asInteger, y = right.asInteger;
-                            outcome = op == OpCode.Eq ? x == y : op == OpCode.Lt ? x < y : x <= y;
-                        } else if (left.isFloat && right.isFloat) {
-                            double x = left.asFloat, y = right.asFloat;
-                            outcome = op == OpCode.Eq ? x == y : op == OpCode.Lt ? x < y : x <= y;
+                        int count = instr.b == 0 ? top - instr.a - 1 : instr.b - 1;
+                        int context = proto.callSites[curPC() - 1].world;
+                        frameThread.tailWorld = context > 0 ? unwrapWorld(registers[context - 1]) : context < 0 ? unwrapWorld(
+                                closure.upvalues[-context - 1].get()) : state.globalWorld;
+                        frameThread.tailCallee = registers[instr.a];
+                        if (toClose.length) {
+                            // Close handlers may run Lua code (and tail calls of their own): keep a private copy.
+                            frameThread.tailArguments = count > 0 ? registers[instr.a + 1 .. instr.a + 1 + count].dup
+                                : [
+                            ];
+                            closeValuesFrom(0);
                         } else {
-                            outcome = execCompare(state, proto, registers, instr);
+                            // The callee copies its arguments into its own registers on entry (and clears
+                            // them, see `transferred`), so a per-thread buffer is enough.
+                            if (frameThread.tailBuffer.length < cast(size_t) count)
+                                frameThread.tailBuffer = new LuaValue[cast(size_t) count * 2 + 8];
+                            auto buffer = frameThread.tailBuffer[0 .. count];
+                            for (int i = 0; i < count; ++i)
+                                copyValue(buffer[i], registers[instr.a + 1 + i]);
+                            frameThread.tailArguments = buffer;
+                            closeUpvaluesFrom(0);
                         }
-                        if (outcome != (instr.c != 0))
-                            ip++;
+                        tail.pending = true;
+                        return [];
                     }
-                    break;
 
-                case OpCode.Test:
-                    if (isTruthy(registers[instr.a]) == (instr.c != 0)) {
-                        ip += instr.sBx;
-                    }
-                    break;
+                case OpCode.Call: {
+                        int numArgs = (instr.b == 0) ? cast(int)(top - (instr.a + 1)) : (instr.b - 1);
+                        int numWantedResults = instr.c - 1;
+                        if (numWantedResults >= 0 && instr.a + numWantedResults >= registers.length)
+                            growRegisters(instr.a + numWantedResults + 8);
 
-                case OpCode.TestSet:
-                    if (isTruthy(registers[instr.b]) == (instr.c != 0)) {
-                        registers[instr.a] = registers[instr.b];
-                        ip += instr.sBx;
-                    }
-                    break;
-
-                    // Calls and Returns
-                case OpCode.TailCall:
-                    checkCallable(state, registers[instr.a]);
-                    if (isNativeFunction(registers[instr.a])) {
-                        // A C function is called in place, as a regular call (lua 5.4 precallC):
-                        // its errors are attributed to this frame and call site.
-                        int nativeArgs = instr.b == 0 ? top - instr.a - 1 : instr.b - 1;
-                        auto nativeFunction = registers[instr.a].asFunction;
-                        if (nativeFunction.fastCall !is null && frameThread.hookFunction is null) {
-                            // Hot built-ins (`return setmetatable(...)`) run straight on the registers.
-                            int produced = nativeFunction.fastCall(cast(void*) state, registers, instr.a, nativeArgs);
-                            if (produced < -1) {
-                                // Results that did not fit the registers were stashed.
-                                auto stashed = state.stashedResults;
-                                state.stashedResults = null;
-                                closeValuesFrom(0);
-                                return stashed.dup;
+                        if (registers[instr.a].isFunction) {
+                            auto calleeFunction = registers[instr.a].asFunction;
+                            if (calleeFunction is state.errorFunction && frameThread.hookFunction is null && numArgs >= 1
+                                    && (numArgs == 1 || registers[instr.a + 2].isNil || registers[instr.a + 2]
+                                        .isInteger)) {
+                                // `error(message [, level])` raised straight from the interpreter: one throw
+                                // instead of two (no native call wrapper to unwind through).
+                                long level = numArgs >= 2 && registers[instr.a + 2].isInteger ? registers[instr.a + 2]
+                                    .asInteger : 1;
+                                auto site = &proto.callSites[curPC() - 1];
+                                state.pushCall(calleeFunction, "[C]", -1, false, site.name, site.kind);
+                                auto errorObject = registers[instr.a + 1];
+                                if (errorObject.isString && level > 0)
+                                    errorObject = LuaValue(
+                                            state.locationPrefix(cast(int) level) ~ toLuaString(errorObject));
+                                auto raised = new LuaException(errorObject);
+                                raised.needsLocation = false;
+                                raised.originFunction = calleeFunction;
+                                raised.originName = site.name;
+                                raised.originKind = site.kind;
+                                state.dispatchError(raised);
+                                state.popCall();
+                                raisedError = raised;
+                                break interpret;
                             }
-                            if (produced >= 0) {
-                                closeValuesFrom(0);
-                                if (produced == 0)
-                                    return [];
-                                if (frameThread.returnBuffers.length <= registerDepth)
-                                    frameThread.returnBuffers.length = registerDepth + 1;
-                                if (frameThread.returnBuffers[registerDepth].length < cast(size_t) produced)
-                                    frameThread.returnBuffers[registerDepth] = new LuaValue[produced];
-                                auto buffer = frameThread.returnBuffers[registerDepth][0 .. produced];
-                                for (int i = 0; i < produced; ++i)
-                                    copyValue(buffer[i], registers[instr.a + i]);
-                                return buffer;
+                            if (calleeFunction.fastCall !is null && frameThread.hookFunction is null) {
+                                // Hot built-ins run straight on the registers (see varis.lib.fastcall).
+                                int produced = calleeFunction.fastCall(cast(void*) state, registers, instr.a, numArgs);
+                                if (produced < -1) {
+                                    // Results that did not fit were stashed (see lib.coroutine.fastWrapCall).
+                                    int stashed = -2 - produced;
+                                    growRegisters(instr.a + (stashed > numWantedResults ? stashed : numWantedResults) + 8);
+                                    placeStashedResults(state, registers, instr.a);
+                                    produced = stashed;
+                                }
+                                if (produced >= 0) {
+                                    if (numWantedResults >= 0) {
+                                        for (int i = produced; i < numWantedResults; ++i)
+                                            registers[instr.a + i] = luaNil();
+                                        top = instr.a + numWantedResults;
+                                    } else
+                                        top = instr.a + produced;
+                                    break;
+                                }
                             }
                         }
                         debugLimit = instr.a;
-                        auto nativeResults = doCall(state, closure, proto, registers, instr.a, nativeArgs, curPC() - 1);
-                        debugLimit = proto.maxStackSize;
-                        closeValuesFrom(0);
-                        state.debugHook("return", -1, nativeResults, true);
-                        return nativeResults;
-                    }
-                    int count = instr.b == 0 ? top - instr.a - 1 : instr.b - 1;
-                    int context = proto.callSites[curPC() - 1].world;
-                    frameThread.tailWorld = context > 0 ? unwrapWorld(registers[context - 1]) : context < 0 ? unwrapWorld(
-                            closure.upvalues[-context - 1].get()) : state.globalWorld;
-                    frameThread.tailCallee = registers[instr.a];
-                    if (toClose.length) {
-                        // Close handlers may run Lua code (and tail calls of their own): keep a private copy.
-                        frameThread.tailArguments = count > 0 ? registers[instr.a + 1 .. instr.a + 1 + count].dup : [
-                        ];
-                        closeValuesFrom(0);
-                    } else {
-                        // The callee copies its arguments into its own registers on entry (and clears
-                        // them, see `transferred`), so a per-thread buffer is enough.
-                        if (frameThread.tailBuffer.length < cast(size_t) count)
-                            frameThread.tailBuffer = new LuaValue[cast(size_t) count * 2 + 8];
-                        auto buffer = frameThread.tailBuffer[0 .. count];
-                        for (int i = 0; i < count; ++i)
-                            copyValue(buffer[i], registers[instr.a + 1 + i]);
-                        frameThread.tailArguments = buffer;
-                        closeUpvaluesFrom(0);
-                    }
-                    tail.pending = true;
-                    return [];
-
-                case OpCode.Call:
-                    int numArgs = (instr.b == 0) ? cast(int)(top - (instr.a + 1)) : (instr.b - 1);
-                    int numWantedResults = instr.c - 1;
-                    if (numWantedResults >= 0 && instr.a + numWantedResults >= registers.length)
-                        growRegisters(instr.a + numWantedResults + 8);
-
-                    if (registers[instr.a].isFunction) {
-                        auto calleeFunction = registers[instr.a].asFunction;
-                        if (calleeFunction is state.errorFunction && frameThread.hookFunction is null && numArgs >= 1
-                                && (numArgs == 1 || registers[instr.a + 2].isNil || registers[instr.a + 2].isInteger)) {
-                            // `error(message [, level])` raised straight from the interpreter: one throw
-                            // instead of two (no native call wrapper to unwind through).
-                            long level = numArgs >= 2 && registers[instr.a + 2].isInteger ? registers[instr.a + 2]
-                                .asInteger : 1;
+                        int resultTop;
+                        if (registers[instr.a].isFunction && registers[instr.a].asFunction.isLuaClosure) {
+                            // Lua → Lua call: run the callee directly; its results are written into
+                            // R[a ...] by its Return (see TailRequest.placeInDest).
+                            auto callee = cast(LuaClosure) cast(void*) registers[instr.a].asFunction;
                             auto site = &proto.callSites[curPC() - 1];
-                            state.pushCall(calleeFunction, "[C]", -1, false, site.name, site.kind);
-                            auto errorObject = registers[instr.a + 1];
-                            if (errorObject.isString && level > 0)
-                                errorObject = LuaValue(state.locationPrefix(cast(int) level) ~ toLuaString(errorObject));
-                            auto raised = new LuaException(errorObject);
-                            raised.needsLocation = false;
-                            raised.originFunction = calleeFunction;
-                            raised.originName = site.name;
-                            raised.originKind = site.kind;
-                            state.dispatchError(raised);
-                            state.popCall();
-                            raisedError = raised;
-                            break interpret;
-                        }
-                        if (calleeFunction.fastCall !is null && frameThread.hookFunction is null) {
-                            // Hot built-ins run straight on the registers (see varis.lib.fastcall).
-                            int produced = calleeFunction.fastCall(cast(void*) state, registers, instr.a, numArgs);
-                            if (produced < -1) {
-                                // Results that did not fit were stashed (see lib.coroutine.fastWrapCall).
-                                int stashed = -2 - produced;
-                                growRegisters(instr.a + (stashed > numWantedResults ? stashed : numWantedResults) + 8);
-                                placeStashedResults(state, registers, instr.a);
-                                produced = stashed;
+                            auto targetWorld = site.world == 0 ? state.globalWorld : site.world > 0 ? unwrapWorld(
+                                    registers[site.world - 1]) : unwrapWorld(closure.upvalues[-site.world - 1].get());
+                            auto previousWorld = state.callWorld;
+                            bool swapped = previousWorld !is targetWorld;
+                            if (swapped) {
+                                state.callWorld = targetWorld;
+                                // Restored when the callee returns, or first thing in any handler below.
+                                worldToRestore = previousWorld;
+                                worldDirty = true;
                             }
-                            if (produced >= 0) {
-                                if (numWantedResults >= 0) {
-                                    for (int i = produced; i < numWantedResults; ++i)
-                                        registers[instr.a + i] = luaNil();
-                                    top = instr.a + numWantedResults;
-                                } else
-                                    top = instr.a + produced;
-                                break;
-                            }
-                        }
-                    }
-                    debugLimit = instr.a;
-                    int resultTop;
-                    if (registers[instr.a].isFunction && registers[instr.a].asFunction.isLuaClosure) {
-                        // Lua → Lua call: run the callee directly; its results are written into
-                        // R[a ...] by its Return (see TailRequest.placeInDest).
-                        auto callee = cast(LuaClosure) cast(void*) registers[instr.a].asFunction;
-                        auto site = &proto.callSites[curPC() - 1];
-                        auto targetWorld = site.world == 0 ? state.globalWorld : site.world > 0 ? unwrapWorld(
-                                registers[site.world - 1]) : unwrapWorld(closure.upvalues[-site.world - 1].get());
-                        auto previousWorld = state.callWorld;
-                        bool swapped = previousWorld !is targetWorld;
-                        if (swapped) {
-                            state.callWorld = targetWorld;
-                            // Restored when the callee returns, or first thing in any handler below.
-                            worldToRestore = previousWorld;
-                            worldDirty = true;
-                        }
-                        import varis.gc : stackHygiene, scrubDeadStack;
+                            import varis.gc : stackHygiene, scrubDeadStack;
 
-                        if (stackHygiene)
-                            scrubDeadStack();
-                        TailRequest childTail;
-                        childTail.placeInDest = true;
-                        childTail.returnErrors = true; // a failing callee returns its error (no rethrow per frame)
-                        childTail.wanted = numWantedResults;
-                        childTail.dest = numWantedResults >= 0 ? registers[instr.a .. instr.a + numWantedResults]
-                            : registers[instr.a .. $];
-                        auto childResults = registerDepth >= inlineDepthThreshold
-                            ? executeDeepFrame(state, callee, registers[instr.a + 1 .. instr.a + 1 + numArgs],
-                                    childTail, false, site.name, site.kind) : executeFrame(state, callee, registers[instr
-                                    .a + 1 .. instr.a + 1 + numArgs],
-                        childTail, false, site.name, site.kind);
-                        bool childPlaced = childTail.placed;
-                        size_t childCount = childTail.placedCount;
-                        if (childTail.pending)
-                            childResults = runTailCalls(state, childTail, childPlaced, childCount);
-                        if (childTail.error !is null) {
-                            raisedError = childTail.error;
-                            break interpret;
-                        }
-                        if (swapped) {
-                            state.callWorld = previousWorld;
-                            worldDirty = false;
-                        }
-                        if (childPlaced)
-                            resultTop = instr.a + cast(int) childCount;
-                        else if (numWantedResults >= 0) {
-                            size_t available = childResults.length < cast(size_t) numWantedResults ? childResults
-                                .length : cast(size_t) numWantedResults;
-                            for (size_t i = 0; i < available; ++i)
-                                copyValue(registers[instr.a + i], childResults[i]);
-                            for (size_t i = available; i < cast(size_t) numWantedResults; ++i)
-                                registers[instr.a + i] = luaNil();
-                            resultTop = instr.a + numWantedResults;
-                        } else if (instr.a + childResults.length >= registers.length) {
-                            state.stashedResults = childResults;
-                            resultTop = -cast(int) childResults.length;
+                            if (stackHygiene)
+                                scrubDeadStack();
+                            TailRequest childTail;
+                            childTail.placeInDest = true;
+                            childTail.returnErrors = true; // a failing callee returns its error (no rethrow per frame)
+                            childTail.wanted = numWantedResults;
+                            childTail.dest = numWantedResults >= 0 ? registers[instr.a .. instr.a + numWantedResults]
+                                : registers[instr.a .. $];
+                            auto childResults = registerDepth >= inlineDepthThreshold
+                                ? executeDeepFrame(state, callee, registers[instr.a + 1 .. instr.a + 1 + numArgs],
+                                        childTail, false, site.name, site.kind) : executeFrame(state, callee, registers[instr
+                                        .a + 1 .. instr.a + 1 + numArgs],
+                            childTail, false, site.name, site.kind);
+                            bool childPlaced = childTail.placed;
+                            size_t childCount = childTail.placedCount;
+                            if (childTail.pending)
+                                childResults = runTailCalls(state, childTail, childPlaced, childCount);
+                            if (childTail.error !is null) {
+                                raisedError = childTail.error;
+                                break interpret;
+                            }
+                            if (swapped) {
+                                state.callWorld = previousWorld;
+                                worldDirty = false;
+                            }
+                            if (childPlaced)
+                                resultTop = instr.a + cast(int) childCount;
+                            else if (numWantedResults >= 0) {
+                                size_t available = childResults.length < cast(size_t) numWantedResults ? childResults
+                                    .length : cast(size_t) numWantedResults;
+                                for (size_t i = 0; i < available; ++i)
+                                    copyValue(registers[instr.a + i], childResults[i]);
+                                for (size_t i = available; i < cast(size_t) numWantedResults; ++i)
+                                    registers[instr.a + i] = luaNil();
+                                resultTop = instr.a + numWantedResults;
+                            } else if (instr.a + childResults.length >= registers.length) {
+                                state.stashedResults = childResults;
+                                resultTop = -cast(int) childResults.length;
+                            } else {
+                                for (size_t i = 0; i < childResults.length; ++i)
+                                    copyValue(registers[instr.a + i], childResults[i]);
+                                resultTop = instr.a + cast(int) childResults.length;
+                            }
                         } else {
-                            for (size_t i = 0; i < childResults.length; ++i)
-                                copyValue(registers[instr.a + i], childResults[i]);
-                            resultTop = instr.a + cast(int) childResults.length;
+                            // The call and the placement of its results happen in one frame of their own so
+                            // that no array holding result values stays referenced from this frame.
+                            resultTop = callAndPlace(state, closure, proto, registers, instr.a, numArgs, numWantedResults, curPC() - 1);
                         }
-                    } else {
-                        // The call and the placement of its results happen in one frame of their own so
-                        // that no array holding result values stays referenced from this frame.
-                        resultTop = callAndPlace(state, closure, proto, registers, instr.a, numArgs, numWantedResults, curPC() - 1);
-                    }
-                    debugLimit = proto.maxStackSize;
-                    if (resultTop < 0) {
-                        // Variable results did not fit: grow, then copy the stashed values.
-                        growRegisters(instr.a + (-resultTop) + 8);
-                        resultTop = placeStashedResults(state, registers, instr.a);
-                    }
-                    top = resultTop;
-                    break;
-
-                case OpCode.Return:
-                    int numRet = instr.b - 1;
-                    LuaValue[] returned;
-                    if (numRet < 0) {
-                        int endReg = (top > instr.a) ? top : instr.a;
-                        if (endReg > registers.length)
-                            endReg = cast(int) registers.length;
-                        returned = (endReg > instr.a) ? registers[instr.a .. endReg] : [];
-                    } else if (numRet == 0) {
-                        returned = [];
-                    } else {
-                        returned = registers[instr.a .. instr.a + numRet];
-                    }
-                    if (tail.placeInDest) {
-                        // Deliver results straight into the caller's registers.
-                        auto destination = tail.dest;
-                        size_t count = returned.length;
-                        if (tail.wanted >= 0) {
-                            size_t want = cast(size_t) tail.wanted;
-                            size_t copied = count < want ? count : want;
-                            for (size_t i = 0; i < copied; ++i)
-                                copyValue(destination[i], returned[i]);
-                            for (size_t i = copied; i < want; ++i)
-                                destination[i] = luaNil();
-                            tail.placed = true;
-                            tail.placedCount = want;
-                        } else if (count < destination.length) {
-                            for (size_t i = 0; i < count; ++i)
-                                copyValue(destination[i], returned[i]);
-                            tail.placed = true;
-                            tail.placedCount = count;
+                        debugLimit = proto.maxStackSize;
+                        if (resultTop < 0) {
+                            // Variable results did not fit: grow, then copy the stashed values.
+                            growRegisters(instr.a + (-resultTop) + 8);
+                            resultTop = placeStashedResults(state, registers, instr.a);
                         }
-                    }
-                    if (!tail.placed && frameThread !is null && returned.length > 0) {
-                        if (frameThread.returnBuffers.length <= registerDepth)
-                            frameThread.returnBuffers.length = registerDepth + 1;
-                        if (frameThread.returnBuffers[registerDepth].length < returned.length)
-                            frameThread.returnBuffers[registerDepth] = new LuaValue[returned.length];
-                        auto dest = frameThread.returnBuffers[registerDepth][0 .. returned.length];
-                        dest[] = returned[];
-                        returned = dest;
-                    }
-                    if (toClose.length)
-                        closeValuesFrom(0);
-                    else
-                        closeUpvaluesFrom(0);
-                    if (frameThread.hookFunction !is null)
-                        state.debugHook("return", -1, returned, true);
-                    return tail.placed ? null : returned;
-
-                    // Numeric For
-                case OpCode.ForPrep:
-                    if (forPrepare(state, registers, instr.a))
-                        ip += instr.sBx;
-                    break;
-
-                case OpCode.ForLoop: {
-                        // Prepared integer loops keep the remaining iteration count in R[a+1].
-                        auto control = &registers[instr.a];
-                        if (control[2].isInteger) {
-                            long count = control[1].asInteger;
-                            if (count > 0) {
-                                long index = control[0].asInteger + control[2].asInteger;
-                                setInteger(control[1], count - 1);
-                                setInteger(control[0], index);
-                                setInteger(control[3], index);
-                                ip += instr.sBx;
-                            }
-                        } else if (forStep(registers, instr.a))
-                            ip += instr.sBx;
-                    }
-                    break;
-
-                    // Generic For
-                case OpCode.TForCall:
-                    execTForCall(state, registers, instr.a, instr.c, frameThread.hookFunction is null);
-                    break;
-
-                case OpCode.TForLoop:
-                    if (!isNil(registers[instr.a + 2])) {
-                        copyValue(registers[instr.a], registers[instr.a + 2]);
-                        ip += instr.sBx;
-                    }
-                    break;
-
-                    // Closures and Upvalues
-                case OpCode.Closure:
-                    registers[instr.a] = luaNil();
-                    state.allocationTick();
-                    execClosure(closure, proto, registers, instr.a, instr.b, &findOrCreateUpvalue);
-                    break;
-
-                case OpCode.Vararg:
-                    int numWanted = instr.b - 1;
-                    if (numWanted >= 0) {
-                        for (int i = 0; i < numWanted; ++i) {
-                            if (instr.a + i >= registers.length)
-                                growRegisters(instr.a + i + 8);
-                            registers[instr.a + i] = (i < varargs.length) ? varargs[i] : luaNil();
-                        }
-                        top = instr.a + numWanted;
-                    } else {
-                        if (instr.a + varargs.length >= registers.length) {
-                            growRegisters(instr.a + varargs.length + 8);
-                        }
-                        for (size_t i = 0; i < varargs.length; ++i) {
-                            registers[instr.a + i] = varargs[i];
-                        }
-                        top = instr.a + cast(int) varargs.length;
-                    }
-                    break;
-
-                case OpCode.Close:
-                    closeValuesFrom(instr.a);
-                    break;
-
-                case OpCode.ToClose:
-                    if (isNil(registers[instr.a]) || (registers[instr.a].typeOf() == LuaType.Boolean && !isTruthy(
-                            registers[instr.a])))
+                        top = resultTop;
                         break;
-                    auto closeMetatable = state.getMetatable(registers[instr.a]);
-                    if (closeMetatable is null || isNil(closeMetatable.rawget(LuaValue("__close")))) {
-                        string variable = "?";
-                        foreach (local; proto.debugLocals)
-                            if (local.register == instr.a && local.startPC <= curPC() - 1 && curPC() - 1 < local.endPC)
-                                variable = local.name;
-                        throw new LuaException("variable '" ~ variable ~ "' got a non-closable value");
                     }
-                    toClose ~= instr.a;
-                    break;
 
-                case OpCode.BeginTransaction:
-                    World transactionWorld = instr.a < 0 ? state.globalWorld
-                        : unwrapWorld(registers[instr.a]);
-                    frameTransactions ~= FrameTransaction(new Transaction(transactionWorld), curPC(), instr.b, instr.c);
-                    ++openFrameTransactions;
-                    vmAttention = true;
-                    break;
-                case OpCode.EndTransaction:
-                    frameTransactions[$ - 1].transaction.finish(true);
-                    frameTransactions.length--;
-                    --openFrameTransactions;
-                    break;
-                case OpCode.Rollback:
-                    if (!frameTransactions.length)
-                        throw new LuaException("rollback outside a transaction");
-                    auto rolledBack = frameTransactions[$ - 1];
-                    closeValuesFrom(rolledBack.firstRegister);
-                    rolledBack.transaction.finish(false);
-                    ip = codeBase + rolledBack.endPC;
-                    frameTransactions.length--;
-                    --openFrameTransactions;
-                    break;
+                case OpCode.Return: {
+                        int numRet = instr.b - 1;
+                        LuaValue[] returned;
+                        if (numRet < 0) {
+                            int endReg = (top > instr.a) ? top : instr.a;
+                            if (endReg > registers.length)
+                                endReg = cast(int) registers.length;
+                            returned = (endReg > instr.a) ? registers[instr.a .. endReg] : [];
+                        } else if (numRet == 0) {
+                            returned = [];
+                        } else {
+                            returned = registers[instr.a .. instr.a + numRet];
+                        }
+                        if (tail.placeInDest) {
+                            // Deliver results straight into the caller's registers.
+                            auto destination = tail.dest;
+                            size_t count = returned.length;
+                            if (tail.wanted >= 0) {
+                                size_t want = cast(size_t) tail.wanted;
+                                size_t copied = count < want ? count : want;
+                                for (size_t i = 0; i < copied; ++i)
+                                    copyValue(destination[i], returned[i]);
+                                for (size_t i = copied; i < want; ++i)
+                                    destination[i] = luaNil();
+                                tail.placed = true;
+                                tail.placedCount = want;
+                            } else if (count < destination.length) {
+                                for (size_t i = 0; i < count; ++i)
+                                    copyValue(destination[i], returned[i]);
+                                tail.placed = true;
+                                tail.placedCount = count;
+                            }
+                        }
+                        if (!tail.placed && frameThread !is null && returned.length > 0) {
+                            if (frameThread.returnBuffers.length <= registerDepth)
+                                frameThread.returnBuffers.length = registerDepth + 1;
+                            if (frameThread.returnBuffers[registerDepth].length < returned.length)
+                                frameThread.returnBuffers[registerDepth] = new LuaValue[returned.length];
+                            auto dest = frameThread.returnBuffers[registerDepth][0 .. returned.length];
+                            dest[] = returned[];
+                            returned = dest;
+                        }
+                        if (toClose.length)
+                            closeValuesFrom(0);
+                        else
+                            closeUpvaluesFrom(0);
+                        if (frameThread.hookFunction !is null)
+                            state.debugHook("return", -1, returned, true);
+                        return tail.placed ? null : returned;
 
-                case OpCode.DefineContent, OpCode.DefineDeck, OpCode.LoadSymbol, OpCode.NewLocalRel, OpCode.DeclRel,
-                    OpCode.SetFact, OpCode.DeleteKey, OpCode.AdjustKey, OpCode.AddFact, OpCode.RetractFact,
-                    OpCode.RegRule, OpCode.MakeQuery:
-                    declarativeOp(state, closure, proto, registers, &findOrCreateUpvalue, instr);
-                    break;
+                        // Numeric For
+                    }
+
+                    mixin(sharedOpcodeCases2);
 
                 default:
                     throw new LuaException(format("unknown opcode: %s", op));
@@ -1668,213 +1691,8 @@ struct VM {
                         auto op = instr.op;
 
                         switch (op) {
-                        case OpCode.Nop:
-                            break;
+                            mixin(sharedOpcodeCases1);
 
-                        case OpCode.Move:
-                            copyValue(registers[instr.a], registers[instr.b]);
-                            break;
-
-                        case OpCode.LoadNil:
-                            for (int i = instr.a; i <= instr.a + instr.b; ++i) {
-                                registers[i] = luaNil();
-                            }
-                            break;
-
-                        case OpCode.LoadBool:
-                            registers[instr.a] = luaValue(instr.b != 0);
-                            if (instr.c != 0)
-                                ip++;
-                            break;
-
-                        case OpCode.LoadInt:
-                            registers[instr.a] = luaValue(cast(long) instr.sBx);
-                            break;
-
-                        case OpCode.LoadK:
-                            copyValue(registers[instr.a], proto.constants[instr.b]);
-                            break;
-
-                        case OpCode.GetGlobal: {
-                                // Plain global table (or an _ENV upvalue holding one) with a cached node.
-                                auto nameConstant = &proto.constants[instr.b];
-                                LuaTable environment;
-                                if (instr.c < 0) {
-                                    auto upvalue = closure.upvalues[-instr.c - 1].ptr();
-                                    if (upvalue.isTable)
-                                        environment = upvalue.asTable;
-                                } else if (instr.c == 0)
-                                    environment = state.globals;
-                                if (environment !is null && nameConstant.isString) {
-                                    auto found = environment.findStringHinted(nameConstant.asString, proto
-                                            .lookupHints[cast(int)(ip - codeBase) - 1]);
-                                    if (found !is null && !found.isNil) {
-                                        copyValue(registers[instr.a], *found);
-                                        break;
-                                    }
-                                }
-                            }
-                            execGetGlobal(state, closure, proto, registers, instr, cast(int)(ip - codeBase) - 1);
-                            break;
-
-                        case OpCode.SetGlobal:
-                            execSetGlobal(state, closure, proto, registers, instr, cast(int)(ip - codeBase) - 1);
-                            break;
-
-                        case OpCode.GetUpval:
-                            if (instr.b < closure.upvalues.length) {
-                                copyValue(registers[instr.a], *closure.upvalues[instr.b].ptr());
-                            }
-                            break;
-
-                        case OpCode.SetUpval:
-                            if (instr.b < closure.upvalues.length) {
-                                copyValue(*closure.upvalues[instr.b].ptr(), registers[instr.a]);
-                            }
-                            break;
-
-                        case OpCode.NewTable:
-                            registers[instr.a] = luaNil(); // the old value is dead; do not keep it across a collection
-                            state.allocationTick();
-                            newTableInto(registers[instr.a], proto.newTableSizes[cast(int)(ip - codeBase) - 1]);
-                            break;
-
-                        case OpCode.GetTable: {
-                                // Array-part hit with an integer key: no call, no metatable lookup.
-                                auto container = &registers[instr.b];
-                                auto key = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
-                                if (container.isTable && key.isInteger) {
-                                    auto elements = container.asTable.arrayPart;
-                                    ulong slot = cast(ulong) key.asInteger - 1;
-                                    if (slot < elements.length && !elements[slot].isNil) {
-                                        copyValue(registers[instr.a], elements[slot]);
-                                        break;
-                                    }
-                                }
-                            }
-                            execGetTable(state, proto, registers, instr, cast(int)(ip - codeBase) - 1);
-                            break;
-
-                        case OpCode.SetTable: {
-                                auto container = &registers[instr.a];
-                                auto key = instr.bIsK ? &proto.constants[instr.b] : &registers[instr.b];
-                                if (container.isTable && key.isInteger) {
-                                    auto table = container.asTable;
-                                    ulong slot = cast(ulong) key.asInteger - 1;
-                                    auto value = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
-                                    if (table.metatable is null && slot < table.arrayPart.length && !value.isNil) {
-                                        copyValue(table.arrayPart[slot], *value);
-                                        break;
-                                    }
-                                }
-                            }
-                            execSetTable(state, proto, registers, instr, cast(int)(ip - codeBase) - 1);
-                            break;
-
-                        case OpCode.SetList:
-                            execSetList(registers, instr.a, instr.b, instr.c, top);
-                            break;
-
-                        case OpCode.Self:
-                            execSelf(state, proto, registers, instr, cast(int)(ip - codeBase) - 1);
-                            break;
-
-                            // Arithmetic, bitwise and concatenation operations. Same-type integer/float
-                            // operands are handled inline; everything else takes the generic path.
-                        case OpCode.Add:
-                            mixin(fastArithmetic("+"));
-                            execArith(state, proto, registers, instr);
-                            break;
-                        case OpCode.Sub:
-                            mixin(fastArithmetic("-"));
-                            execArith(state, proto, registers, instr);
-                            break;
-                        case OpCode.Mul:
-                            mixin(fastArithmetic("*"));
-                            execArith(state, proto, registers, instr);
-                            break;
-                        case OpCode.Div, OpCode.IDiv, OpCode.Mod, OpCode.Pow,
-                            OpCode.BAnd, OpCode.BOr, OpCode.BXor, OpCode.Shl, OpCode.Shr:
-                            execArith(state, proto, registers, instr);
-                            break;
-                        case OpCode.Concat:
-                            if ((instr.bIsK || instr.a != instr.b) && (instr.cIsK || instr.a != instr.c))
-                                registers[instr.a] = luaNil();
-                            state.allocationTick();
-                            execArith(state, proto, registers, instr);
-                            break;
-
-                            // Unary operations
-                        case OpCode.Not:
-                            setBoolean(registers[instr.a], !registers[instr.b].isTruthy);
-                            break;
-                        case OpCode.Len: {
-                                auto operand = &registers[instr.b];
-                                if (operand.isTable && operand.asTable.metatable is null) {
-                                    setInteger(registers[instr.a], operand.asTable.rawLen());
-                                    break;
-                                }
-                                if (operand.isString) {
-                                    setInteger(registers[instr.a], cast(long) operand.asString.length);
-                                    break;
-                                }
-                            }
-                            execUnary(state, registers, instr);
-                            break;
-                        case OpCode.Unm: {
-                                auto operand = &registers[instr.b];
-                                if (operand.isInteger) {
-                                    setInteger(registers[instr.a], cast(long)(0UL - cast(ulong) operand.asInteger));
-                                    break;
-                                }
-                                if (operand.isFloat) {
-                                    setFloat(registers[instr.a], -operand.asFloat);
-                                    break;
-                                }
-                            }
-                            execUnary(state, registers, instr);
-                            break;
-                        case OpCode.BNot:
-                            execUnary(state, registers, instr);
-                            break;
-
-                            // Jumps & Comparisons
-                        case OpCode.Jmp:
-                            ip += instr.sBx;
-                            break;
-
-                        case OpCode.Eq, OpCode.Lt, OpCode.Le: {
-                                auto left = instr.aIsK ? &proto.constants[instr.a] : &registers[instr.a];
-                                auto right = instr.bIsK ? &proto.constants[instr.b] : &registers[instr.b];
-                                bool outcome;
-                                if (left.isInteger && right.isInteger) {
-                                    long x = left.asInteger, y = right.asInteger;
-                                    outcome = op == OpCode.Eq ? x == y : op == OpCode.Lt ? x < y : x <= y;
-                                } else if (left.isFloat && right.isFloat) {
-                                    double x = left.asFloat, y = right.asFloat;
-                                    outcome = op == OpCode.Eq ? x == y : op == OpCode.Lt ? x < y : x <= y;
-                                } else {
-                                    outcome = execCompare(state, proto, registers, instr);
-                                }
-                                if (outcome != (instr.c != 0))
-                                    ip++;
-                            }
-                            break;
-
-                        case OpCode.Test:
-                            if (isTruthy(registers[instr.a]) == (instr.c != 0)) {
-                                ip += instr.sBx;
-                            }
-                            break;
-
-                        case OpCode.TestSet:
-                            if (isTruthy(registers[instr.b]) == (instr.c != 0)) {
-                                registers[instr.a] = registers[instr.b];
-                                ip += instr.sBx;
-                            }
-                            break;
-
-                            // Calls and Returns
                         case OpCode.TailCall: {
                                 checkCallable(state, registers[instr.a]);
                                 auto target = registers[instr.a];
@@ -1947,210 +1765,262 @@ struct VM {
                                 continue;
                             }
 
-                        case OpCode.Call:
-                            int numArgs = (instr.b == 0) ? cast(int)(top - (instr.a + 1)) : (instr.b - 1);
-                            int numWantedResults = instr.c - 1;
-                            if (numWantedResults >= 0 && instr.a + numWantedResults >= registers.length)
-                                growRegisters(instr.a + numWantedResults + 8);
+                        case OpCode.Call: {
+                                int numArgs = (instr.b == 0) ? cast(int)(top - (instr.a + 1)) : (instr.b - 1);
+                                int numWantedResults = instr.c - 1;
+                                if (numWantedResults >= 0 && instr.a + numWantedResults >= registers.length)
+                                    growRegisters(instr.a + numWantedResults + 8);
 
-                            if (registers[instr.a].isFunction) {
-                                auto calleeFunction = registers[instr.a].asFunction;
-                                if (calleeFunction is state.errorFunction && frameThread.hookFunction is null && numArgs >= 1
-                                        && (numArgs == 1 || registers[instr.a + 2].isNil || registers[instr.a + 2]
-                                            .isInteger)) {
-                                    // `error(message [, level])` raised straight from the interpreter: one throw
-                                    // instead of two (no native call wrapper to unwind through).
-                                    long level = numArgs >= 2 && registers[instr.a + 2].isInteger ? registers[instr.a + 2]
-                                        .asInteger : 1;
+                                if (registers[instr.a].isFunction) {
+                                    auto calleeFunction = registers[instr.a].asFunction;
+                                    if (calleeFunction is state.errorFunction && frameThread.hookFunction is null && numArgs >= 1
+                                            && (numArgs == 1 || registers[instr.a + 2].isNil || registers[instr.a + 2]
+                                                .isInteger)) {
+                                        // `error(message [, level])` raised straight from the interpreter: one throw
+                                        // instead of two (no native call wrapper to unwind through).
+                                        long level = numArgs >= 2 && registers[instr.a + 2].isInteger ? registers[instr
+                                                .a + 2]
+                                            .asInteger : 1;
+                                        auto site = &proto.callSites[cast(int)(ip - codeBase) - 1];
+                                        state.pushCall(calleeFunction, "[C]", -1, false, site.name, site.kind);
+                                        auto errorObject = registers[instr.a + 1];
+                                        if (errorObject.isString && level > 0)
+                                            errorObject = LuaValue(state.locationPrefix(
+                                                    cast(int) level) ~ toLuaString(errorObject));
+                                        auto raised = new LuaException(errorObject);
+                                        raised.needsLocation = false;
+                                        raised.originFunction = calleeFunction;
+                                        raised.originName = site.name;
+                                        raised.originKind = site.kind;
+                                        state.dispatchError(raised);
+                                        state.popCall();
+                                        throw raised;
+                                    }
+                                    if (calleeFunction.fastCall !is null && frameThread.hookFunction is null) {
+                                        // Hot built-ins run straight on the registers (see varis.lib.fastcall).
+                                        int produced = calleeFunction.fastCall(cast(void*) state, registers, instr.a, numArgs);
+                                        if (produced < -1) {
+                                            // Results that did not fit were stashed (see lib.coroutine.fastWrapCall).
+                                            int stashed = -2 - produced;
+                                            growRegisters(instr.a + (stashed > numWantedResults ? stashed
+                                                    : numWantedResults) + 8);
+                                            placeStashedResults(state, registers, instr.a);
+                                            produced = stashed;
+                                        }
+                                        if (produced >= 0) {
+                                            if (numWantedResults >= 0) {
+                                                for (int i = produced; i < numWantedResults; ++i)
+                                                    registers[instr.a + i] = luaNil();
+                                                top = instr.a + numWantedResults;
+                                            } else
+                                                top = instr.a + produced;
+                                            break;
+                                        }
+                                    }
+                                }
+                                if (registers[instr.a].isFunction && registers[instr.a].asFunction.isLuaClosure
+                                        && frameThread.hookFunction is null && registerDepth >= inlineDepthThreshold) {
+                                    // Deep Lua → Lua call: park this frame and run the callee in the same native
+                                    // frame (no native stack, cheap unwinding). Its Return delivers the results into
+                                    // R[a ...] and resumes here. Shallow calls recurse natively, which is faster.
+                                    auto callee = cast(LuaClosure) cast(void*) registers[instr.a].asFunction;
                                     auto site = &proto.callSites[cast(int)(ip - codeBase) - 1];
-                                    state.pushCall(calleeFunction, "[C]", -1, false, site.name, site.kind);
-                                    auto errorObject = registers[instr.a + 1];
-                                    if (errorObject.isString && level > 0)
-                                        errorObject = LuaValue(state.locationPrefix(
-                                                cast(int) level) ~ toLuaString(errorObject));
-                                    auto raised = new LuaException(errorObject);
-                                    raised.needsLocation = false;
-                                    raised.originFunction = calleeFunction;
-                                    raised.originName = site.name;
-                                    raised.originKind = site.kind;
-                                    state.dispatchError(raised);
-                                    state.popCall();
-                                    throw raised;
-                                }
-                                if (calleeFunction.fastCall !is null && frameThread.hookFunction is null) {
-                                    // Hot built-ins run straight on the registers (see varis.lib.fastcall).
-                                    int produced = calleeFunction.fastCall(cast(void*) state, registers, instr.a, numArgs);
-                                    if (produced < -1) {
-                                        // Results that did not fit were stashed (see lib.coroutine.fastWrapCall).
-                                        int stashed = -2 - produced;
-                                        growRegisters(instr.a + (stashed > numWantedResults ? stashed
-                                                : numWantedResults) + 8);
-                                        placeStashedResults(state, registers, instr.a);
-                                        produced = stashed;
+                                    auto targetWorld = site.world == 0 ? state.globalWorld : site.world > 0 ? unwrapWorld(
+                                            registers[site.world - 1]) : unwrapWorld(
+                                            closure.upvalues[-site.world - 1].get());
+                                    auto calleeProto = callee.proto;
+                                    if (!calleeProto.prepared)
+                                        prepareForExecution(calleeProto);
+                                    checkStackLimits(frameThread, sp, cast(size_t) calleeProto.maxStackSize + 1);
+                                    import varis.gc : stackHygiene, scrubDeadStack;
+
+                                    if (stackHygiene)
+                                        scrubDeadStack();
+                                    auto previousWorld = state.callWorld;
+                                    scResultBase = instr.a;
+                                    scWanted = numWantedResults;
+                                    mixin(saveCallerCode);
+                                    record.debugLimit = instr.a;
+                                    record.previousWorld = previousWorld;
+                                    if (previousWorld !is targetWorld) {
+                                        record.worldSwapped = true;
+                                        state.callWorld = targetWorld;
                                     }
-                                    if (produced >= 0) {
-                                        if (numWantedResults >= 0) {
-                                            for (int i = produced; i < numWantedResults; ++i)
-                                                registers[instr.a + i] = luaNil();
-                                            top = instr.a + numWantedResults;
-                                        } else
-                                            top = instr.a + produced;
-                                        break;
+                                    auto callerInfo = &(*frameCalls)[$ - 1];
+                                    callerInfo.registers = &record.registers;
+                                    callerInfo.varargs = &record.varargs;
+                                    callerInfo.pc = &record.ip;
+                                    callerInfo.debugLimit = &record.debugLimit;
+                                    efClosure = callee;
+                                    efArgs = record.registers[instr.a + 1 .. instr.a + 1 + numArgs];
+                                    efTail = false;
+                                    efName = site.name;
+                                    efKind = site.kind;
+                                    mixin(enterFrameCode);
+                                    continue;
+                                }
+                                debugLimit = instr.a;
+                                int resultTop;
+                                if (registers[instr.a].isFunction && registers[instr.a].asFunction.isLuaClosure) {
+                                    // Lua → Lua call: run the callee directly; its results are written into
+                                    // R[a ...] by its Return (see TailRequest.placeInDest).
+                                    auto callee = cast(LuaClosure) cast(void*) registers[instr.a].asFunction;
+                                    auto site = &proto.callSites[cast(int)(ip - codeBase) - 1];
+                                    auto targetWorld = site.world == 0 ? state.globalWorld : site.world > 0 ? unwrapWorld(
+                                            registers[site.world - 1]) : unwrapWorld(
+                                            closure.upvalues[-site.world - 1].get());
+                                    auto previousWorld = state.callWorld;
+                                    bool swapped = previousWorld !is targetWorld;
+                                    if (swapped) {
+                                        state.callWorld = targetWorld;
+                                        // Restored when the callee returns, or first thing in any handler.
+                                        worldToRestore = previousWorld;
+                                        worldDirty = true;
+                                    }
+                                    import varis.gc : stackHygiene, scrubDeadStack;
+
+                                    if (stackHygiene)
+                                        scrubDeadStack();
+                                    TailRequest childTail;
+                                    childTail.placeInDest = true;
+                                    childTail.wanted = numWantedResults;
+                                    childTail.dest = numWantedResults >= 0 ? registers[instr.a .. instr.a + numWantedResults] : registers[instr
+                                            .a .. $];
+                                    auto childResults = executeFrame(state, callee, registers[instr.a + 1 .. instr.a + 1 + numArgs],
+                                            childTail, false, site.name, site.kind);
+                                    bool childPlaced = childTail.placed;
+                                    size_t childCount = childTail.placedCount;
+                                    // A callee run natively reports proper tail calls through `pending`.
+                                    if (childTail.pending)
+                                        childResults = runTailCalls(state, childTail, childPlaced, childCount);
+                                    if (swapped) {
+                                        state.callWorld = previousWorld;
+                                        worldDirty = false;
+                                    }
+                                    if (childPlaced)
+                                        resultTop = instr.a + cast(int) childCount;
+                                    else if (numWantedResults >= 0) {
+                                        size_t available = childResults.length < cast(size_t) numWantedResults ? childResults
+                                            .length : cast(size_t) numWantedResults;
+                                        for (size_t i = 0; i < available; ++i)
+                                            copyValue(registers[instr.a + i], childResults[i]);
+                                        for (size_t i = available; i < cast(size_t) numWantedResults;
+                                                ++i)
+                                            registers[instr.a + i] = luaNil();
+                                        resultTop = instr.a + numWantedResults;
+                                    } else if (instr.a + childResults.length >= registers.length) {
+                                        state.stashedResults = childResults;
+                                        resultTop = -cast(int) childResults.length;
+                                    } else {
+                                        for (size_t i = 0; i < childResults.length; ++i)
+                                            copyValue(registers[instr.a + i], childResults[i]);
+                                        resultTop = instr.a + cast(int) childResults.length;
+                                    }
+                                } else // The call and the placement of its results happen in one frame of their own so
+                                    // that no array holding result values stays referenced from this frame.
+                                    resultTop = callAndPlace(state, closure, proto, registers, instr.a, numArgs, numWantedResults, cast(
+                                            int)(ip - codeBase) - 1);
+                                debugLimit = proto.maxStackSize;
+                                if (resultTop < 0) {
+                                    // Variable results did not fit: grow, then copy the stashed values.
+                                    growRegisters(instr.a + (-resultTop) + 8);
+                                    resultTop = placeStashedResults(state, registers, instr.a);
+                                }
+                                top = resultTop;
+                                break;
+                            }
+
+                        case OpCode.Return: {
+                                int numRet = instr.b - 1;
+                                LuaValue[] returned;
+                                if (useForcedReturn) {
+                                    // Results of a native function tail-called in place (see TailCall).
+                                    returned = forcedReturn;
+                                    forcedReturn = null;
+                                    useForcedReturn = false;
+                                } else if (numRet < 0) {
+                                    int endReg = (top > instr.a) ? top : instr.a;
+                                    if (endReg > registers.length)
+                                        endReg = cast(int) registers.length;
+                                    returned = (endReg > instr.a) ? registers[instr.a .. endReg] : [
+                                    ];
+                                } else if (numRet == 0) {
+                                    returned = [];
+                                } else {
+                                    returned = registers[instr.a .. instr.a + numRet];
+                                }
+                                if (frameThread.inlineTop > inlineBase) {
+                                    // Returning from an inline callee: hand the results to the parked caller.
+                                    auto parked = parkedFrame(frameThread, frameThread.inlineTop - 1);
+                                    int base = parked.resultBase;
+                                    int wanted = parked.wanted;
+                                    auto destination = parked.registers;
+                                    size_t produced = returned.length;
+                                    int newTop;
+                                    LuaValue[] overflow;
+                                    if (wanted >= 0) {
+                                        size_t want = cast(size_t) wanted;
+                                        size_t copied = produced < want ? produced : want;
+                                        for (size_t i = 0; i < copied; ++i)
+                                            copyValue(destination[base + i], returned[i]);
+                                        for (size_t i = copied; i < want; ++i)
+                                            destination[base + i] = luaNil();
+                                        newTop = base + wanted;
+                                    } else if (base + produced < destination.length) {
+                                        for (size_t i = 0; i < produced; ++i)
+                                            copyValue(destination[base + i], returned[i]);
+                                        newTop = base + cast(int) produced;
+                                    } else {
+                                        // Does not fit: keep a copy until the caller's registers have grown.
+                                        overflow = returned.dup;
+                                    }
+                                    if (toClose.length)
+                                        closeValuesFrom(0);
+                                    else
+                                        closeUpvaluesFrom(0);
+                                    if (frameThread.hookFunction !is null)
+                                        state.debugHook("return", -1, returned, true);
+                                    mixin(leaveFrameCode);
+                                    mixin(restoreCallerCode);
+                                    debugLimit = proto.maxStackSize;
+                                    if (overflow is null)
+                                        top = newTop;
+                                    else {
+                                        growRegisters(base + overflow.length + 8);
+                                        for (size_t i = 0; i < overflow.length; ++i)
+                                            copyValue(registers[base + i], overflow[i]);
+                                        top = base + cast(int) overflow.length;
+                                    }
+                                    continue;
+                                }
+                                if (tail.placeInDest) {
+                                    // Deliver results straight into the caller's registers.
+                                    auto destination = tail.dest;
+                                    size_t count = returned.length;
+                                    if (tail.wanted >= 0) {
+                                        size_t want = cast(size_t) tail.wanted;
+                                        size_t copied = count < want ? count : want;
+                                        for (size_t i = 0; i < copied; ++i)
+                                            copyValue(destination[i], returned[i]);
+                                        for (size_t i = copied; i < want; ++i)
+                                            destination[i] = luaNil();
+                                        tail.placed = true;
+                                        tail.placedCount = want;
+                                    } else if (count < destination.length) {
+                                        for (size_t i = 0; i < count; ++i)
+                                            copyValue(destination[i], returned[i]);
+                                        tail.placed = true;
+                                        tail.placedCount = count;
                                     }
                                 }
-                            }
-                            if (registers[instr.a].isFunction && registers[instr.a].asFunction.isLuaClosure
-                                    && frameThread.hookFunction is null && registerDepth >= inlineDepthThreshold) {
-                                // Deep Lua → Lua call: park this frame and run the callee in the same native
-                                // frame (no native stack, cheap unwinding). Its Return delivers the results into
-                                // R[a ...] and resumes here. Shallow calls recurse natively, which is faster.
-                                auto callee = cast(LuaClosure) cast(void*) registers[instr.a].asFunction;
-                                auto site = &proto.callSites[cast(int)(ip - codeBase) - 1];
-                                auto targetWorld = site.world == 0 ? state.globalWorld : site.world > 0 ? unwrapWorld(
-                                        registers[site.world - 1]) : unwrapWorld(
-                                        closure.upvalues[-site.world - 1].get());
-                                auto calleeProto = callee.proto;
-                                if (!calleeProto.prepared)
-                                    prepareForExecution(calleeProto);
-                                checkStackLimits(frameThread, sp, cast(size_t) calleeProto.maxStackSize + 1);
-                                import varis.gc : stackHygiene, scrubDeadStack;
-
-                                if (stackHygiene)
-                                    scrubDeadStack();
-                                auto previousWorld = state.callWorld;
-                                scResultBase = instr.a;
-                                scWanted = numWantedResults;
-                                mixin(saveCallerCode);
-                                record.debugLimit = instr.a;
-                                record.previousWorld = previousWorld;
-                                if (previousWorld !is targetWorld) {
-                                    record.worldSwapped = true;
-                                    state.callWorld = targetWorld;
-                                }
-                                auto callerInfo = &(*frameCalls)[$ - 1];
-                                callerInfo.registers = &record.registers;
-                                callerInfo.varargs = &record.varargs;
-                                callerInfo.pc = &record.ip;
-                                callerInfo.debugLimit = &record.debugLimit;
-                                efClosure = callee;
-                                efArgs = record.registers[instr.a + 1 .. instr.a + 1 + numArgs];
-                                efTail = false;
-                                efName = site.name;
-                                efKind = site.kind;
-                                mixin(enterFrameCode);
-                                continue;
-                            }
-                            debugLimit = instr.a;
-                            int resultTop;
-                            if (registers[instr.a].isFunction && registers[instr.a].asFunction.isLuaClosure) {
-                                // Lua → Lua call: run the callee directly; its results are written into
-                                // R[a ...] by its Return (see TailRequest.placeInDest).
-                                auto callee = cast(LuaClosure) cast(void*) registers[instr.a].asFunction;
-                                auto site = &proto.callSites[cast(int)(ip - codeBase) - 1];
-                                auto targetWorld = site.world == 0 ? state.globalWorld : site.world > 0 ? unwrapWorld(
-                                        registers[site.world - 1]) : unwrapWorld(
-                                        closure.upvalues[-site.world - 1].get());
-                                auto previousWorld = state.callWorld;
-                                bool swapped = previousWorld !is targetWorld;
-                                if (swapped) {
-                                    state.callWorld = targetWorld;
-                                    // Restored when the callee returns, or first thing in any handler.
-                                    worldToRestore = previousWorld;
-                                    worldDirty = true;
-                                }
-                                import varis.gc : stackHygiene, scrubDeadStack;
-
-                                if (stackHygiene)
-                                    scrubDeadStack();
-                                TailRequest childTail;
-                                childTail.placeInDest = true;
-                                childTail.wanted = numWantedResults;
-                                childTail.dest = numWantedResults >= 0 ? registers[instr.a .. instr.a + numWantedResults] : registers[instr
-                                        .a .. $];
-                                auto childResults = executeFrame(state, callee, registers[instr.a + 1 .. instr.a + 1 + numArgs],
-                                        childTail, false, site.name, site.kind);
-                                bool childPlaced = childTail.placed;
-                                size_t childCount = childTail.placedCount;
-                                // A callee run natively reports proper tail calls through `pending`.
-                                if (childTail.pending)
-                                    childResults = runTailCalls(state, childTail, childPlaced, childCount);
-                                if (swapped) {
-                                    state.callWorld = previousWorld;
-                                    worldDirty = false;
-                                }
-                                if (childPlaced)
-                                    resultTop = instr.a + cast(int) childCount;
-                                else if (numWantedResults >= 0) {
-                                    size_t available = childResults.length < cast(size_t) numWantedResults ? childResults
-                                        .length : cast(size_t) numWantedResults;
-                                    for (size_t i = 0; i < available; ++i)
-                                        copyValue(registers[instr.a + i], childResults[i]);
-                                    for (size_t i = available; i < cast(size_t) numWantedResults; ++i)
-                                        registers[instr.a + i] = luaNil();
-                                    resultTop = instr.a + numWantedResults;
-                                } else if (instr.a + childResults.length >= registers.length) {
-                                    state.stashedResults = childResults;
-                                    resultTop = -cast(int) childResults.length;
-                                } else {
-                                    for (size_t i = 0; i < childResults.length; ++i)
-                                        copyValue(registers[instr.a + i], childResults[i]);
-                                    resultTop = instr.a + cast(int) childResults.length;
-                                }
-                            } else // The call and the placement of its results happen in one frame of their own so
-                                // that no array holding result values stays referenced from this frame.
-                                resultTop = callAndPlace(state, closure, proto, registers, instr.a, numArgs, numWantedResults, cast(
-                                        int)(ip - codeBase) - 1);
-                            debugLimit = proto.maxStackSize;
-                            if (resultTop < 0) {
-                                // Variable results did not fit: grow, then copy the stashed values.
-                                growRegisters(instr.a + (-resultTop) + 8);
-                                resultTop = placeStashedResults(state, registers, instr.a);
-                            }
-                            top = resultTop;
-                            break;
-
-                        case OpCode.Return:
-                            int numRet = instr.b - 1;
-                            LuaValue[] returned;
-                            if (useForcedReturn) {
-                                // Results of a native function tail-called in place (see TailCall).
-                                returned = forcedReturn;
-                                forcedReturn = null;
-                                useForcedReturn = false;
-                            } else if (numRet < 0) {
-                                int endReg = (top > instr.a) ? top : instr.a;
-                                if (endReg > registers.length)
-                                    endReg = cast(int) registers.length;
-                                returned = (endReg > instr.a) ? registers[instr.a .. endReg] : [];
-                            } else if (numRet == 0) {
-                                returned = [];
-                            } else {
-                                returned = registers[instr.a .. instr.a + numRet];
-                            }
-                            if (frameThread.inlineTop > inlineBase) {
-                                // Returning from an inline callee: hand the results to the parked caller.
-                                auto parked = parkedFrame(frameThread, frameThread.inlineTop - 1);
-                                int base = parked.resultBase;
-                                int wanted = parked.wanted;
-                                auto destination = parked.registers;
-                                size_t produced = returned.length;
-                                int newTop;
-                                LuaValue[] overflow;
-                                if (wanted >= 0) {
-                                    size_t want = cast(size_t) wanted;
-                                    size_t copied = produced < want ? produced : want;
-                                    for (size_t i = 0; i < copied; ++i)
-                                        copyValue(destination[base + i], returned[i]);
-                                    for (size_t i = copied; i < want; ++i)
-                                        destination[base + i] = luaNil();
-                                    newTop = base + wanted;
-                                } else if (base + produced < destination.length) {
-                                    for (size_t i = 0; i < produced; ++i)
-                                        copyValue(destination[base + i], returned[i]);
-                                    newTop = base + cast(int) produced;
-                                } else {
-                                    // Does not fit: keep a copy until the caller's registers have grown.
-                                    overflow = returned.dup;
+                                if (!tail.placed && frameThread !is null && returned.length > 0) {
+                                    if (frameThread.returnBuffers.length <= registerDepth)
+                                        frameThread.returnBuffers.length = registerDepth + 1;
+                                    if (frameThread.returnBuffers[registerDepth].length < returned.length)
+                                        frameThread.returnBuffers[registerDepth] = new LuaValue[returned.length];
+                                    auto dest = frameThread.returnBuffers[registerDepth][0 .. returned.length];
+                                    dest[] = returned[];
+                                    returned = dest;
                                 }
                                 if (toClose.length)
                                     closeValuesFrom(0);
@@ -2158,167 +2028,12 @@ struct VM {
                                     closeUpvaluesFrom(0);
                                 if (frameThread.hookFunction !is null)
                                     state.debugHook("return", -1, returned, true);
-                                mixin(leaveFrameCode);
-                                mixin(restoreCallerCode);
-                                debugLimit = proto.maxStackSize;
-                                if (overflow is null)
-                                    top = newTop;
-                                else {
-                                    growRegisters(base + overflow.length + 8);
-                                    for (size_t i = 0; i < overflow.length; ++i)
-                                        copyValue(registers[base + i], overflow[i]);
-                                    top = base + cast(int) overflow.length;
-                                }
-                                continue;
+                                return tail.placed ? null : returned;
+
+                                // Numeric For
                             }
-                            if (tail.placeInDest) {
-                                // Deliver results straight into the caller's registers.
-                                auto destination = tail.dest;
-                                size_t count = returned.length;
-                                if (tail.wanted >= 0) {
-                                    size_t want = cast(size_t) tail.wanted;
-                                    size_t copied = count < want ? count : want;
-                                    for (size_t i = 0; i < copied; ++i)
-                                        copyValue(destination[i], returned[i]);
-                                    for (size_t i = copied; i < want; ++i)
-                                        destination[i] = luaNil();
-                                    tail.placed = true;
-                                    tail.placedCount = want;
-                                } else if (count < destination.length) {
-                                    for (size_t i = 0; i < count; ++i)
-                                        copyValue(destination[i], returned[i]);
-                                    tail.placed = true;
-                                    tail.placedCount = count;
-                                }
-                            }
-                            if (!tail.placed && frameThread !is null && returned.length > 0) {
-                                if (frameThread.returnBuffers.length <= registerDepth)
-                                    frameThread.returnBuffers.length = registerDepth + 1;
-                                if (frameThread.returnBuffers[registerDepth].length < returned.length)
-                                    frameThread.returnBuffers[registerDepth] = new LuaValue[returned.length];
-                                auto dest = frameThread.returnBuffers[registerDepth][0 .. returned.length];
-                                dest[] = returned[];
-                                returned = dest;
-                            }
-                            if (toClose.length)
-                                closeValuesFrom(0);
-                            else
-                                closeUpvaluesFrom(0);
-                            if (frameThread.hookFunction !is null)
-                                state.debugHook("return", -1, returned, true);
-                            return tail.placed ? null : returned;
 
-                            // Numeric For
-                        case OpCode.ForPrep:
-                            if (forPrepare(state, registers, instr.a))
-                                ip += instr.sBx;
-                            break;
-
-                        case OpCode.ForLoop: {
-                                // Prepared integer loops keep the remaining iteration count in R[a+1].
-                                auto control = &registers[instr.a];
-                                if (control[2].isInteger) {
-                                    long count = control[1].asInteger;
-                                    if (count > 0) {
-                                        long index = control[0].asInteger + control[2].asInteger;
-                                        setInteger(control[1], count - 1);
-                                        setInteger(control[0], index);
-                                        setInteger(control[3], index);
-                                        ip += instr.sBx;
-                                    }
-                                } else if (forStep(registers, instr.a))
-                                    ip += instr.sBx;
-                            }
-                            break;
-
-                            // Generic For
-                        case OpCode.TForCall:
-                            execTForCall(state, registers, instr.a, instr.c, frameThread.hookFunction is null);
-                            break;
-
-                        case OpCode.TForLoop:
-                            if (!isNil(registers[instr.a + 2])) {
-                                copyValue(registers[instr.a], registers[instr.a + 2]);
-                                ip += instr.sBx;
-                            }
-                            break;
-
-                            // Closures and Upvalues
-                        case OpCode.Closure:
-                            registers[instr.a] = luaNil();
-                            state.allocationTick();
-                            execClosure(closure, proto, registers, instr.a, instr.b, &findOrCreateUpvalue);
-                            break;
-
-                        case OpCode.Vararg:
-                            int numWanted = instr.b - 1;
-                            if (numWanted >= 0) {
-                                for (int i = 0; i < numWanted; ++i) {
-                                    if (instr.a + i >= registers.length)
-                                        growRegisters(instr.a + i + 8);
-                                    registers[instr.a + i] = (i < varargs.length) ? varargs[i] : luaNil();
-                                }
-                                top = instr.a + numWanted;
-                            } else {
-                                if (instr.a + varargs.length >= registers.length) {
-                                    growRegisters(instr.a + varargs.length + 8);
-                                }
-                                for (size_t i = 0; i < varargs.length; ++i) {
-                                    registers[instr.a + i] = varargs[i];
-                                }
-                                top = instr.a + cast(int) varargs.length;
-                            }
-                            break;
-
-                        case OpCode.Close:
-                            closeValuesFrom(instr.a);
-                            break;
-
-                        case OpCode.ToClose:
-                            if (isNil(registers[instr.a]) || (registers[instr.a].typeOf() == LuaType.Boolean && !isTruthy(
-                                    registers[instr.a])))
-                                break;
-                            auto closeMetatable = state.getMetatable(registers[instr.a]);
-                            if (closeMetatable is null || isNil(closeMetatable.rawget(LuaValue("__close")))) {
-                                string variable = "?";
-                                foreach (local; proto.debugLocals)
-                                    if (local.register == instr.a && local.startPC <= cast(int)(ip - codeBase) - 1 && cast(
-                                            int)(ip - codeBase) - 1 < local.endPC)
-                                        variable = local.name;
-                                throw new LuaException("variable '" ~ variable ~ "' got a non-closable value");
-                            }
-                            toClose ~= instr.a;
-                            break;
-
-                        case OpCode.BeginTransaction:
-                            World transactionWorld = instr.a < 0 ? state.globalWorld : unwrapWorld(registers[instr.a]);
-                            frameTransactions ~= FrameTransaction(new Transaction(transactionWorld), cast(int)(
-                                    ip - codeBase), instr.b, instr.c);
-                            ++openFrameTransactions;
-                            vmAttention = true;
-                            break;
-                        case OpCode.EndTransaction:
-                            frameTransactions[$ - 1].transaction.finish(true);
-                            frameTransactions.length--;
-                            --openFrameTransactions;
-                            break;
-                        case OpCode.Rollback:
-                            if (!frameTransactions.length)
-                                throw new LuaException("rollback outside a transaction");
-                            auto rolledBack = frameTransactions[$ - 1];
-                            closeValuesFrom(rolledBack.firstRegister);
-                            rolledBack.transaction.finish(false);
-                            ip = codeBase + rolledBack.endPC;
-                            frameTransactions.length--;
-                            --openFrameTransactions;
-                            break;
-
-                        case OpCode.DefineContent, OpCode.DefineDeck, OpCode.LoadSymbol, OpCode.NewLocalRel, OpCode
-                                .DeclRel,
-                            OpCode.SetFact, OpCode.DeleteKey, OpCode.AdjustKey, OpCode.AddFact, OpCode.RetractFact,
-                            OpCode.RegRule, OpCode.MakeQuery:
-                            declarativeOp(state, closure, proto, registers, &findOrCreateUpvalue, instr);
-                            break;
+                            mixin(sharedOpcodeCases2);
 
                         default:
                             throw new LuaException(format("unknown opcode: %s", op));

@@ -230,7 +230,10 @@ on it. It may be done after track W.
 Goal: the Lua core stops knowing about the world model, with **no behaviour change**. Saves and
 fingerprints stay byte-identical (the S0 golden test proves it).
 
-1. **One executor source.** Generate `executeFrame` and `executeDeepFrame` from one set of opcode
+1. **One executor source.** *(First step done October 11, 2026: the 40 handlers that were
+   identical in both executors are now `sharedOpcodeCases*` string mixins in `vm.d`; `Call`,
+   `TailCall`, `Return` and frame entry/exit remain per executor. No measurable speed change.)*
+   Generate `executeFrame` and `executeDeepFrame` from one set of opcode
    handlers (a mixin template or a compile-time loop over a handler table). Add a compile-time
    parameter for an **instrumented** variant; in this stage it only needs to carry what the
    `vmSlowMode` path carries today (debug hooks, the analysis instruction budget). The workbench
