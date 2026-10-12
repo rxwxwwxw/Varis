@@ -19,6 +19,12 @@ import core.thread : Fiber;
 
 import varis.vm : LuaClosure;
 
+/// A scope a frame opened and must close when control leaves it (a `transaction ... do` block).
+/// Defined here so the executor can hold one without importing the world model.
+interface FrameScope {
+    void finish(bool commit);
+}
+
 /// Called with every new state, so upper layers can attach their per-state objects (registered
 /// from module constructors; the core does not import those layers).
 __gshared void function(LuaState)[] stateCreatedHooks;

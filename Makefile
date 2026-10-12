@@ -49,7 +49,7 @@ SRC_FILES = source/varis/package.d \
             source/varis/narrative/registry.d \
             source/varis/lib/narrative.d source/varis/lib/quality.d \
             source/varis/lib/logic.d \
-            source/varis/workbench/page.d source/varis/workbench/server.d \
+            source/varis/narrative/vmops.d source/varis/workbench/page.d source/varis/workbench/server.d \
             source/varis/workbench/check.d
 
 # Per-test timeout for a unit executable (seconds).

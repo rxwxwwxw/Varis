@@ -34,6 +34,47 @@ def check(files=None):
         head = (ROOT / rel).read_text(errors="replace")[:600]
         if "PUC-Rio" not in head:
             errors.append(f"{rel}: missing license header")
+    errors.extend(check_layers())
+    return errors
+
+
+# Layers, lowest first (AGENTS.md section 4.1). A module may import its own layer and lower ones.
+LAYERS = [
+    ("narrative", ("source/varis/narrative/", "source/varis/lib/narrative.d", "source/varis/lib/quality.d")),
+    ("world model", ("source/varis/logic/", "source/varis/lib/logic.d")),
+    ("tools", ("source/varis/workbench/", "source/varis/cli.d")),
+]
+RANK = {"core": 0, "world model": 1, "narrative": 2, "tools": 3}
+IMPORT_LAYER = [("varis.workbench", "tools"), ("varis.narrative", "narrative"), ("varis.lib.narrative", "narrative"),
+                ("varis.lib.quality", "narrative"), ("varis.logic", "world model"), ("varis.lib.logic", "world model")]
+# The two aggregators that open every library for a state are allowed to name the upper layers.
+LAYER_EXEMPT = {"source/varis/package.d", "source/varis/lib/package.d"}
+
+
+def layer_of(rel):
+    for name, prefixes in LAYERS:
+        if rel.startswith(prefixes):
+            return name
+    return "core"
+
+
+def check_layers():
+    """A lower layer must not import a higher one (the seam of PERFORMANCE_PLAN.md stage S1)."""
+    errors = []
+    for f in sorted(Path(ROOT / "source").rglob("*.d")):
+        rel = str(f.relative_to(ROOT))
+        if rel in LAYER_EXEMPT:
+            continue
+        own = layer_of(rel)
+        for number, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+            match = re.search(r"\bimport\s+(varis\.[\w.]+)", line)
+            if not match:
+                continue
+            for prefix, layer in IMPORT_LAYER:
+                if match.group(1).startswith(prefix):
+                    if RANK[layer] > RANK[own]:
+                        errors.append(f"{rel}:{number}: {own} module imports the {layer} layer ({match.group(1)})")
+                    break
     return errors
 
 

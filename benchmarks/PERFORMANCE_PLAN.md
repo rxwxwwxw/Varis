@@ -253,7 +253,12 @@ fingerprints stay byte-identical (the S0 golden test proves it).
 4. **Relational and narrative opcodes out of line.** Each one is a single `case` that calls a
    non-inlined function reached through an extension table registered by the world model at state
    creation.
-5. **Module boundary.** After this stage no core module (the list is in AGENTS §4.1) imports
+5. **Module boundary.** *(Done October 11, 2026: no core module imports the upper layers; the
+   executor reaches them through `declarativeOpHook`, `worldOfValueHook` and
+   `beginFrameScopeHook`, installed by `narrative/vmops.d`; `make check-sources` enforces the
+   layering. Items 2 and 3 of this stage, removing the per-call world swap and the
+   per-instruction transaction check, are still open; they were measured as worth about 2 %.)*
+   After this stage no core module (the list is in AGENTS §4.1) imports
    `varis.logic` or `varis.narrative`. Today these do: `vm.d` (6 imports), `state.d` (3),
    `fiber.d` (2), `compiler.d`, `opcode.d`, `ast.d`, `parser.d` and `lib/coroutine.d` (1 each).
    State that belongs to the upper layers (the global world, the content registry) hangs off the

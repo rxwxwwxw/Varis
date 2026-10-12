@@ -21,7 +21,7 @@ import core.thread : Fiber;
 import varis.fiber : VarisFiber, currentLuaFiber;
 public import varis.fiber : beginNoYieldScope, endNoYieldScope, isNoYieldScope, beginNotificationDispatch,
     endNotificationDispatch, isNotificationDispatch, beginReadOnlyEvaluation, endReadOnlyEvaluation, isReadOnlyEvaluation;
-import varis.state : LuaState, stateCreatedHooks;
+import varis.state : LuaState, stateCreatedHooks, FrameScope;
 
 // The Lua core keeps the world model's per-state objects as opaque references (see
 // LuaState.globalWorldObject); these accessors give them their types back. They are found by
@@ -108,7 +108,7 @@ abstract class TransactionParticipant {
     abstract void publishState(Object state);
 }
 
-class Transaction {
+class Transaction : FrameScope {
     World world;
     Transaction parent;
     Relation[Relation] overlays;

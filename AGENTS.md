@@ -159,15 +159,25 @@ note names the stage. Until that stage lands, today's description is the one to 
 
 Rule: a module may import modules of its own layer and of layers below it, never above.
 
-Today this rule is **broken** in the core: `vm.d`, `state.d`, `fiber.d`, `compiler.d`, `opcode.d`
-and `lib/coroutine.d` import `varis.logic` or `varis.narrative` (lexical worlds on every call,
-frame transactions, relational opcodes, the content registry on the state), and `ast.d` and
-`parser.d` import small enums from `varis.logic.model`. Stage S1 ("the seam") fixes that. Until
-then: do not add new uses of the world model or narrative layers to core modules.
+The rule holds and is **enforced**: `make check-sources` (part of `make check` and the pre-push
+hook) fails when a module imports a higher layer. `source/varis/package.d` and `lib/package.d`,
+which open every library for a state, are the only exemptions.
 
-The frontend (`ast`, `lexer`, `parser`) and the compiler know the relational and narrative
-**syntax**, and stay that way: syntax is part of the language. The seam is about the runtime.
-(The enums the frontend needs move down into the frontend in S1.)
+How the core reaches the layers above it without importing them (the seam, stage S1):
+
+- **Syntax vocabulary** (`TermKind`, `CompareOp`, `GoalKind`) lives in the core module
+  `varis.relterms`; the frontend and the compiler know the relational and narrative **syntax**,
+  because syntax is part of the language.
+- **Per-state objects**: `LuaState` holds the global world, the call world and the content
+  registry as opaque `Object` slots. Their typed accessors are free functions found by UFCS
+  (`state.globalWorld`, `state.callWorld` in `varis.logic.world`; `state.narrativeRegistry` in
+  `varis.narrative.registry`), so import the accessor where you use it. The global world is
+  created by a hook the world model adds to `stateCreatedHooks`.
+- **Instructions**: the executor passes relational and narrative opcodes to
+  `declarativeOpHook`, resolves a world value through `worldOfValueHook`, and opens a
+  `transaction` block through `beginFrameScopeHook`, which returns the core interface
+  `FrameScope`. `varis.narrative.vmops` implements and installs all three.
+- **Execution scopes** (no-yield, read-only, notification) are core concepts in `varis.fiber`.
 
 ### 4.2 Value representation (`source/varis/types.d`)
 
@@ -290,7 +300,7 @@ Use this table to avoid coding against a design that has not landed.
 | Value | 16-byte tagged payload; strings are slices packed as pointer + 32-bit length; `match!` converts to `std.sumtype` | Same, with `std.sumtype` gone; cached string hashes if measurement supports it | L2 (main step done) |
 | Instructions executed | `execCode` = canonical 32-byte instructions plus a final `Return` | Compact specialized encoding derived from `code` | L3 |
 | Executors | `executeFrame` and `executeDeepFrame`; 40 of 43 handlers shared through `sharedOpcodeCases*` mixins, calls and returns still per executor | One executor with frames as records; fast and instrumented variants | S1 (first step done) |
-| Core and world model | Core imports `logic` and `narrative`; every Lua call maintains a lexical world | Core knows neither; world model plugs in through an extension table | S1 |
+| Core and world model | No core module imports `logic` or `narrative` (enforced by `make check-sources`); the world model plugs in through hooks (`narrative/vmops.d`). The executor still carries an opaque call world on every Lua call | Same, with the call world resolved only for natives that ask | S1 (boundary done) |
 | Fact storage | `bool[RelTuple]` per relation for writes, plus a shared immutable `FactTable` with indexes for reads (`logic/store.d`); cloned worlds share fact sets copy-on-write | Same | W1 (done) |
 | Query evaluation | Compiled slot plans, index probes, semi-naive recursion, derived relations cached per closure (`logic/evaluate.d`); the naive evaluator is the oracle (`logic/naive.d`, `VARIS_LOGIC_ORACLE=1`) | Same, plus storylet indexing | W2–W4 (done), W5 |
 | Sample game | In `make test` (suite `sample-game`: its check plus a golden transcript and save, `tests/sample_game/`) | Same | S0 (done) |
@@ -331,6 +341,8 @@ Use this table to avoid coding against a design that has not landed.
 | [`source/varis/lib/logic.d`](source/varis/lib/logic.d) | world model | ✅ Phase 6 | `logic` library and global `symbol` |
 | `source/varis/narrative/{registry,templates,codec,fingerprint,session,persistence,observe,diagnostics,analysis}.d` | narrative | ✅ Phase 7 | Sealed content, sessions, decks, choices, actions, saves and replay, explanations, subscriptions, bounded analysis |
 | `source/varis/lib/{narrative,quality}.d` | narrative | ✅ Phase 7 | `narrative` and `quality` libraries |
+| `source/varis/narrative/vmops.d` | narrative | ✅ stage S1 | Implementation of the relational and narrative instructions; installs the executor's hooks |
+| `source/varis/relterms.d` | core (frontend) | ✅ stage S1 | Relational syntax vocabulary shared by the frontend and the world model |
 | `tests/unit/*.d` | | ✅ | Unit tests (foundation, frontend, vm, libs, logic, stateful, narrative) |
 | `tests/runner.d` | | ✅ Phase 5 | Runner for `c-implementation/lua-5.4.9-tests/` (`python3 tools/suite test --suite official`) |
 | `tests/datalog/` | | ✅ Phase 6 | 12 positive and 3 negative acceptance programs; 19 self-checking scenario programs with golden output at two scales; `known_gaps/` |
