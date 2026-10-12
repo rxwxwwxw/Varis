@@ -217,15 +217,27 @@ private enum string enterFrameCode = q{
             proto = p;
             size_t stackSize = max(cast(size_t)p.maxStackSize + 8, 8);
             registerDepth = frameThread.registerDepth++;
-            cachedBuffer = null;
-            if (registerDepth < cachedFrameLimit) {
-                if (frameThread.registerBuffers.length <= registerDepth)
-                    frameThread.registerBuffers.length = registerDepth + 1;
-                cachedBuffer = frameThread.registerBuffers[registerDepth];
-                frameThread.registerBuffers[registerDepth] = null;
+            // Registers come from the thread's value stack, as in executeFrame: a bump allocation
+            // whose free area is always nil, so entering a frame allocates nothing. `cachedBuffer`
+            // remembers the frame's region (the registers may later move to their own array).
+            {
+                auto stackArray = frameThread.valueStack;
+                size_t stackBase = frameThread.valueTop;
+                if (stackBase + stackSize > stackArray.length) {
+                    // Chunks stop doubling at 64K values: a runaway recursion then adds memory in
+                    // steps instead of allocating (and scanning) ever larger arrays.
+                    size_t capacity = stackArray.length * 2;
+                    if (capacity < 128) capacity = 128;
+                    if (capacity > 65_536) capacity = 65_536;
+                    if (capacity < stackSize * 2) capacity = stackSize * 2;
+                    stackArray = new LuaValue[capacity];
+                    stackBase = 0;
+                    frameThread.valueStack = stackArray;
+                }
+                frameThread.valueTop = stackBase + stackSize;
+                cachedBuffer = stackArray[stackBase .. stackBase + stackSize];
+                registers = cachedBuffer;
             }
-            // The frame works on a view of exactly its size, so clearing it again stays cheap.
-            registers = cachedBuffer.length >= stackSize ? cachedBuffer[0 .. stackSize] : new LuaValue[stackSize];
             for (int i = 0; i < p.numParams; ++i) {
                 if (i < efArgs.length) registers[i] = efArgs[i];
             }
@@ -268,9 +280,15 @@ private enum string leaveFrameCode = q{
             }
             // Close handlers, transactions and open upvalues have finished: the buffer can be reused.
             // Only the frame's own view is cleared; the rest of a cached buffer is nil.
-            if (registerDepth < cachedFrameLimit && registers.length <= cachedRegisterLimit) {
-                clearValues(registers);
-                frameThread.registerBuffers[registerDepth] = registers.ptr is cachedBuffer.ptr ? cachedBuffer : registers;
+            clearValues(cachedBuffer);
+            {
+                auto live = frameThread.valueStack;
+                if (cachedBuffer.length && live.ptr <= cachedBuffer.ptr && cachedBuffer.ptr < live.ptr + live.length) {
+                    frameThread.valueTop = cachedBuffer.ptr - live.ptr;
+                    // Do not keep the stack of a very deep recursion alive once it is empty.
+                    if (frameThread.valueTop == 0 && live.length > 65_536)
+                        frameThread.valueStack = null;
+                }
             }
             --frameThread.registerDepth;
             frameThread.stackSlots -= frameSlots;
