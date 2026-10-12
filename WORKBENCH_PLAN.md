@@ -38,12 +38,14 @@ a token and serves one page with the layout of §3.
 | Story | Works after `story(session)` in the command window: presents on request, choices are buttons. It presents only when asked, because presenting appends to the session's replay log. |
 | Story-level debugging | Partly: after a choice the command window lists the facts the turn added and removed, per relation (computed from the immutable fact tables before and after). "Why?" explains any storylet through `narrative.explain`: eligible or not, each condition's outcome and candidate counts, each instance's exclusions. Rewind and seeds are not implemented. |
 | Editor | A plain text area with open, save and Run (runs the file in the live state). No completion or navigation. |
+| Source-level debugging | Works for code started from the command window or Run: line breakpoints (file and line), stop with every frame alive, locals of the innermost frame and the call stack in the workspace, step over/into/out, continue, and evaluating in the command window while stopped. Built on the executor's per-line slow path, installed only while a breakpoint or step is pending. Not yet: breakpoints inside the story panel's present/choose, selecting an outer frame, evaluating in a frame's scope, pause, stop-on-error. |
 | Problems | Syntax errors of the open file only (the full checker of milestone 30 does not exist). |
 
 Differences from the rest of this plan, all deliberate for a first version: plain HTTP
 request/response instead of a WebSocket with pushed events (§6); text bodies and query parameters
-instead of JSON requests; no source-level debugger (§5.2); no language services; no rewind or
-history views; derived relations show only their base facts.
+instead of JSON requests; no language services; no rewind or history views; derived relations
+show only their base facts. While stopped at a breakpoint the server answers requests from inside
+the line hook, and the connection that resumes execution receives the evaluation's result.
 
 ## 2. The model: MATLAB, with a story
 

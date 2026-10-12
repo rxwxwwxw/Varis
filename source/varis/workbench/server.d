@@ -670,6 +670,192 @@ private void installStoryNatives(LuaState state) {
             }, "workbench.storyletIds")));
 }
 
+// ---------------------------------------------------------------------------------------------
+// Source-level debugging (WORKBENCH_PLAN.md section 5.2)
+//
+// Breakpoints and stepping use the executor's per-line slow path (the mechanism behind line hooks):
+// while any breakpoint is set or a step is pending, a native line hook runs before each source line
+// and decides whether to stop. Stopping answers the request that started the evaluation with
+// "stopped", then serves further requests from inside the hook, with every Lua frame still alive,
+// until one of them resumes execution. That request receives the evaluation's eventual result.
+// Without breakpoints the hook is not installed and code runs on the fast path.
+
+private struct Breakpoint {
+    string file;
+    long line;
+}
+
+private enum StepMode {
+    run,
+    into,
+    over,
+    out_
+}
+
+private struct Debugger {
+    Breakpoint[] breakpoints;
+    StepMode step;
+    size_t stepDepth;
+    bool stopped;
+    string stoppedFile;
+    long stoppedLine;
+    size_t stoppedDepth;
+    int resultSocket = -1; // the connection waiting for the running evaluation's outcome
+    int listener = -1;
+    string token;
+    LuaNativeFunction hook;
+}
+
+private __gshared Debugger debugger;
+
+/// What became of a request's connection.
+private enum Disposition {
+    done, // answered; the caller closes it
+    deferred, // kept open: it will receive the result of the evaluation it resumed
+    closed // already answered and closed elsewhere
+}
+
+/// "@./content/lamp.lua" and "content/lamp.lua" name the same file.
+private string normalizeSource(string source) {
+    if (source.length && (source[0] == '@' || source[0] == '='))
+        source = source[1 .. $];
+    while (source.length > 1 && source[0] == '.' && source[1] == '/')
+        source = source[2 .. $];
+    return source;
+}
+
+/// Index in the call stack of the innermost Lua function (the one the hook fired in), or -1.
+private ptrdiff_t innermostLuaFrame(LuaState state) {
+    auto frames = state.callStack();
+    for (ptrdiff_t i = cast(ptrdiff_t) frames.length - 1; i >= 0; --i)
+        if (cast(LuaClosure) frames[i].fn !is null && frames[i].registers !is null)
+            return i;
+    return -1;
+}
+
+private void syncHook(LuaState state) {
+    import varis.state : vmAttention, vmSlowMode;
+
+    auto thread = state.mainThread;
+    bool wanted = debugger.breakpoints.length != 0 || debugger.step != StepMode.run;
+    if (wanted) {
+        thread.hookFunction = debugger.hook;
+        thread.hookMask = 4; // line events
+        vmSlowMode = true;
+        vmAttention = true;
+    } else if (thread.hookFunction is debugger.hook) {
+        thread.hookFunction = null;
+        thread.hookMask = 0;
+    }
+}
+
+private string stoppedJson() {
+    char[32] number;
+    auto n = snprintf(number.ptr, number.length, "%lld", debugger.stoppedLine);
+    return `{"stopped":true,"file":` ~ jsonQuote(debugger.stoppedFile) ~ `,"line":` ~ number[0 .. n].idup ~ `}`;
+}
+
+/// The line hook: decides whether to stop here and, if so, serves requests until resumed.
+private LuaValue[] debuggerHook(LuaState state, long line) {
+    auto top = innermostLuaFrame(state);
+    if (top < 0)
+        return null;
+    auto frames = state.callStack();
+    auto file = normalizeSource((cast(LuaClosure) frames[top].fn).proto.sourceName);
+    size_t depth = cast(size_t) top;
+    bool stop;
+    final switch (debugger.step) {
+    case StepMode.run:
+        break;
+    case StepMode.into:
+        stop = true;
+        break;
+    case StepMode.over:
+        stop = depth <= debugger.stepDepth;
+        break;
+    case StepMode.out_:
+        stop = depth < debugger.stepDepth;
+        break;
+    }
+    if (!stop)
+        foreach (ref breakpoint; debugger.breakpoints)
+            if (breakpoint.line == line && breakpoint.file == file) {
+                stop = true;
+                break;
+            }
+    if (!stop || debugger.resultSocket < 0)
+        return null;
+    debugger.stopped = true;
+    debugger.step = StepMode.run;
+    debugger.stoppedFile = file;
+    debugger.stoppedLine = line;
+    debugger.stoppedDepth = depth;
+    // The waiting connection learns that execution stopped; whoever resumes gets the result.
+    respond(debugger.resultSocket, 200, "application/json", stoppedJson());
+    close(debugger.resultSocket);
+    debugger.resultSocket = -1;
+    while (debugger.stopped) {
+        int connection = accept(debugger.listener, null, null);
+        if (connection < 0)
+            continue;
+        Request request;
+        auto disposition = Disposition.done;
+        if (readRequest(connection, request))
+            disposition = handle(state, connection, request, debugger.token);
+        if (disposition == Disposition.done)
+            close(connection);
+    }
+    syncHook(state);
+    return null;
+}
+
+private string stackJson(LuaState state) {
+    string json = `{"stopped":` ~ (debugger.stopped ? "true" : "false") ~ `,"frames":[`;
+    auto frames = state.callStack();
+    bool first = true;
+    for (ptrdiff_t i = cast(ptrdiff_t) frames.length - 1; i >= 0; --i) {
+        auto closure = cast(LuaClosure) frames[i].fn;
+        if (closure is null || frames[i].registers is null)
+            continue;
+        char[32] number;
+        auto n = snprintf(number.ptr, number.length, "%d", frames[i].line());
+        char[32] index;
+        auto m = snprintf(index.ptr, index.length, "%lld", cast(long) i);
+        json ~= (first ? "" : ",") ~ `{"frame":` ~ index[0 .. m].idup ~ `,"file":` ~ jsonQuote(
+                normalizeSource(closure.proto.sourceName)) ~ `,"line":` ~ number[0 .. n].idup ~ `,"name":` ~ jsonQuote(
+                frames[i].name.length ? frames[i].name : (closure.proto.functionName.length ? closure
+                .proto.functionName : "?")) ~ `}`;
+        first = false;
+    }
+    return json ~ "]}";
+}
+
+private string localsJson(LuaState state, long frameIndex) {
+    auto frames = state.callStack();
+    if (frameIndex < 0)
+        frameIndex = innermostLuaFrame(state);
+    if (frameIndex < 0 || frameIndex >= cast(long) frames.length)
+        return `{"locals":[]}`;
+    string json = `{"locals":[`;
+    bool first = true;
+    for (long i = 1; i < 250; ++i) {
+        LuaValue value;
+        auto name = frames[cast(size_t) frameIndex].getLocal(i, value);
+        if (name is null)
+            break;
+        if (name.length && name[0] == '(')
+            continue; // temporaries
+        auto text = toLuaString(value);
+        if (text.length > 120)
+            text = text[0 .. 117] ~ "...";
+        json ~= (first ? "" : ",") ~ `{"name":` ~ jsonQuote(name) ~ `,"type":` ~ jsonQuote(
+                value.typeName()) ~ `,"value":` ~ jsonQuote(
+                text) ~ `}`;
+        first = false;
+    }
+    return json ~ "]}";
+}
+
 private string makeToken() {
     ubyte[16] bytes;
     auto source = fopen("/dev/urandom", "rb");
@@ -697,11 +883,36 @@ private long numberOf(string text, long fallback) {
     return value;
 }
 
-private void handle(LuaState state, int socket, ref Request request, string token) {
+/// Runs an evaluation whose outcome goes to `socket`, unless a breakpoint stops it first: then the
+/// stop is reported on `socket` and the outcome goes to the connection that resumed execution.
+private Disposition finishEvaluation(LuaState state, int socket, scope Evaluation delegate() run) {
+    if (debugger.resultSocket >= 0 || debugger.stopped) {
+        // Evaluating while stopped at a breakpoint: run it plainly, with the line hook quiet
+        // (the hook machinery does not re-enter itself).
+        respond(socket, 200, "application/json", evaluationJson(run()));
+        return Disposition.done;
+    }
+    debugger.resultSocket = socket;
+    syncHook(state);
+    auto result = run();
+    int target = debugger.resultSocket;
+    debugger.resultSocket = -1;
+    debugger.step = StepMode.run;
+    syncHook(state);
+    if (target < 0)
+        return Disposition.closed;
+    respond(target, 200, "application/json", evaluationJson(result));
+    if (target == socket)
+        return Disposition.done;
+    close(target);
+    return Disposition.closed;
+}
+
+private Disposition handle(LuaState state, int socket, ref Request request, string token) {
     auto given = "token" in request.query;
     if (given is null || *given != token) {
         respond(socket, 403, "text/plain", "missing or wrong token; use the address printed by varis serve\n");
-        return;
+        return Disposition.done;
     }
     string parameter(string name) {
         auto value = name in request.query;
@@ -712,35 +923,86 @@ private void handle(LuaState state, int socket, ref Request request, string toke
     switch (request.path) {
     case "/":
         respond(socket, 200, "text/html; charset=utf-8", workbenchPage);
-        return;
+        return Disposition.done;
     case "/api/eval":
-        respond(socket, 200, "application/json", evaluationJson(evaluate(state, request.body_, "=command")));
-        return;
+        return finishEvaluation(state, socket, () => evaluate(state, request.body_, "=command"));
+    case "/api/breakpoints": {
+            // Body: one "file:line" per line; replaces the whole set.
+            if (request.method == "POST") {
+                debugger.breakpoints = null;
+                auto text = request.body_;
+                while (text.length) {
+                    auto end = indexOf(text, "\n");
+                    auto entry = end < 0 ? text : text[0 .. end];
+                    text = end < 0 ? null : text[end + 1 .. $];
+                    ptrdiff_t colon = -1;
+                    foreach (i, char c; entry)
+                        if (c == ':')
+                            colon = i;
+                    if (colon > 0) {
+                        auto line = numberOf(entry[colon + 1 .. $], 0);
+                        if (line > 0)
+                            debugger.breakpoints ~= Breakpoint(normalizeSource(entry[0 .. colon].idup), line);
+                    }
+                }
+                syncHook(state);
+            }
+            string json = `{"breakpoints":[`;
+            foreach (i, breakpoint; debugger.breakpoints) {
+                char[32] number;
+                auto n = snprintf(number.ptr, number.length, "%lld", breakpoint.line);
+                json ~= (i ? "," : "") ~ `{"file":` ~ jsonQuote(breakpoint.file) ~ `,"line":` ~ number[0 .. n].idup ~ `}`;
+            }
+            respond(socket, 200, "application/json", json ~ "]}");
+            return Disposition.done;
+        }
+    case "/api/stack":
+        respond(socket, 200, "application/json", stackJson(state));
+        return Disposition.done;
+    case "/api/locals":
+        respond(socket, 200, "application/json", localsJson(state, parameter("frame").length ? numberOf(
+                parameter("frame"), -1) : -1));
+        return Disposition.done;
+    case "/api/continue", "/api/step": {
+            if (!debugger.stopped) {
+                respond(socket, 200, "application/json", `{"stopped":false,"error":"not stopped"}`);
+                return Disposition.done;
+            }
+            auto mode = request.path == "/api/continue" ? "" : parameter("mode");
+            debugger.step = mode == "into" ? StepMode.into : mode == "over" ? StepMode.over
+                : mode == "out"
+                ? StepMode.out_ : StepMode.run;
+            debugger.stepDepth = debugger.stoppedDepth;
+            debugger.stopped = false;
+            debugger.resultSocket = socket; // answered when execution stops again or finishes
+            return Disposition.deferred;
+        }
     case "/api/run": {
             auto path = parameter("path");
             string content;
             if (!safePath(path) || !readFile(path, content)) {
                 respond(socket, 404, "application/json", `{"ok":false,"error":"cannot read file"}`);
-                return;
+                return Disposition.done;
             }
-            Evaluation result;
-            try {
-                auto fn = state.loadString(content, "@" ~ path);
-                result.output = captureOutput({
-                    try {
-                        VM.callValue(state, LuaValue(fn), []);
-                        result.ok = true;
-                    } catch (LuaException failure) {
-                        result.error = errorText(failure.errorObject);
-                    } catch (Exception failure) {
-                        result.error = failure.msg;
-                    }
-                });
-            } catch (LuaException failure) {
-                result.error = errorText(failure.errorObject);
-            }
-            respond(socket, 200, "application/json", evaluationJson(result));
-            return;
+            return finishEvaluation(state, socket, () {
+                Evaluation result;
+                try {
+                    auto fn = state.loadString(content, "@" ~ path);
+                    result.output = captureOutput({
+                        try {
+                            VM.callValue(state, LuaValue(fn), []);
+                            result.ok = true;
+                        } catch (LuaException failure) {
+                            result.error = errorText(failure.errorObject);
+                        } catch (Exception failure) {
+                            result.error = failure.msg;
+                        }
+                    });
+                } catch (LuaException failure) {
+                    result.error = errorText(failure.errorObject);
+                }
+                return result;
+            });
         }
     case "/api/check": {
             // Syntax check only (the full `varis check` of milestone 30 does not exist yet).
@@ -748,7 +1010,7 @@ private void handle(LuaState state, int socket, ref Request request, string toke
             string content = request.body_;
             if (request.method != "POST" && (!safePath(path) || !readFile(path, content))) {
                 respond(socket, 404, "application/json", `{"problems":[]}`);
-                return;
+                return Disposition.done;
             }
             try {
                 state.loadString(content, "@" ~ path);
@@ -757,40 +1019,40 @@ private void handle(LuaState state, int socket, ref Request request, string toke
                 respond(socket, 200, "application/json", `{"problems":[` ~ jsonQuote(
                         errorText(failure.errorObject)) ~ `]}`);
             }
-            return;
+            return Disposition.done;
         }
     case "/api/workspace":
         respond(socket, 200, "application/json", callView(state, "workspace", [], ok));
-        return;
+        return Disposition.done;
     case "/api/relations":
         respond(socket, 200, "application/json", callView(state, "relationList", [
             LuaValue(parameter("world"))
         ], ok));
-        return;
+        return Disposition.done;
     case "/api/facts":
         respond(socket, 200, "application/json", callView(state, "factPage", [
             LuaValue(parameter("world")), LuaValue(parameter("name")),
             LuaValue(numberOf(parameter("start"), 0)),
             LuaValue(numberOf(parameter("count"), 100))
         ], ok));
-        return;
+        return Disposition.done;
     case "/api/present":
         respond(socket, 200, "application/json", callView(state, "present", [], ok));
-        return;
+        return Disposition.done;
     case "/api/choose":
         respond(socket, 200, "application/json", callView(state, "choose", [
             LuaValue(numberOf(parameter("s"), 0)), LuaValue(numberOf(parameter("c"), 0))
         ], ok));
-        return;
+        return Disposition.done;
     case "/api/changes":
         respond(socket, 200, "application/json", callView(state, "turnChanges", [], ok));
-        return;
+        return Disposition.done;
     case "/api/why":
         respond(socket, 200, "application/json", callView(state, "why", [LuaValue(parameter("id"))], ok));
-        return;
+        return Disposition.done;
     case "/api/content":
         respond(socket, 200, "application/json", callView(state, "contentList", [], ok));
-        return;
+        return Disposition.done;
     case "/api/files": {
             string[] found;
             listFiles(".", "", 0, found);
@@ -799,28 +1061,29 @@ private void handle(LuaState state, int socket, ref Request request, string toke
             foreach (i, name; found)
                 json ~= (i ? "," : "") ~ jsonQuote(name);
             respond(socket, 200, "application/json", json ~ "]}");
-            return;
+            return Disposition.done;
         }
     case "/api/file": {
             auto path = parameter("path");
             if (!safePath(path)) {
                 respond(socket, 400, "text/plain", "bad path\n");
-                return;
+                return Disposition.done;
             }
             if (request.method == "POST") {
                 respond(socket, writeFile(path, request.body_) ? 200 : 500, "text/plain", "");
-                return;
+                return Disposition.done;
             }
             string content;
             if (!readFile(path, content)) {
                 respond(socket, 404, "text/plain", "not found\n");
-                return;
+                return Disposition.done;
             }
             respond(socket, 200, "text/plain; charset=utf-8", content);
-            return;
+            return Disposition.done;
         }
     default:
         respond(socket, 404, "text/plain", "not found\n");
+        return Disposition.done;
     }
 }
 
@@ -861,6 +1124,12 @@ int serveWorkbench(LuaState state, string directory, ushort port) {
     socklen_t length = address.sizeof;
     getsockname(listener, cast(sockaddr*)&address, &length);
     auto token = makeToken();
+    debugger.listener = listener;
+    debugger.token = token;
+    debugger.hook = new LuaNativeFunction((void* pointer, LuaValue[] args) {
+        long line = args.length > 1 && args[1].isInteger ? args[1].asInteger : 0;
+        return debuggerHook(cast(LuaState) pointer, line);
+    }, "workbench.debugger");
     printf("Varis workbench: http://127.0.0.1:%d/?token=%s\n", cast(int) ntohs(address.sin_port), (token ~ "\0").ptr);
     printf("Loopback only. The command window runs code with your permissions; keep the address private.\n");
     fflush(stdout);
@@ -870,8 +1139,10 @@ int serveWorkbench(LuaState state, string directory, ushort port) {
         if (connection < 0)
             continue;
         Request request;
+        auto disposition = Disposition.done;
         if (readRequest(connection, request))
-            handle(state, connection, request, token);
-        close(connection);
+            disposition = handle(state, connection, request, token);
+        if (disposition == Disposition.done)
+            close(connection);
     }
 }

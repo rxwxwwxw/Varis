@@ -82,6 +82,26 @@ def main():
         assert why["id"] == "lamp" and why["eligible"] is False and why["goals"], why
         assert call("/api/why", {"id": "walk"})["eligible"] is True
 
+        # Source-level debugging: a breakpoint stops the evaluation with its frames alive.
+        program = "local a = 1\nlocal b = a + 1\nc = a + b\nprint(c)\n"
+        assert call("/api/breakpoints", body="command:3")["breakpoints"] == [{"file": "command", "line": 3}]
+        stop = call("/api/eval", body=program)
+        assert stop == {"stopped": True, "file": "command", "line": 3}, stop
+        local_values = {v["name"]: v["value"] for v in call("/api/locals")["locals"]}
+        assert local_values == {"a": "1", "b": "2"}, local_values
+        frames = call("/api/stack")
+        assert frames["stopped"] and frames["frames"][0]["line"] == 3, frames
+        # Evaluating while stopped works and does not disturb the stopped program.
+        assert call("/api/eval", body="1 + 1")["output"] == "2\n"
+        step = call("/api/step", {"mode": "over"}, body="")
+        assert step == {"stopped": True, "file": "command", "line": 4}, step
+        done = call("/api/continue", body="")
+        assert done["ok"] and done["output"] == "3\n", done
+        # Without breakpoints the same program runs straight through.
+        assert call("/api/breakpoints", body="")["breakpoints"] == []
+        assert call("/api/eval", body=program)["output"] == "3\n"
+        assert call("/api/continue", body="")["error"] == "not stopped"
+
         # Files: listing, reading, the syntax check, and path safety.
         files = call("/api/files")["files"]
         assert "game.lua" in files and "content/lamp.lua" in files

@@ -53,6 +53,9 @@ immutable string workbenchPage = q"HTML
   .storylet p { margin: 0 0 4px; white-space: pre-wrap; }
   .link { color: var(--accent); cursor: pointer; text-decoration: underline; }
   .muted { color: var(--soft); } .spacer { flex: 1; }
+  #debugBar { padding: 4px 8px; border-bottom: 1px solid var(--line); color: var(--bad); }
+  #breaks { padding: 2px 8px; font-size: 12px; } #breaks:empty { display: none; }
+  #breakLine { border: 1px solid var(--line); background: var(--bg); color: var(--ink); border-radius: 3px; padding: 2px 4px; }
   @media (max-width: 760px) {
     #grid { grid-template-columns: 1fr; grid-template-rows: auto; height: auto;
             grid-template-areas: "story" "command" "workspace" "editor" "problems"; }
@@ -72,7 +75,11 @@ immutable string workbenchPage = q"HTML
   <section id="workspace"><header>Workspace <span class="spacer"></span><span id="crumb" class="muted"></span></header>
     <div class="body" id="workspaceBody"></div></section>
   <section id="editor"><header>Editor <select id="files"></select><span id="dirty" class="muted"></span>
-      <span class="spacer"></span><button id="save">Save</button><button id="run">Run</button></header>
+      <span class="spacer"></span><input id="breakLine" class="mono" size="4" placeholder="line" title="Line number for a breakpoint in this file">
+      <button id="toggleBreak">Break</button><button id="save">Save</button><button id="run">Run</button></header>
+    <div id="debugBar" class="mono" hidden><span id="where"></span> <button id="dbgContinue">Continue</button>
+      <button id="dbgOver">Step over</button><button id="dbgInto">Step into</button><button id="dbgOut">Step out</button></div>
+    <div id="breaks" class="muted mono"></div>
     <textarea id="source" spellcheck="false"></textarea></section>
   <section id="problems"><header>Problems</header><div class="body mono" id="problemsBody"><span class="muted">None.</span></div></section>
 </div>
@@ -103,10 +110,53 @@ async function submit(text) {
   const result = await api("/api/eval", {}, full);
   if (result.incomplete) { pending = full; return; }
   pending = "";
+  showOutcome(result);
+}
+// An evaluation either finishes or stops at a breakpoint; a resumed one reports the same way.
+async function showOutcome(result) {
+  if (result.stopped) {
+    $("debugBar").hidden = false;
+    $("where").textContent = "stopped at " + result.file + ":" + result.line;
+    logLine("stopped at " + result.file + ":" + result.line + "\n", "err");
+    if (result.file !== current && [...$("files").options].some(o => o.value === result.file)) await openFile(result.file);
+    if (result.file === current) selectLine(result.line);
+    showLocals();
+    return;
+  }
+  $("debugBar").hidden = true;
   if (result.output) logLine(result.output);
   if (!result.ok && result.error) logLine(result.error + "\n", "err");
   refreshWorkspace();
 }
+function selectLine(line) {
+  const text = $("source").value; let start = 0;
+  for (let i = 1; i < line; i++) { const next = text.indexOf("\n", start); if (next < 0) break; start = next + 1; }
+  let end = text.indexOf("\n", start); if (end < 0) end = text.length;
+  $("source").focus(); $("source").setSelectionRange(start, end);
+  // Bring the line into view (line height is 13px * 1.45; long wrapped lines make this approximate).
+  $("source").scrollTop = Math.max(0, (line - 4) * 18.85);
+}
+async function showLocals() {
+  const [locals, stack] = await Promise.all([api("/api/locals"), api("/api/stack")]);
+  const body = $("workspaceBody"); body.textContent = ""; back("workspace", refreshWorkspace);
+  const table = el("table", {}, el("tr", {}, el("th", {}, "Local"), el("th", {}, "Type"), el("th", {}, "Value")));
+  for (const row of locals.locals) table.append(el("tr", {}, el("td", { class: "mono" }, row.name), el("td", {}, row.type), el("td", { class: "mono" }, row.value)));
+  body.append(table, el("div", { class: "muted mono" }, stack.frames.map(f => f.name + " " + f.file + ":" + f.line).join("  <  ")));
+}
+async function resume(path, params) { showOutcome(await api(path, params, "")); }
+$("dbgContinue").onclick = () => resume("/api/continue");
+$("dbgOver").onclick = () => resume("/api/step", { mode: "over" });
+$("dbgInto").onclick = () => resume("/api/step", { mode: "into" });
+$("dbgOut").onclick = () => resume("/api/step", { mode: "out" });
+let breakpoints = [];
+function renderBreaks() { $("breaks").textContent = breakpoints.length ? "breakpoints: " + breakpoints.join("  ") : ""; }
+$("toggleBreak").onclick = async () => {
+  const line = parseInt($("breakLine").value, 10); if (!current || !(line > 0)) return;
+  const key = current + ":" + line;
+  breakpoints = breakpoints.includes(key) ? breakpoints.filter(b => b !== key) : breakpoints.concat([key]);
+  const data = await api("/api/breakpoints", {}, breakpoints.join("\n"));
+  breakpoints = data.breakpoints.map(b => b.file + ":" + b.line); renderBreaks();
+};
 $("input").addEventListener("keydown", event => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
@@ -228,10 +278,7 @@ $("save").onclick = saveFile;
 $("run").onclick = async () => {
   await saveFile();
   logLine(">> run " + current + "\n", "in");
-  const result = await api("/api/run", { path: current }, "");
-  if (result.output) logLine(result.output);
-  if (!result.ok && result.error) logLine(result.error + "\n", "err");
-  refreshWorkspace();
+  showOutcome(await api("/api/run", { path: current }, ""));
 };
 let checkTimer = 0;
 $("source").addEventListener("input", () => { markDirty(); clearTimeout(checkTimer); checkTimer = setTimeout(check, 400); });

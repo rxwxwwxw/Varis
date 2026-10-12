@@ -279,7 +279,7 @@ How the core reaches the layers above it without importing them (the seam, stage
 
 ### 4.12 Debugging and the workbench (planned; ROADMAP D10, D11)
 
-A first version of the server and page exists (`varis serve`, `source/varis/workbench/`; WORKBENCH_PLAN §1a lists what works). The debugger, language services and pushed events do not. The design is in [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md).
+A first version exists (`varis serve` and `varis check`, `source/varis/workbench/`; WORKBENCH_PLAN §1a lists what works), including story-level debugging and a source-level debugger with line breakpoints, stepping, stack and locals. Language services and pushed events do not exist. The design is in [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md).
 
 - The tool is a web workbench served by `varis serve`: command window on the left, editor on the right, a workspace browser (MATLAB's model). The engine runs natively; the browser is only the user interface. No WebAssembly.
 - Debugging is at two levels. **Story level** (step a turn, rewind by replay, what changed, why a choice is missing) is built on the existing `narrative.explain`, `narrative.observe`, `narrative.analyze` and replay logs. **Source level** (line breakpoints, stepping, call stack, locals) is built on the instrumented executor from stage S1.
@@ -305,7 +305,7 @@ Use this table to avoid coding against a design that has not landed.
 | Query evaluation | Compiled slot plans, index probes, semi-naive recursion, derived relations cached per closure (`logic/evaluate.d`); the naive evaluator is the oracle (`logic/naive.d`, `VARIS_LOGIC_ORACLE=1`) | Same, plus storylet indexing | W2–W4 (done), W5 |
 | Sample game | In `make test` (suite `sample-game`: its check plus a golden transcript and save, `tests/sample_game/`) | Same | S0 (done) |
 | Debugging | Lua `debug` library; `narrative.explain`/`observe`/`analyze` from scripts | Workbench debugger at source and story level | Milestone 44 |
-| Tools | CLI and REPL (`cli.d`); `varis check` first version (compile errors only); `varis serve` first version (command window, workspace with relation tables, story panel, plain editor) | `varis check`, language services, debugger, full workbench | Milestones 30–33, 42–44 |
+| Tools | CLI and REPL (`cli.d`); `varis check` first version (compile errors only); `varis serve` first version (command window, workspace with relation tables, story panel with why/changes, plain editor, breakpoints and stepping) | Full `varis check`, language services, complete debugger and workbench | Milestones 30–33, 42–44 |
 | Core speed | 0.5–2.3× C Lua on core workloads (`fib` 2.28×, `string_ops` 2.13×, `closures` 1.95×, loops 1.2–1.5×); `pcall_error` 1.3× (was 37×), `deep_recursion` 2.7× (was 8×) | ≤ 1.0×, then below | L, X |
 | Turn latency (reference-scale game, M1) | 0.3 ms with or without a recursive rule (was 15 ms and 840 ms); peak memory 53 MB | 5 ms and 64 MB on the stand-in; real hardware unmeasured | W, M |
 
