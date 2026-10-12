@@ -350,7 +350,16 @@ class ContentRegistry {
                 if (choice.id in choices)
                     throw new LuaException("duplicate choice identifier '" ~ choice.id ~ "'");
                 choices[choice.id] = true;
-                validateContent(choice);
+                try {
+                    validateContent(choice);
+                } catch (LuaException failure) {
+                    if (failure.contentId.length == 0) {
+                        failure.contentKind = "choice";
+                        failure.contentId = choice.id;
+                        failure.contentOwner = definition.id;
+                    }
+                    throw failure;
+                }
             }
         } else if (definition.kind == "action") {
             string phase = definition.symbolOption("phase", "post");
@@ -409,8 +418,17 @@ class ContentRegistry {
                 throw new LuaException("registry already sealed with another version");
             return;
         }
-        foreach (definition; storylets_.values ~ actions_.values)
-            validateContent(definition);
+        foreach (definition; storylets_.values ~ actions_.values) {
+            try {
+                validateContent(definition);
+            } catch (LuaException failure) {
+                if (failure.contentId.length == 0) {
+                    failure.contentKind = definition.kind;
+                    failure.contentId = definition.id;
+                }
+                throw failure;
+            }
+        }
         string[] manifests;
         foreach (definition; storylets_.values ~ actions_.values)
             manifests ~= definition.kind ~ ":" ~ definition.id ~ ":" ~ definition.fingerprint;

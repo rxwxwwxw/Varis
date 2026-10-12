@@ -26,8 +26,17 @@ import varis.exception : LuaException;
 import varis.services.diagnostic;
 import varis.services.checks;
 import varis.services.index;
+import varis.services.loadpass;
 import varis.services.manifest;
 import varis.workbench.server : readFile, listFiles, sortStrings, errorText;
+
+private size_t errorCount(const(Diagnostic)[] items) {
+    size_t count;
+    foreach (ref d; items)
+        if (d.isError)
+            ++count;
+    return count;
+}
 
 /// Splits "chunk:12: message" as produced by the parser and compiler for a chunk named "@file".
 private Diagnostic diagnose(string file, string text) {
@@ -52,8 +61,20 @@ private Diagnostic diagnose(string file, string text) {
 /// file under the current directory when there is no manifest.
 /// Prints one line per problem (or JSON with `json`) and returns the process exit status:
 /// 1 when a file does not compile, 0 otherwise (warnings do not fail the check).
-int checkProject(LuaState state, string[] files, bool json, bool dumpIndex = false) {
+struct CheckOptions {
+    bool json;
+    bool dumpIndex;
+    bool noLoad;
+    bool analyze;
+    int depth = 3;
+    int nodes = 100;
+}
+
+int checkProject(LuaState state, string[] files, CheckOptions options) {
+    bool json = options.json;
+    bool dumpIndex = options.dumpIndex;
     auto manifest = loadManifest(".");
+    size_t namedFiles = files.length;
     if (files.length == 0)
         files = projectFiles(".", manifest);
     Diagnostic[] problems = manifest.problems.dup;
@@ -113,6 +134,17 @@ int checkProject(LuaState state, string[] files, bool json, bool dumpIndex = fal
         }
     }
     staticChecks(index, problems);
+    // The load pass runs the project's entry module (never a session); the analysis pass, on
+    // request, explores the manifest's session. Neither runs when files were named, or when
+    // a file did not compile: the project is not in a state to load.
+    if (!dumpIndex && namedFiles == 0 && manifest.present && manifest.entry.length && !options.noLoad && partial
+            .length == 0
+            && errorCount(problems) == 0) {
+        bool loaded;
+        problems ~= loadPass(state, manifest, index, loaded);
+        if (loaded && options.analyze)
+            problems ~= analysisPass(state, manifest, index, options.depth, options.nodes);
+    }
     // Display text built by code cannot be extracted for translation.
     foreach (ref f; index.files)
         foreach (ref m; f.messages)

@@ -518,24 +518,39 @@ private int runServe(string[] argv, ref LuaState state) {
 
 /// `varis check [--json] [files...]`: compile without running (see varis.services.check).
 private int runCheck(string[] argv, ref LuaState state) {
-    import varis.services.check : checkProject;
+    import varis.services.check : checkProject, CheckOptions;
 
-    bool json, dumpIndex;
+    CheckOptions options;
     string[] files;
-    foreach (argument; argv[2 .. $]) {
+    for (size_t i = 2; i < argv.length; ++i) {
+        auto argument = argv[i];
         if (argument == "--json")
-            json = true;
+            options.json = true;
         else if (argument == "--index")
-            dumpIndex = true;
-        else if (argument.length && argument[0] == '-') {
-            writeErr("usage: varis check [--json] [--index] [files...]\n");
+            options.dumpIndex = true;
+        else if (argument == "--no-load")
+            options.noLoad = true;
+        else if (argument == "--analyze")
+            options.analyze = true;
+        else if ((argument == "--depth" || argument == "--nodes") && i + 1 < argv.length) {
+            int value;
+            foreach (char c; argv[++i])
+                if (c >= '0' && c <= '9')
+                    value = value * 10 + (c - '0');
+            if (argument == "--depth")
+                options.depth = value;
+            else
+                options.nodes = value;
+        } else if (argument.length && argument[0] == '-') {
+            writeErr(
+                    "usage: varis check [--json] [--index] [--no-load] [--analyze [--depth N] [--nodes N]] [files...]\n");
             return 2;
         } else
             files ~= argument;
     }
     state = new LuaState();
     openLibs(state);
-    return checkProject(state, files, json, dumpIndex);
+    return checkProject(state, files, options);
 }
 
 private int runMain(string[] argv, ref LuaState state) {

@@ -94,7 +94,18 @@ with no `deck :x {...}`), `unknown-placeholder` (error: `{name}` that is not a
 parameter of the storylet or choice), `relation-arity` (error: a use that disagrees
 with the declared columns), `unknown-relation` and `unknown-quality` (warnings: a
 relation read that nothing declares, asserts or derives; a quality no
-`quality.define` names). A finding that carries a near name has a `suggestion`. `varis check --index` prints the project index:
+`quality.define` names). A finding that carries a near name has a `suggestion`.
+
+When the manifest names an `entry` module and nothing else failed, `varis check`
+also runs that module in a fresh state, up to the seal of the content, and reports
+what the engine's validation says as `load` errors at the line of the storylet,
+choice, action or rule that was rejected (it creates no session; `--no-load` skips
+this pass). Running the entry module runs the project's own code with your
+permissions, as `varis serve` does. With `--analyze [--depth N] [--nodes N]` it
+also creates a session through the manifest's `session` function and runs
+`narrative.analyze` on it: each storylet that bounded exploration never reached is
+an `unreachable` warning (a hint, not a proof) and an exhausted bound is an
+`analysis-incomplete` note. `varis check --index` prints the project index:
 the declarations, references and display messages read from the source files.
 
 

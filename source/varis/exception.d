@@ -44,6 +44,10 @@ class LuaException : Exception {
     /// Innermost native function that raised this error (kept in the traceback of a failed coroutine).
     LuaFunction originFunction;
     string originName, originKind;
+    /// The content definition an error was found in (`storylet`, `choice`, `action`), when the
+    /// registry validated one: tools use it to point at the definition. It does not change
+    /// the message or anything the language observes.
+    string contentKind, contentId, contentOwner;
 
     void locate(string source, int line) {
         if (!needsLocation)

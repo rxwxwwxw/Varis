@@ -86,6 +86,22 @@ def main():
     again = [p for p in json.loads(out)["problems"] if p["code"] == "duplicate-id"][0]
     assert again["related"][0]["line"] == 6 and again["subject"] == "choice lamp.light", again
 
+    # The load pass: what the engine's own validation says, at the definition's line (stage A4).
+    code, out = run(binary, HERE / "fixtures" / "load_unbound", "--json")
+    problem = json.loads(out)["problems"][0]
+    assert code == 1 and (problem["code"], problem["file"], problem["line"]) == ("load", "game.lua", 4), out
+    assert problem["subject"] == "storylet lamp" and "unbound storylet parameter" in problem["message"], problem
+    code, out = run(binary, HERE / "fixtures" / "load_unstratified", "--json")
+    problem = json.loads(out)["problems"][0]
+    assert code == 1 and (problem["code"], problem["file"], problem["line"]) == ("load", "game.lua", 5), out
+    code, out = run(binary, HERE / "fixtures" / "load_unbound", "--json", "--no-load")
+    assert code == 0 and json.loads(out)["problems"] == [], out
+    # The analysis pass reports what bounded exploration did not reach, and says it is bounded.
+    code, out = run(binary, ROOT / "sample-game", "--json", "--analyze")
+    unreached = [p for p in json.loads(out)["problems"] if p["code"] == "unreachable"]
+    assert code == 0 and unreached and all(p["severity"] == "warning" and p["line"] > 0 for p in unreached), out
+    assert any(p["subject"] == "storylet lamp" for p in unreached)
+
     # Parser recovery: four independent mistakes in one file are all reported, with no cascade.
     code, out = run(binary, HERE / "fixtures" / "recover", "--json")
     assert code == 1, out
