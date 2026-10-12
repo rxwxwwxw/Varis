@@ -1057,6 +1057,9 @@ class GamePlayer {
                     input = input[0 .. last];
                     return true;
                 }
+                // Space arrives as a key (advance) and as text; only the text types the space.
+                if (type == 2 && key == ' ')
+                    return true;
                 if (type == 2 && input.length)
                     return advance(LuaValue(input)) || true;
                 return true;

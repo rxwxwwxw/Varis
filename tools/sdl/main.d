@@ -374,6 +374,8 @@ class Player {
                 input = input[0 .. last];
                 return updateHint();
             }
+            if (type == 2 && key == ' ')
+                return true; // the typed space arrives as text
             if (type == 2 && key == 13)
                 return advance(LuaValue(input));
             return true;
