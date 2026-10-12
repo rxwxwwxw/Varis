@@ -335,6 +335,8 @@ and consumes no RNG. This function returns one string.
 | `narrative.reset_deck()` | Clear active entry's nonreplacement draw history. |
 | `narrative.emit(kind, ...)` | Queue a portable event for this transaction's commit. |
 | `narrative.schedule(kind, args, after_turns)` | Queue a symbol event with immutable sequence args and nonnegative integer delay. |
+| `narrative.translate(tag, {key = text, ...})` | Register a language pack: message keys (`lamp.title`, `lamp.light.title`, `name.keeper`) to template text. The pack is rejected as a whole, with one line per bad key, if any text does not parse. Not content: not fingerprinted, not saved. |
+| `narrative.languages()` | Immutable sequence of registered language tags. |
 | `narrative.defer(callback)` | Request no-argument callback after commit; discarded on rollback. |
 
 #### Session methods
@@ -349,6 +351,8 @@ and consumes no RNG. This function returns one string.
 | `session:set_period(symbol, value)` | Set a portable named period at idle or as a permitted transaction-aware effect write. |
 | `session:present()` | Run pre phase and return an immutable presentation; may be empty. |
 | `session:choose(token)` | Revalidate/commit exact choice, advance turn, run post phase; no result values. |
+| `session:set_language(tag\|nil)` · `session:language()` | The language `present` renders in; nil is the source language. A host preference: not saved, no input to eligibility, draws or replay. |
+| `session:render(presentation [, tag])` | The same presentation with titles and texts in `tag` (nil or omitted: the source language). Draws nothing, issues no token, writes nothing; choices keep their tokens. |
 | `session:save()` | Canonical versioned JSON string at idle boundary. |
 | `session:record_input(symbol, value)` | Record portable external input at idle, without applying it. |
 | `session:replay_log()` | Immutable record with runtime, content, program, schema, and inputs. |

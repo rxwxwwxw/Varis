@@ -41,7 +41,7 @@ LuaValue immutableRecord(LuaValue[string] fields) {
     return wrapImmutable(new ImmutableRecord(fields));
 }
 
-private LuaValue wrapImmutable(Object payload) {
+LuaValue wrapImmutable(Object payload) {
     auto mt = new LuaTable();
     mt.rawset(LuaValue("__metatable"), LuaValue("immutable narrative value"));
     mt.rawset(LuaValue("__newindex"), LuaValue(new LuaNativeFunction((void* s, LuaValue[] args) {

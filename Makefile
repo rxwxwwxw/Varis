@@ -43,7 +43,7 @@ SRC_FILES = source/varis/package.d \
             source/varis/logic/naive.d \
             source/varis/logic/query.d \
             source/varis/narrative/codec.d \
-            source/varis/narrative/templates.d \
+            source/varis/narrative/templates.d source/varis/narrative/translation.d \
             source/varis/narrative/fingerprint.d \
             source/varis/narrative/session.d source/varis/narrative/persistence.d source/varis/narrative/observe.d source/varis/narrative/diagnostics.d source/varis/narrative/analysis.d \
             source/varis/narrative/registry.d \

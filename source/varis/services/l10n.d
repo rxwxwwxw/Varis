@@ -19,6 +19,7 @@ import varis.services.catalog;
 import varis.services.diagnostic;
 import varis.services.index;
 import varis.services.manifest;
+import varis.narrative.translation : parseTranslation, TranslationTemplate;
 import varis.workbench.server : readFile, writeFile;
 
 private enum catalogDirectory = "l10n";
@@ -477,10 +478,253 @@ private int importCatalog(string[] args) {
     return rejected ? 1 : 0;
 }
 
+// -----------------------------------------------------------------------------
+// check --locale, and the pseudo-locale
+// -----------------------------------------------------------------------------
+
+enum pseudoLocale = "x-pseudo";
+
+/// Accents the letters outside template tags and lengthens the text by a third, inside
+/// brackets: clipped text boxes and hard-coded strings show before any translator is involved.
+string pseudoLocalize(string text) {
+    static immutable string[2][] accents = [
+        ["a", "á"], ["e", "é"], ["i", "í"], ["o", "ó"], ["u", "ú"], ["c", "ç"], ["n", "ñ"],
+        ["y", "ý"],
+        ["A", "Á"], ["E", "É"], ["I", "Í"], ["O", "Ó"], ["U", "Ú"], ["C", "Ç"], ["N", "Ñ"],
+        ["Y", "Ý"],
+    ];
+    char[] result;
+    result ~= '[';
+    size_t letters;
+    size_t i;
+    while (i < text.length) {
+        char c = text[i];
+        if (c == '{' && i + 1 < text.length && text[i + 1] == '{') {
+            result ~= "{{";
+            i += 2;
+            continue;
+        }
+        if (c == '}' && i + 1 < text.length && text[i + 1] == '}') {
+            result ~= "}}";
+            i += 2;
+            continue;
+        }
+        if (c == '{') {
+            // A template tag is copied as it is: its words are code.
+            int depth;
+            size_t j = i;
+            while (j < text.length) {
+                if (text[j] == '{')
+                    ++depth;
+                else if (text[j] == '}' && --depth == 0)
+                    break;
+                ++j;
+            }
+            size_t end = j < text.length ? j + 1 : text.length;
+            result ~= text[i .. end];
+            i = end;
+            continue;
+        }
+        bool replaced;
+        foreach (pair; accents)
+            if (pair[0][0] == c) {
+                result ~= pair[1];
+                replaced = true;
+                break;
+            }
+        if (!replaced)
+            result ~= c;
+        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+            ++letters;
+        ++i;
+    }
+    foreach (_; 0 .. letters / 3)
+        result ~= '~';
+    result ~= ']';
+    return cast(string) result;
+}
+
+struct LocaleCoverage {
+    size_t total, reviewed, draft, stale, untranslated;
+}
+
+/// The checks of `varis check --locale L` on the catalog of one locale against a source catalog.
+Diagnostic[] checkLocale(ref const SourceCatalog source, string locale, ref LocaleCoverage coverage) {
+    Diagnostic[] found;
+    LocaleCatalog catalog;
+    if (locale == pseudoLocale) {
+        // Generated, not stored: nothing to check but that every source message survives.
+        coverage.total = source.messages.length;
+        coverage.reviewed = source.messages.length;
+        return found;
+    }
+    if (!loadLocale(locale, catalog)) {
+        found ~= makeDiagnostic("error", "catalog", localePath(locale), 0, 0, 0, 0, "the catalog cannot be read");
+        return found;
+    }
+    string file = localePath(locale);
+    coverage.total = source.messages.length;
+    foreach (ref e; catalog.entries) {
+        auto message = source.find(e.key);
+        if (message is null) {
+            found ~= makeDiagnostic("warning", "unknown-key", file, 0, 0, 0, 0,
+                    locale ~ ": `" ~ e.key ~ "` is no message of the source", e.key);
+            continue;
+        }
+        TranslationTemplate translated;
+        string error;
+        if (!parseTranslation(e.text, translated, error)) {
+            found ~= makeDiagnostic("error", "translation-syntax", file, 0, 0, 0, 0, locale ~ ": " ~ e.key ~ ": " ~ error, e
+                    .key);
+            continue;
+        }
+        TranslationTemplate original;
+        string ignored;
+        if (!parseTranslation(message.text, original, ignored))
+            continue;
+        foreach (placeholder; translated.placeholders) {
+            bool known;
+            foreach (name; original.placeholders)
+                if (name == placeholder)
+                    known = true;
+            if (!known)
+                found ~= makeDiagnostic("error", "translation-placeholder", file, 0, 0, 0, 0,
+                        locale ~ ": " ~ e.key ~ ": {" ~ placeholder ~ "} is not an argument of the source message", e
+                        .key);
+        }
+        foreach (condition; translated.conditions) {
+            bool known;
+            foreach (c; original.conditions)
+                if (c == condition)
+                    known = true;
+            if (!known)
+                found ~= makeDiagnostic("error", "translation-condition", file, 0, 0, 0, 0,
+                        locale ~ ": " ~ e.key ~ ": {#if " ~ condition ~ "} is not a condition of the source message; "
+                        ~ "the message will fall back to the source text", e.key);
+        }
+        bool sameVariants = translated.variantOptionCounts.length == original.variantOptionCounts.length;
+        if (sameVariants)
+            foreach (i, n; translated.variantOptionCounts)
+                if (n != original.variantOptionCounts[i])
+                    sameVariants = false;
+        if (!sameVariants && (translated.variantOptionCounts.length || original.variantOptionCounts.length))
+            found ~= makeDiagnostic("error", "translation-variants", file, 0, 0, 0, 0,
+                    locale ~ ": " ~ e.key ~ ": the variants do not match the source's (the same groups, with the same "
+                    ~ "number of options); the message will fall back to the source text", e.key);
+        auto status = effectiveStatus(e, message);
+        if (status == "stale")
+            found ~= makeDiagnostic("warning", "stale", file, 0, 0, 0, 0,
+                    locale ~ ": " ~ e.key ~ ": translated from older source text", e.key);
+    }
+    foreach (ref m; source.messages) {
+        string state = "untranslated";
+        if (auto e = catalog.find(m.key))
+            state = effectiveStatus(*e, &m);
+        if (state == "reviewed")
+            ++coverage.reviewed;
+        else if (state == "draft")
+            ++coverage.draft;
+        else if (state == "stale")
+            ++coverage.stale;
+        else
+            ++coverage.untranslated;
+    }
+    return found;
+}
+
+/// The messages of a locale as key -> text, for a front end that plays in it. The pseudo-locale
+/// is made from the source catalog. Entries of every status are used: a stale translation is
+/// still the best text there is, and the checker has already said it is stale.
+bool localeMessages(string locale, out string[string] messages, out string error) {
+    SourceCatalog source;
+    bool exists;
+    if (!loadSource(source, exists) || !exists) {
+        auto project = loadProject();
+        if (!project.ok) {
+            error = "the project has errors; run `varis check`";
+            return false;
+        }
+        source = project.source;
+    }
+    if (locale == pseudoLocale) {
+        foreach (ref m; source.messages)
+            messages[m.key] = pseudoLocalize(m.text);
+        return true;
+    }
+    if (!validLocale(locale)) {
+        error = "not a locale tag: " ~ locale;
+        return false;
+    }
+    LocaleCatalog catalog;
+    string text;
+    if (!readFile(localePath(locale), text)) {
+        error = "no catalog " ~ localePath(locale);
+        return false;
+    }
+    if (!loadLocale(locale, catalog)) {
+        error = "cannot read " ~ localePath(locale);
+        return false;
+    }
+    foreach (ref e; catalog.entries)
+        messages[e.key] = e.text;
+    return true;
+}
+
+private int checkCommand(string[] args) {
+    string locale;
+    bool requireReviewed;
+    for (size_t i = 0; i < args.length; ++i) {
+        if (args[i] == "--locale" && i + 1 < args.length)
+            locale = args[++i];
+        else if (args[i] == "--require" && i + 1 < args.length) {
+            requireReviewed = args[++i] == "reviewed";
+        } else {
+            warn("usage: varis l10n check --locale L|all [--require reviewed]\n");
+            return 2;
+        }
+    }
+    if (locale.length == 0) {
+        warn("usage: varis l10n check --locale L|all [--require reviewed]\n");
+        return 2;
+    }
+    auto project = loadProject();
+    report(project);
+    if (!project.ok)
+        return 1;
+    string[] locales;
+    if (locale == "all")
+        locales = project.manifest.locales.dup;
+    else
+        locales = [locale];
+    // Translations are checked against the source as it is now, not against the last extraction.
+    auto source = project.source;
+    bool failed;
+    foreach (tag; locales) {
+        LocaleCoverage coverage;
+        auto found = checkLocale(source, tag, coverage);
+        sortDiagnostics(found);
+        foreach (ref d; found) {
+            say(diagnosticText(d) ~ "\n");
+            if (d.isError)
+                failed = true;
+        }
+        say(tag ~ ": " ~ number(coverage.reviewed) ~ " reviewed, " ~ number(
+                coverage.draft) ~ " draft, " ~ number(
+                coverage.stale) ~ " stale, " ~ number(
+                coverage.untranslated) ~ " untranslated of " ~ number(
+                coverage.total) ~ "\n");
+        if (requireReviewed && coverage.reviewed != coverage.total) {
+            say(tag ~ ": the release gate needs every message reviewed\n");
+            failed = true;
+        }
+    }
+    return failed ? 1 : 0;
+}
+
 /// `varis l10n <command> ...`: returns the process exit status.
 int l10nMain(string[] args) {
     if (args.length == 0) {
-        warn("usage: varis l10n extract|status|export|import ...\n");
+        warn("usage: varis l10n extract|status|export|import|check ...\n");
         return 2;
     }
     switch (args[0]) {
@@ -492,8 +736,10 @@ int l10nMain(string[] args) {
         return exportCatalog(args[1 .. $]);
     case "import":
         return importCatalog(args[1 .. $]);
+    case "check":
+        return checkCommand(args[1 .. $]);
     default:
-        warn("unknown l10n command `" ~ args[0] ~ "`; the commands are: extract, status, export, import\n");
+        warn("unknown l10n command `" ~ args[0] ~ "`; the commands are: extract, status, export, import, check\n");
         return 2;
     }
 }

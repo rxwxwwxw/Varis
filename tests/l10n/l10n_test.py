@@ -78,6 +78,37 @@ def main():
         status = varis(binary, game, "l10n", "status")
         assert "fr: 0 reviewed, 3 draft, 0 stale, 62 untranslated" in status, status
 
+        # Translated rendering: play in the translation, the key overlay, the pseudo-locale.
+        play = subprocess.run([binary, "play", "--locale", "fr", "--seed", "7", "--keys"], cwd=game, input="quit\n",
+                              capture_output=True, text=True, timeout=60).stdout
+        assert "[look.title] Look around" in play  # no French for that one: the source text is the fallback
+        pseudo = subprocess.run([binary, "play", "--locale", "x-pseudo", "--seed", "7"], cwd=game, input="quit\n",
+                                capture_output=True, text=True, timeout=60).stdout
+        assert "[Lóók áróúñd" in pseudo and "~~~]" in pseudo, pseudo
+
+        # Checking a locale: placeholders, conditions and variants must come from the source.
+        check = subprocess.run([binary, "check", "--locale", "fr", "--json"], cwd=game, capture_output=True, text=True)
+        assert [p for p in json.loads(check.stdout)["problems"] if p["code"].startswith("translation-")] == []
+        fr_path = game / "l10n" / "fr.json"
+        fr = json.loads(fr_path.read_text())
+        fr["entries"].append({"key": "look.title", "text": "Regarder {inconnu}", "status": "draft",
+                              "revision": keys["look.title"]["revision"]})
+        fr["entries"].append({"key": "look.text", "text": "{#if query lampe()}x{/if}{#variant}a{/variant}",
+                              "status": "draft", "revision": keys["look.text"]["revision"]})
+        fr["entries"].append({"key": "walk.title", "text": "{#if broken", "status": "draft",
+                              "revision": keys["walk.title"]["revision"]})
+        fr_path.write_text(json.dumps(fr))
+        check = subprocess.run([binary, "check", "--locale", "fr", "--json"], cwd=game, capture_output=True, text=True)
+        codes = sorted(p["code"] for p in json.loads(check.stdout)["problems"] if p["code"].startswith("translation-"))
+        assert codes == ["translation-condition", "translation-placeholder", "translation-syntax", "translation-variants"], codes
+        assert check.returncode == 1
+        # The release gate: everything reviewed, or it does not pass.
+        gate = subprocess.run([binary, "l10n", "check", "--locale", "fr", "--require", "reviewed"], cwd=game,
+                              capture_output=True, text=True)
+        assert gate.returncode == 1 and "release gate" in gate.stdout
+        fr["entries"] = fr["entries"][:3]
+        fr_path.write_text(json.dumps(fr))
+
         # An unknown placeholder is rejected and nothing is written for it.
         bad = list(csv.reader(io.StringIO((game / "fr.csv").read_text())))
         for row in bad[1:]:

@@ -366,6 +366,18 @@ old `L0` is now T0 and T2, `L1` is part of T3, `L2` is T1 and T3, `L3` is T4 and
 | T4 | **Handoff.** Kit export with context and glossary, kit ids and delta kits, the XLIFF adapter, import with review states, `varis l10n check --kit`, loadable packs with whole-pack rejection, the key overlay, the release gate. | T3 | No | A pack built only from an exported kit loads into a release build. A deliberately broken pack is rejected with diagnostics by key. A delta kit after a source edit contains exactly the stale and new messages. |
 | T5, with milestone 36 | **Presentation.** Line breaking, per-language fonts, ruby, the Korean particle formatter, character-set output for font subsetting. | T4; the SDL3 presentation layer | No | A Chinese, a Japanese and a Korean sample render correctly in the SDL3 layer, reviewed by a reader of each language; fonts are subset from the emitted character sets. |
 
+**Status, October 12, 2026.** T1 is done. Of T3, built without T2 (nothing here touches saves,
+fingerprints or the replay log): translations as presentation data (`narrative.translate`), selection
+separated from rendering (`session:render`, `session:set_language`; a presentation keeps the
+condition results and variant draws its messages used), whole-message fallback, translated names
+(`name.<symbol>`), the pseudo-locale, `varis check --locale`, `varis l10n check`, `play --locale
+[--keys]`. Still waiting on owner decisions: **T2** (wording out of the fingerprint, named variants:
+a save-format change, AGENTS §8.1 item 5), and the **syntax** of `select`, plural and named variants
+(T0, milestone 27); until then translations use the source's own conditions and variant groups, by
+position. The workbench language selector and translation panel (§7.7) are not built. T4 is
+partly built (CSV adapter; `check`; pseudo-locale; key overlay); kits, XLIFF, packs on disk and
+review states remain.
+
 T1 needs no owner decision and no runtime change; start it as soon as the project index exists.
 T2 should land before content is written in volume, because it changes saves. The feature is
 announced after T4 and T5, with review by native readers, not when the first translated string

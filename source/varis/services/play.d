@@ -22,6 +22,7 @@ import varis.types;
 import varis.vm : VM;
 import varis.services.diagnostic;
 import varis.services.index : indexFile;
+import varis.services.l10n : localeMessages;
 import varis.services.manifest;
 import varis.workbench.server : errorText, jsonQuote, readFile;
 
@@ -34,7 +35,7 @@ private void warn(string text) {
 }
 
 /// Hands the manifest to the Lua side as the global `__varis_project`.
-private void installConfig(LuaState state, ref const Manifest manifest, long seed) {
+private void installConfig(LuaState state, ref const Manifest manifest, long seed, string locale = null, bool keys = false) {
     auto table = new LuaTable();
     void set(string key, string value) {
         if (value.length)
@@ -49,6 +50,20 @@ private void installConfig(LuaState state, ref const Manifest manifest, long see
     set("finished", manifest.finished);
     set("load", manifest.load);
     table.rawset(LuaValue("seed"), LuaValue(seed));
+    if (locale.length) {
+        table.rawset(LuaValue("locale"), LuaValue(locale));
+        string[string] messages;
+        string error;
+        auto pack = new LuaTable();
+        if (localeMessages(locale, messages, error)) {
+            foreach (key, text; messages)
+                pack.rawset(LuaValue(key), LuaValue(text));
+        } else
+            table.rawset(LuaValue("locale_error"), LuaValue(error));
+        state.setGlobal("__varis_translations", LuaValue(pack));
+    }
+    if (keys)
+        table.rawset(LuaValue("keys"), LuaValue(true));
     // The parameters of each storylet, read from the source: a presentation's bindings are an
     // immutable record that cannot be enumerated.
     auto parameters = new LuaTable();
@@ -88,6 +103,16 @@ local function resolve(path)
 end
 
 require(cfg.entry)
+local language = cfg.locale
+if language then
+    if cfg.locale_error then
+        print("language " .. language .. ": " .. cfg.locale_error)
+        language = nil
+    else
+        local ok, err = pcall(narrative.translate, language, __varis_translations)
+        if not ok then print(tostring(err)); language = nil end
+    end
+end
 local new_session = assert(resolve(cfg.session), "the manifest has no usable `session`")
 local after_choose, finished, loader = resolve(cfg.after_choose), resolve(cfg.finished), resolve(cfg.load)
 
@@ -128,6 +153,7 @@ local record = record_path and assert(io.open(record_path, "w")) or nil
 if record then record:write("# varis play --seed " .. seed .. "\n") end
 
 local session = new_session(seed)
+if language then session:set_language(language) end
 local last_seq = 0
 local function show_events()
     local new = {}
@@ -189,11 +215,14 @@ while not over do
     show_events()
     local menu = {}
     for _, story in ipairs(presentation.storylets) do
-        print("\n" .. story.title)
-        if story.text ~= "" then print(story.text) end
+        local story_id = name_of(story.id)
+        print("\n" .. (cfg.keys and ("[" .. story_id .. ".title] ") or "") .. story.title)
+        if story.text ~= "" then print((cfg.keys and ("[" .. story_id .. ".text] ") or "") .. story.text) end
         for _, c in ipairs(story.choices) do
             menu[#menu + 1] = { story = story, choice = c }
-            print(string.format("  %d) %s", #menu, c.title ~= "" and c.title or "Continue"))
+            print(string.format("  %d) %s%s", #menu,
+                cfg.keys and ("[" .. story_id .. "." .. name_of(c.id) .. ".title] ") or "",
+                c.title ~= "" and c.title or "Continue"))
         end
     end
     if #menu == 0 then print("\nNothing more can happen."); break end
@@ -224,6 +253,7 @@ while not over do
                 local ok, restored = pcall(loader, text)
                 if ok then
                     session = restored; presentation = nil; last_seq = 0
+                    if language then session:set_language(language) end
                     logic (session:world()) do
                         for e in query narrative_event(?seq, ?turn, ?kind, ?args) do
                             if e.seq > last_seq then last_seq = e.seq end
@@ -266,13 +296,21 @@ int playMain(LuaState state, string[] args) {
         return 2;
     }
     long seed = 1;
+    string locale;
+    bool keys;
+    foreach (i, a; args) {
+        if (a == "--locale" && i + 1 < args.length)
+            locale = args[i + 1];
+        else if (a == "--keys")
+            keys = true;
+    }
     auto argTable = new LuaTable();
     long position = 1;
     foreach (a; args)
         argTable.rawset(LuaValue(position++), LuaValue(a));
     state.setGlobal("arg", LuaValue(argTable));
     try {
-        installConfig(state, manifest, seed);
+        installConfig(state, manifest, seed, locale, keys);
         auto fn = state.loadString(playSource, "=varis play");
         VM.callValue(state, LuaValue(fn), []);
     } catch (LuaException failure) {
@@ -305,6 +343,10 @@ local function boot()
     if booted then return end
     booted = true
     require(cfg.entry)
+    if cfg.locale then
+        assert(not cfg.locale_error, "language " .. cfg.locale .. ": " .. tostring(cfg.locale_error))
+        narrative.translate(cfg.locale, __varis_translations)
+    end
 end
 
 local function name_of(value)
@@ -324,6 +366,8 @@ function test.play(options)
     local seed = (options and options.seed) or cfg.seed or 1
     local self = setmetatable({ seed = seed }, T)
     self.session = new_session(seed)
+    local language = (options and options.locale) or cfg.locale
+    if language then self.session:set_language(language) end
     self.after_choose = resolve(cfg.after_choose)
     self.finished = resolve(cfg.finished)
     self.loader = resolve(cfg.load)
@@ -475,12 +519,16 @@ private struct TestFailure {
 /// every test passed, 1 when one failed.
 int testMain(LuaState delegate() makeState, string[] args) {
     bool json;
+    string locale;
     string[] files;
-    foreach (a; args) {
+    for (size_t i = 0; i < args.length; ++i) {
+        auto a = args[i];
         if (a == "--json")
             json = true;
+        else if (a == "--locale" && i + 1 < args.length)
+            locale = args[++i];
         else if (a.length && a[0] == '-') {
-            warn("usage: varis test [--json] [files...]\n");
+            warn("usage: varis test [--json] [--locale L] [files...]\n");
             return 2;
         } else
             files ~= a;
@@ -509,7 +557,7 @@ int testMain(LuaState delegate() makeState, string[] args) {
         // The game may print (achievements, say); the results are what this command reports.
         auto quiet = QuietOutput(true);
         try {
-            installConfig(state, manifest, 1);
+            installConfig(state, manifest, 1, locale);
             VM.callValue(state, LuaValue(state.loadString(testSource, "=varis test")), []);
             auto runner = state.getGlobal("__varis_run_test");
             auto results = VM.callValue(state, runner, [LuaValue(file)]);

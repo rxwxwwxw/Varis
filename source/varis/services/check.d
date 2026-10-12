@@ -66,6 +66,7 @@ struct CheckOptions {
     bool dumpIndex;
     bool noLoad;
     bool analyze;
+    string locale; // `--locale L` or `all`: also check the translations
     int depth = 3;
     int nodes = 100;
 }
@@ -123,6 +124,18 @@ int checkProject(LuaState state, string[] files, CheckOptions options) {
         problems ~= loadPass(state, manifest, index, loaded);
         if (loaded && options.analyze)
             problems ~= analysisPass(state, manifest, index, options.depth, options.nodes);
+    }
+    if (options.locale.length && !dumpIndex) {
+        import varis.services.catalog : buildSourceCatalog;
+        import varis.services.l10n : checkLocale, LocaleCoverage;
+
+        Diagnostic[] catalogProblems;
+        auto source = buildSourceCatalog(index, manifest, catalogProblems);
+        string[] tags = options.locale == "all" ? manifest.locales.dup : [options.locale];
+        foreach (tag; tags) {
+            LocaleCoverage coverage;
+            problems ~= checkLocale(source, tag, coverage);
+        }
     }
     sortDiagnostics(problems);
     size_t errors;

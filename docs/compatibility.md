@@ -174,6 +174,19 @@ name, value)`, `t:save()`, `t:load(text)`, `t:why(storylet)`, `t:world()` and
 includes `t:why`. Exit status is 1 when a test fails. `tools/project_ci.sh` runs
 `check`, `test` and `l10n extract --check` as a CI recipe.
 
+### 8.7 — Translations at run time and in tools
+
+`bin/varis check --locale L|all` also checks the catalogs under `l10n/` against the
+source text (`translation-syntax`, `translation-placeholder`,
+`translation-condition`, `translation-variants` are errors; `stale` and
+`unknown-key` warnings), and `varis l10n check --locale L|all [--require reviewed]`
+prints the coverage and fails the release gate when a message is not reviewed.
+`varis play --locale L [--keys]` and `varis test --locale L` load `l10n/L.json` as a
+language pack and play in it; `--keys` shows the message key before each text, so
+that a line can be reported by key. The locale `x-pseudo` needs no catalog: it
+accents and lengthens the source text (`[Lóók áróúñd~~~]`) to show clipped text
+boxes and hard-coded strings. Packs are loaded with `narrative.translate` (section 7).
+
 ## 9 — Compatibility and implementation limits
 
 ### 9.1 — Relationship to Lua

@@ -15,6 +15,7 @@ import varis.logic.model;
 import varis.state;
 import varis.narrative.codec;
 import varis.narrative.templates;
+import varis.narrative.translation;
 import varis.vm : VM;
 import varis.exception : LuaException;
 import std.conv : to;
@@ -91,6 +92,7 @@ class ContentRegistry {
     private DeckDefinition[string] decks_;
     private QualityDefinition[string] qualities_;
     private string[string] names_;
+    private TranslationTemplate[string][string] translations_; // locale -> key -> message
     private LuaValue[string] handlers_;
     private LuaValue[string] formatters_;
     private bool sealed_;
@@ -255,6 +257,57 @@ class ContentRegistry {
         return formatters_.get(key, luaNil());
     }
 
+    /// Registers the translations of one locale. The whole set is rejected, with one problem per
+    /// message (naming its key), when any message does not parse; nothing is registered then.
+    /// Translations are presentation data: not content, not fingerprinted, not saved.
+    string[] registerTranslations(string locale, string[string] messages) {
+        string[] problems;
+        TranslationTemplate[string] parsed;
+        foreach (key, text; messages) {
+            TranslationTemplate template_;
+            string error;
+            if (parseTranslation(text, template_, error))
+                parsed[key] = template_;
+            else
+                problems ~= locale ~ " " ~ key ~ ": " ~ error;
+        }
+        if (problems.length == 0) {
+            auto existing = locale in translations_;
+            if (existing is null) {
+                translations_[locale] = parsed;
+            } else {
+                foreach (key, template_; parsed)
+                    (*existing)[key] = template_;
+            }
+        }
+        problems.sort;
+        return problems;
+    }
+
+    string[] languages() {
+        auto names = translations_.keys;
+        names.sort;
+        return names;
+    }
+
+    /// The translation of a message in a locale, or null (the source text is used).
+    TranslationTemplate translation(string locale, string key) {
+        if (auto catalog = locale in translations_)
+            return catalog.get(key, null);
+        return null;
+    }
+
+    /// `display` in a locale: a symbol with a translated name (`name.keeper`) shows it.
+    string displayIn(string locale, LuaValue value) {
+        if (locale.length && isSymbol(value)) {
+            string id = value.match!((Symbol symbol) => symbol.name, _ => "");
+            if (auto catalog = locale in translations_)
+                if (auto label = ("name." ~ id) in *catalog)
+                    return label.literalText;
+        }
+        return display(value);
+    }
+
     string display(LuaValue value) {
         if (isNil(value)) {
             if ("nil" in formatters_) {
@@ -393,6 +446,8 @@ class ContentRegistry {
         destination.decks_ = decks_.dup;
         destination.explicitDecks = explicitDecks.dup;
         destination.names_ = names_.dup;
+        foreach (locale, catalog; translations_)
+            destination.translations_[locale] = catalog.dup;
         foreach (name, definition; qualities_) {
             auto copied = new QualityDefinition();
             copied.id = definition.id;

@@ -219,6 +219,16 @@ selection priority; a sticky presentation can contain more than `draw` storylets
 Each choice record contains `id`, `instance_key`, `bindings`, `title`, `text`,
 and `token`. Sequences support indexing and length, preserving nil slots.
 
+A presentation can be rendered again in another language without presenting again
+(`session:render`, section 7). The message key of a storylet's `title` is
+`<storylet>.title`, of a choice's `<storylet>.<choice>.text`, and a translated name
+of a symbol is `name.<symbol>`. A translation is written in the same template
+grammar and may use the placeholders, the `{#if query ...}` conditions and the
+variant groups of the source message, with the same number of options per group
+(conditions and variants are not evaluated again: the results captured when the
+presentation was made are used). Otherwise the message is shown in the source
+language, as a whole.
+
 Templates apply to title/text fields and explicit `narrative.template` calls;
 ordinary string literals do not interpolate. `{name}` displays an exposed
 parameter, `{{` and `}}` produce literal braces, and unknown placeholders are

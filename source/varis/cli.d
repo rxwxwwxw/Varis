@@ -532,6 +532,8 @@ private int runCheck(string[] argv, ref LuaState state) {
             options.noLoad = true;
         else if (argument == "--analyze")
             options.analyze = true;
+        else if (argument == "--locale" && i + 1 < argv.length)
+            options.locale = argv[++i];
         else if ((argument == "--depth" || argument == "--nodes") && i + 1 < argv.length) {
             int value;
             foreach (char c; argv[++i])
@@ -543,7 +545,7 @@ private int runCheck(string[] argv, ref LuaState state) {
                 options.nodes = value;
         } else if (argument.length && argument[0] == '-') {
             writeErr(
-                    "usage: varis check [--json] [--index] [--no-load] [--analyze [--depth N] [--nodes N]] [files...]\n");
+                    "usage: varis check [--json] [--index] [--no-load] [--locale L|all] [--analyze [--depth N] [--nodes N]] [files...]\n");
             return 2;
         } else
             files ~= argument;

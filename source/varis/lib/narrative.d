@@ -231,6 +231,36 @@ void openNarrativeLib(LuaState state) {
         }
         return cast(LuaValue[])[];
     });
+    // narrative.translate(locale, {key = text, ...}): registers a language pack. All of it or none:
+    // a message that does not parse rejects the pack, and the error lists each key.
+    add("translate", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 2 || !isString(arguments[0]) || !isTable(arguments[1]))
+            throw new LuaException("narrative.translate requires a language tag and a table of key = text");
+        string[string] messages;
+        auto table = arguments[1].asTable;
+        LuaValue previous, key, value;
+        while (table.next(previous, key, value)) {
+            previous = key;
+            if (!isString(key) || !isString(value))
+                throw new LuaException("narrative.translate: keys and texts must be strings");
+            messages[key.match!((string s) => s, _ => "")] = value.match!((string s) => s, _ => "");
+        }
+        auto problems = (cast(LuaState) pointer).narrativeRegistry.registerTranslations(
+            arguments[0].match!((string s) => s, _ => ""), messages);
+        if (problems.length) {
+            string text = "language pack rejected:";
+            foreach (problem; problems)
+                text ~= "\n  " ~ problem;
+            throw new LuaException(text);
+        }
+        return cast(LuaValue[])[];
+    });
+    add("languages", (void* pointer, LuaValue[] arguments) {
+        LuaValue[] tags;
+        foreach (tag; (cast(LuaState) pointer).narrativeRegistry.languages())
+            tags ~= LuaValue(tag);
+        return [immutableSequence(tags)];
+    });
     add("display", (void* pointer, LuaValue[] arguments) {
         return [
             LuaValue((cast(LuaState) pointer).narrativeRegistry.display(arguments.length ? arguments[0] : luaNil()))

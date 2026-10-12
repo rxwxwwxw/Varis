@@ -17,6 +17,7 @@ import varis.parser;
 import varis.compiler;
 import varis.vm;
 import varis.logic.world;
+import varis.narrative.translation : RenderTrace, normalizeCondition;
 import varis.exception : LuaException;
 import std.string : strip, startsWith;
 import std.algorithm : canFind;
@@ -36,6 +37,7 @@ private class TemplateNode {
     string literal;
     string parameter;
     LuaValue condition;
+    string conditionSource; // normalized `query ...` text, for render traces
     TemplateNode[] yes;
     TemplateNode[] no;
     VariantGroup variantGroup;
@@ -160,6 +162,7 @@ class NarrativeTemplate {
                 auto parser = new Parser("return " ~ condition);
                 auto prototype = Compiler.contextPrototype(parser.parse(), parameters, parameters);
                 node.condition = LuaValue(new LuaClosure(prototype));
+                node.conditionSource = normalizeCondition(condition);
                 string ending;
                 node.yes = parseNodes(text, cursor, ending, insideVariant);
                 if (ending == "#else")
@@ -288,8 +291,11 @@ class NarrativeTemplate {
         return result;
     }
 
+    /// Renders the template. When `trace` is given it receives what was looked at: the result of
+    /// each condition and the option drawn for each variant group, in the order encountered, so
+    /// that a translation of this message can be rendered without evaluating anything again.
     string render(LuaState state, World snapshot, LuaValue[string] bindings, string delegate(LuaValue) display, const(
-            size_t)[] variantSelections = null) {
+            size_t)[] variantSelections = null, RenderTrace* trace = null) {
         beginReadOnlyEvaluation();
         scope (exit)
             endReadOnlyEvaluation();
@@ -310,6 +316,8 @@ class NarrativeTemplate {
                     auto iterator = VM.callValue(state, node.condition, arguments);
                     auto records = VM.callValue(state, iterator[0], []);
                     bool exists = records.length && !isNil(records[0]);
+                    if (trace !is null)
+                        trace.conditions[node.conditionSource] = exists;
                     output ~= renderNodes(exists ? node.yes : node.no);
                 }
                 if (node.variantGroup !is null) {
@@ -328,12 +336,16 @@ class NarrativeTemplate {
                         }
                     }
                     groupIndex++;
+                    if (trace !is null)
+                        trace.variants ~= optIdx;
                     output ~= renderNodes(node.variantGroup.options[optIdx].nodes);
                 }
             }
             return output;
         }
 
+        if (trace !is null)
+            trace.recorded = true;
         return renderNodes(nodes);
     }
 }

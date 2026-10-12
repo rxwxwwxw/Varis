@@ -6,7 +6,7 @@ through the real lexer, parser, compiler, VM, and declarative engine. It runs
 separately from the existing engine unit tests and 15 acceptance examples, and
 is included in `make test`.
 
-The suite contains 55 Lua cases and four runner checks. All language cases and
+The suite contains 56 Lua cases and four runner checks. All language cases and
 runner checks pass after fixing the seven failures found during initial validation.
 
 ```sh

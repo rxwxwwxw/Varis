@@ -21,6 +21,7 @@ import varis.logic.query;
 import varis.narrative.registry;
 import varis.narrative.codec;
 import varis.narrative.templates : NarrativeTemplate;
+import varis.narrative.translation;
 import std.algorithm : sort;
 import std.conv : to;
 import std.math : isFinite;
@@ -217,6 +218,45 @@ Session requireEffectSession() {
 }
 
 /// Session state participates in exactly the same savepoints as relational facts.
+/// One rendered message of a presentation, with what is needed to render it in another language.
+final class MessageRender {
+    string key; // `lamp.title`, `lamp.light.title`
+    string source; // the text rendered from the authored template
+    LuaValue[string] bindings;
+    RenderTrace trace;
+}
+
+final class ChoiceRender {
+    LuaValue[string] fields; // everything except `title` and `text`
+    MessageRender title;
+    MessageRender text;
+}
+
+final class StoryRender {
+    LuaValue[string] fields;
+    MessageRender title;
+    MessageRender text;
+    ChoiceRender[] choices;
+}
+
+/// Kept with a presentation: selection is finished, only rendering is left.
+final class PresentationRender {
+    LuaValue turn;
+    LuaValue deck;
+    StoryRender[] stories;
+}
+
+/// The payload of a presentation record: its fields, as for any immutable record, and the data
+/// to render it again in another language.
+final class PresentationRecord : ImmutableRecord {
+    PresentationRender render;
+
+    this(LuaValue[string] fields, PresentationRender render) {
+        super(fields);
+        this.render = render;
+    }
+}
+
 class Session : TransactionParticipant {
     LuaState state;
     World world;
@@ -225,6 +265,9 @@ class Session : TransactionParticipant {
     bool busy;
     size_t actionLimit = 1000;
     size_t eventLimit = 1000;
+    /// The language presentations are rendered in; empty is the source language. A host
+    /// preference: not saved, never an input to eligibility, draws or replay.
+    string language;
     private Relation eventRelation;
 
     private this() {
@@ -555,6 +598,58 @@ class Session : TransactionParticipant {
         return chosen;
     }
 
+    /// Renders the finished selection of a presentation in a language: a pure function of what
+    /// `present` captured. It draws no random number, issues no token, and writes nothing. A
+    /// message with no translation, or whose translation asks for more than the source offered,
+    /// is rendered in the source language as a whole.
+    private LuaValue buildPresentation(PresentationRender data, string language) {
+        string text(MessageRender message) {
+            if (language.length) {
+                if (auto translated = registry.translation(language, message.key)) {
+                    string output;
+                    if (renderTranslation(translated, message.bindings, (LuaValue v) => registry.displayIn(language, v),
+                            message.trace, output))
+                        return output;
+                }
+            }
+            return message.source;
+        }
+
+        LuaValue[] stories;
+        foreach (story; data.stories) {
+            LuaValue[] choices;
+            foreach (choice; story.choices) {
+                auto fields = choice.fields.dup;
+                fields["title"] = LuaValue(text(choice.title));
+                fields["text"] = LuaValue(text(choice.text));
+                choices ~= immutableRecord(fields);
+            }
+            auto fields = story.fields.dup;
+            fields["title"] = LuaValue(text(story.title));
+            fields["text"] = LuaValue(text(story.text));
+            fields["choices"] = immutableSequence(choices);
+            stories ~= immutableRecord(fields);
+        }
+        LuaValue[string] fields = [
+            "turn": data.turn,
+            "deck": data.deck,
+            "storylets": immutableSequence(stories)
+        ];
+        // An ordinary immutable record that also remembers how to be rendered again.
+        return wrapImmutable(new PresentationRecord(fields, data));
+    }
+
+    /// `render(presentation, language)`: the same presentation, with titles and texts in `language`
+    /// (empty: the source language). The tokens are the same ones.
+    LuaValue render(LuaValue presentation, string target) {
+        PresentationRecord record;
+        if (presentation.typeOf() == LuaType.UserData)
+            record = cast(PresentationRecord) presentation.asUserData.payload;
+        if (record is null)
+            throw new LuaException("render requires a presentation returned by present");
+        return buildPresentation(record.render, target);
+    }
+
     LuaValue present() {
         requireIdle();
         busy = true;
@@ -625,7 +720,7 @@ class Session : TransactionParticipant {
             auto lp = left.definition.integerOption("priority", 0), rp = right.definition.integerOption("priority", 0);
             return lp > rp || (lp == rp && left.key < right.key);
         });
-        LuaValue[] stories;
+        StoryRender[] storyRenders;
         LuaValue[] variantLog;
         void logVariants(string key, string field, size_t[] vars) {
             if (!vars.length)
@@ -640,12 +735,23 @@ class Session : TransactionParticipant {
             ]);
         }
 
+        MessageRender message(string key, NarrativeTemplate template_, LuaValue[string] bindings, size_t[] vars) {
+            auto rendered = new MessageRender();
+            rendered.key = key;
+            rendered.bindings = bindings;
+            rendered.source = template_.render(state, snapshot, bindings, &registry.display, vars, &rendered.trace);
+            return rendered;
+        }
+
         foreach (story; selected) {
             auto storyTitleVars = selectVariants(story.definition.titleTemplate, tentative);
             auto storyTextVars = selectVariants(story.definition.textTemplate, tentative);
             logVariants(story.key, "title", storyTitleVars);
             logVariants(story.key, "text", storyTextVars);
-            LuaValue[] choices;
+            auto storyRender = new StoryRender();
+            auto storyId = story.definition.id;
+            storyRender.title = message(storyId ~ ".title", story.definition.titleTemplate, story.bindings, storyTitleVars);
+            storyRender.text = message(storyId ~ ".text", story.definition.textTemplate, story.bindings, storyTextVars);
             foreach (definition; story.definition.choices)
                 foreach (choice; instances(definition, snapshot, story.bindings)) {
                     auto choiceTitleVars = selectVariants(definition.titleTemplate, tentative);
@@ -666,34 +772,31 @@ class Session : TransactionParticipant {
                                 throw new LuaException("cannot modify immutable choice token");
                                 return cast(LuaValue[])[];
                             })));
-                    choices ~= immutableRecord([
+                    auto choiceRender = new ChoiceRender();
+                    choiceRender.fields = [
                         "id": state.getSymbol(definition.id),
                         "instance_key": LuaValue(choice.key),
                         "bindings": immutableRecord(choice.bindings),
-                        "title": LuaValue(definition.titleTemplate.render(state, snapshot, choice.bindings, &registry
-                                .display, choiceTitleVars)),
-                        "text": LuaValue(definition.textTemplate.render(state, snapshot, choice.bindings, &registry
-                                .display, choiceTextVars)),
                         "token": LuaValue(new LuaUserData(token, tokenMetatable))
-                    ]);
+                    ];
+                    auto choiceKey = storyId ~ "." ~ definition.id;
+                    choiceRender.title = message(choiceKey ~ ".title", definition.titleTemplate, choice.bindings, choiceTitleVars);
+                    choiceRender.text = message(choiceKey ~ ".text", definition.textTemplate, choice.bindings, choiceTextVars);
+                    storyRender.choices ~= choiceRender;
                 }
-            stories ~= immutableRecord([
+            storyRender.fields = [
                 "id": state.getSymbol(story.definition.id),
                 "instance_key": LuaValue(story.key),
                 "bindings": immutableRecord(story.bindings),
-                "title": LuaValue(story.definition.titleTemplate.render(state, snapshot, story.bindings, &registry
-                        .display, storyTitleVars)),
-                "text": LuaValue(story.definition.textTemplate.render(state, snapshot, story.bindings, &registry
-                        .display, storyTextVars)),
-                "world_version": LuaValue(cast(long) story.worldVersion),
-                "choices": immutableSequence(choices)
-            ]);
+                "world_version": LuaValue(cast(long) story.worldVersion)
+            ];
+            storyRenders ~= storyRender;
         }
-        auto presentation = immutableRecord([
-            "turn": LuaValue(cast(long) tentative.turn),
-            "deck": state.getSymbol(tentative.decks[$ - 1].name),
-            "storylets": immutableSequence(stories)
-        ]);
+        auto renderData = new PresentationRender();
+        renderData.turn = LuaValue(cast(long) tentative.turn);
+        renderData.deck = state.getSymbol(tentative.decks[$ - 1].name);
+        renderData.stories = storyRenders;
+        auto presentation = buildPresentation(renderData, language);
         LuaValue[] selections;
         foreach (story; selected)
             selections ~= LuaValue(story.key);
@@ -924,6 +1027,25 @@ LuaValue wrapSession(Session session) {
         if (a.length != 1)
             throw new LuaException("present requires a session");
         return [unwrapSession(a[0]).present()];
+    });
+    // Language is a view (localization plan §2): these change what is shown, nothing else.
+    method("set_language", (void* p, LuaValue[] a) {
+        if (a.length != 2 || !(isString(a[1]) || isNil(a[1])))
+            throw new LuaException("set_language requires a session and a language tag (or nil)");
+        unwrapSession(a[0]).language = isNil(a[1]) ? "" : a[1].match!((string s) => s, _ => "");
+        return cast(LuaValue[])[];
+    });
+    method("language", (void* p, LuaValue[] a) {
+        if (a.length != 1)
+            throw new LuaException("language requires a session");
+        auto tag = unwrapSession(a[0]).language;
+        return [tag.length ? LuaValue(tag) : luaNil()];
+    });
+    method("render", (void* p, LuaValue[] a) {
+        if (a.length < 2 || a.length > 3 || !(a.length == 2 || isString(a[2]) || isNil(a[2])))
+            throw new LuaException("render requires a session, a presentation and optionally a language tag");
+        string tag = a.length == 3 && isString(a[2]) ? a[2].match!((string s) => s, _ => "") : "";
+        return [unwrapSession(a[0]).render(a[1], tag)];
     });
     method("choose", (void* p, LuaValue[] a) {
         if (a.length != 2)
