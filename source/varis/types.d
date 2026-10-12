@@ -122,61 +122,174 @@ enum TagUserData = 8;
 enum TagLightUserData = 9;
 enum TagThread = 10;
 
-pragma(inline, true)
-private ref inout(T) getVal(T, size_t tid)(return auto ref inout(LuaSumType) st) @trusted nothrow {
-    return *cast(inout(T)*)&st;
+/// The 16-byte representation of a value: one 8-byte payload word, the byte length of a string
+/// or symbol name, and the type tag. A string is kept as its pointer and length (so strings are
+/// limited to 4 GiB); class references and light userdata are the pointer; nil is all zero bytes.
+/// The union overlaps a pointer with integers, so the collector scans the word conservatively.
+struct LuaPayload {
+    union {
+        long i;
+        double d;
+        bool b;
+        void* p;
+    }
+
+    uint len;
+    ubyte tag;
+
+    pragma(inline, true)
+    ubyte typeIndex() const @safe pure nothrow @nogc {
+        return tag;
+    }
 }
 
-/// The central struct representing all Lua values, wrapping LuaSumType
+static assert(LuaPayload.sizeof == 16);
+
+pragma(inline, true)
+private T getVal(T, size_t tid)(ref const LuaPayload st) @trusted pure nothrow @nogc {
+    static if (is(T == bool))
+        return st.b;
+    else static if (is(T == long))
+        return st.i;
+    else static if (is(T == double))
+        return st.d;
+    else static if (is(T == string))
+        return (cast(immutable(char)*) st.p)[0 .. st.len];
+    else static if (is(T == Symbol))
+        return Symbol((cast(immutable(char)*) st.p)[0 .. st.len]);
+    else static if (is(T == LightUserData))
+        return LightUserData(cast(void*) st.p);
+    else static if (is(T == Nil))
+        return Nil();
+    else
+        return cast(T) cast(void*) st.p;
+}
+
+pragma(inline, true)
+private LuaPayload packText(const(char)[] text, ubyte tag) @trusted pure nothrow @nogc {
+    if (text.length > uint.max)
+        assert(0, "string longer than 4 GiB");
+    LuaPayload st;
+    st.p = cast(void*) text.ptr;
+    st.len = cast(uint) text.length;
+    st.tag = tag;
+    return st;
+}
+
+pragma(inline, true)
+private LuaPayload packValue(T)(T val) @trusted pure nothrow @nogc {
+    LuaPayload st;
+    static if (is(T == Nil)) {
+    } else static if (is(T == bool)) {
+        st.b = val;
+        st.tag = TagBool;
+    } else static if (is(T == long)) {
+        st.i = val;
+        st.tag = TagLong;
+    } else static if (is(T == double)) {
+        st.d = val;
+        st.tag = TagDouble;
+    } else static if (is(T == string))
+        st = packText(val, TagString);
+    else static if (is(T == Symbol))
+        st = packText(val.name, TagSymbol);
+    else static if (is(T == LightUserData)) {
+        st.p = val.ptr;
+        st.tag = TagLightUserData;
+    } else {
+        st.p = cast(void*) val;
+        static if (is(T == LuaTable))
+            st.tag = TagTable;
+        else static if (is(T == LuaFunction))
+            st.tag = TagFunction;
+        else static if (is(T == LuaUserData))
+            st.tag = TagUserData;
+        else static if (is(T == LuaThread))
+            st.tag = TagThread;
+        else
+            static assert(0, "not a Lua value type: " ~ T.stringof);
+    }
+    return st;
+}
+
+/// The value as a `std.sumtype`, for `match` (convenient, not for hot paths).
+private LuaSumType toSumType(ref const LuaPayload st) @trusted pure nothrow {
+    switch (st.tag) {
+    case TagBool:
+        return LuaSumType(st.b);
+    case TagLong:
+        return LuaSumType(st.i);
+    case TagDouble:
+        return LuaSumType(st.d);
+    case TagString:
+        return LuaSumType(getVal!(string, TagString)(st));
+    case TagSymbol:
+        return LuaSumType(getVal!(Symbol, TagSymbol)(st));
+    case TagTable:
+        return LuaSumType(getVal!(LuaTable, TagTable)(st));
+    case TagFunction:
+        return LuaSumType(getVal!(LuaFunction, TagFunction)(st));
+    case TagUserData:
+        return LuaSumType(getVal!(LuaUserData, TagUserData)(st));
+    case TagLightUserData:
+        return LuaSumType(getVal!(LightUserData, TagLightUserData)(st));
+    case TagThread:
+        return LuaSumType(getVal!(LuaThread, TagThread)(st));
+    default:
+        return LuaSumType(Nil());
+    }
+}
+
+/// The central struct representing all Lua values (16 bytes, see LuaPayload)
 struct LuaValue {
-    LuaSumType data;
+    LuaPayload data;
 
     this(Nil val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     this(bool val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     this(long val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     this(int val) @safe pure nothrow {
-        data = LuaSumType(cast(long) val);
+        data = packValue!long(cast(long) val);
     }
 
     this(double val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     this(string val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     this(Symbol val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     this(LuaTable val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     this(LuaFunction val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     this(LuaUserData val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     this(LightUserData val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     this(LuaThread val) @safe pure nothrow {
-        data = LuaSumType(val);
+        data = packValue(val);
     }
 
     /// Plain bitwise assignment. Every payload is a value type or a GC reference without a
@@ -459,7 +572,7 @@ struct LuaValue {
 
 /// Free function UFCS pattern matching for LuaValue
 auto match(Handlers...)(auto ref LuaValue val) {
-    return sumtypeMatch!Handlers(cast() val.data);
+    return sumtypeMatch!Handlers(toSumType(val.data));
 }
 
 /// Helper constructor functions

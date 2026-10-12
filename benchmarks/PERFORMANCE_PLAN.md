@@ -407,6 +407,15 @@ few seconds; no `throw` in core modules.
 
 **L2 — Value representation.**
 
+*Main step done October 11, 2026:* `LuaValue` is 16 bytes. Instead of introducing string objects,
+a string value packs the slice's pointer into the payload word and its length into a 32-bit
+field beside the tag (`LuaPayload` in `types.d`), so no string code changed and creating a string
+value still allocates nothing; strings are limited to 4 GiB. `match!` keeps working by converting
+to `std.sumtype` on demand. Measured against C Lua: `core.array_access` 1.83× → 1.51×,
+`core.sieve` 1.35× → 1.16×, `core.table_sort` 0.95× → 0.76×, `programs.bintrees` 1.84× → 1.59×,
+`core.fib` 2.45× → 2.28×; nothing slower. Remaining: convert the 281 `match!` uses and drop the
+`std.sumtype` import; string objects with a cached hash only if a profile asks for them.
+
 - Replace `std.sumtype` with a hand-written tagged union. The hot paths already bypass `SumType`
   (`getVal`, `typeIndex`, `memcpy` assignment), so this mostly converts the 281 `match!` uses to
   switches on the tag. Keep the public accessors (`isString`, `asTable`, …) so host code and the

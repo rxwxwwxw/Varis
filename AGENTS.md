@@ -171,8 +171,9 @@ The frontend (`ast`, `lexer`, `parser`) and the compiler know the relational and
 
 ### 4.2 Value representation (`source/varis/types.d`)
 
-- `LuaValue` is a `struct` wrapping `std.sumtype.SumType!(Nil, bool, long, double, string, Symbol, LuaTable, LuaFunction, LuaUserData, LightUserData, LuaThread)`. It is 24 bytes.
-- **Primitives are stored inline**: Nil, bool, long, double, string, and raw pointers require no separate heap allocations.
+- `LuaValue` is a 16-byte `struct` holding a `LuaPayload`: one 8-byte word (integer, float, boolean or pointer), a 32-bit length and a one-byte tag (`TagNil` … `TagThread`). The value kinds are Nil, bool, long, double, string, Symbol, LuaTable, LuaFunction, LuaUserData, LightUserData and LuaThread. Nil is all zero bytes (`LuaValue.init`; registers are cleared with `memset`).
+- **Strings stay D slices**: a string value stores the slice's pointer in the word and its length in the 32-bit field, so creating a string value allocates nothing and `asString` returns the same slice. Strings (and symbol names) are therefore limited to 4 GiB.
+- **`match` still works** (`value.match!(…)`): it converts the value to a `std.sumtype` and dispatches. That is convenient and slow; runtime code uses the accessors (`isInteger`, `asTable`, …) and the tags.
 - **Reference objects are D GC classes**: `LuaTable`, `LuaFunction`, `LuaUserData`, and `LuaThread` are managed by D's garbage collector.
 - **Custom Equality & Hashing**:
   - `opEquals`: Follows Lua rules: integers and floats representing the same value are mathematically equal (`1L == 1.0`). `NaN == NaN` is false. Strings compare by value. Reference types compare by reference (`is`).
@@ -180,8 +181,7 @@ The frontend (`ast`, `lexer`, `parser`) and the compiler know the relational and
 - **Matching Precedence**: In D, `long` implicitly converts to `double`. When writing handlers over the value's type, **always handle `long` before `double`** to avoid unwanted numeric conversion.
 - **Symbols**: Use the inline symbol payload backed by a state-owned intern pool, shared across worlds. Audit exhaustive visitors/type switches. Keep logic variables in declarative AST/IR and binding environments, not in general `LuaValue`.
 - **Numeric prerequisite**: Audit mixed integer/float equality and `floatToInteger` at large integer boundaries before using them for tuple sets. Converting both operands to `double` can lose precision above 2^53 and break equality/hash consistency.
-- **Hot paths already bypass `SumType`** (`getVal`, the `Tag*` constants, `memcpy` assignment). Use those accessors, not `match!`, in runtime code.
-- **Planned (stage L2):** a hand-written 16-byte tagged union with strings as pointers to collector-allocated string objects (length, cached hash, bytes). Every rule above survives that change. Only compile-time string constants are interned; run-time strings are not.
+- **Still planned (rest of stage L2):** convert the remaining `match!` uses to tag switches so `std.sumtype` can be dropped, and decide on measurement whether strings should become objects with a cached hash. Compile-time string constants are interned (`VM.prepareForExecution`); run-time strings are not, and must not be (an intern pool on D's collector would keep every string alive).
 
 ### 4.3 Memory management
 
@@ -287,7 +287,7 @@ Use this table to avoid coding against a design that has not landed.
 | Aspect | Today (code against this) | Target | Changes in |
 | --- | --- | --- | --- |
 | Errors | `LuaException` objects. Between Lua frames they are **returned** (`TailRequest.returnErrors`), and `error` raises without a throw; natives and out-of-line helpers still `throw`, and `pcall` still catches those | Status returns everywhere; error object on the thread | L1 (first step done) |
-| Value | 24-byte `SumType` wrapper; strings inline as slices | 16-byte tagged union; string objects with cached hash | L2 |
+| Value | 16-byte tagged payload; strings are slices packed as pointer + 32-bit length; `match!` converts to `std.sumtype` | Same, with `std.sumtype` gone; cached string hashes if measurement supports it | L2 (main step done) |
 | Instructions executed | `execCode` = canonical 32-byte instructions plus a final `Return` | Compact specialized encoding derived from `code` | L3 |
 | Executors | `executeFrame` and `executeDeepFrame`; 40 of 43 handlers shared through `sharedOpcodeCases*` mixins, calls and returns still per executor | One executor with frames as records; fast and instrumented variants | S1 (first step done) |
 | Core and world model | Core imports `logic` and `narrative`; every Lua call maintains a lexical world | Core knows neither; world model plugs in through an extension table | S1 |
@@ -296,7 +296,7 @@ Use this table to avoid coding against a design that has not landed.
 | Sample game | In `make test` (suite `sample-game`: its check plus a golden transcript and save, `tests/sample_game/`) | Same | S0 (done) |
 | Debugging | Lua `debug` library; `narrative.explain`/`observe`/`analyze` from scripts | Workbench debugger at source and story level | Milestone 44 |
 | Tools | CLI and REPL (`cli.d`) | `varis check`, language services, `varis serve` | Milestones 30–33, 42–43 |
-| Core speed | 0.6–2.5× C Lua; `pcall_error` 1.4× (was 37×), `deep_recursion` 3.0× (was 8×) | ≤ 1.0×, then below | L, X |
+| Core speed | 0.5–2.3× C Lua on core workloads (`fib` 2.28×, `string_ops` 2.13×, `closures` 1.95×, loops 1.2–1.5×); `pcall_error` 1.3× (was 37×), `deep_recursion` 2.7× (was 8×) | ≤ 1.0×, then below | L, X |
 | Turn latency (reference-scale game, M1) | 3.2 ms with or without a recursive rule (was 15 ms and 840 ms) | 5 ms on the stand-in; real hardware unmeasured | W, M |
 
 ---
