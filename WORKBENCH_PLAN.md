@@ -36,13 +36,14 @@ a token and serves one page with the layout of §3.
 | Command window | Works: expressions print, statements run, multi-line input continues, history with the arrow keys. Output of `print` and `io.write` is captured. |
 | Workspace | Works: user-created globals with type and preview. A world opens as its list of relations; a relation opens as a paged table of its base facts. Read-only. |
 | Story | Works after `story(session)` in the command window: presents on request, choices are buttons. It presents only when asked, because presenting appends to the session's replay log. |
+| Story-level debugging | Partly: after a choice the command window lists the facts the turn added and removed, per relation (computed from the immutable fact tables before and after). "Why?" explains any storylet through `narrative.explain`: eligible or not, each condition's outcome and candidate counts, each instance's exclusions. Rewind and seeds are not implemented. |
 | Editor | A plain text area with open, save and Run (runs the file in the live state). No completion or navigation. |
 | Problems | Syntax errors of the open file only (the full checker of milestone 30 does not exist). |
 
 Differences from the rest of this plan, all deliberate for a first version: plain HTTP
 request/response instead of a WebSocket with pushed events (§6); text bodies and query parameters
-instead of JSON requests; no debugger (§5); no language services; no "why is this missing",
-rewind or history views; derived relations show only their base facts.
+instead of JSON requests; no source-level debugger (§5.2); no language services; no rewind or
+history views; derived relations show only their base facts.
 
 ## 2. The model: MATLAB, with a story
 

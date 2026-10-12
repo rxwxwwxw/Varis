@@ -63,6 +63,7 @@ immutable string workbenchPage = q"HTML
 <body>
 <div id="grid">
   <section id="story"><header>Story <span class="spacer"></span><span id="turn" class="muted"></span>
+      <select id="whyId" title="Why is this storylet showing or not?"></select><button id="why">Why?</button>
       <button id="refreshStory">Present</button></header>
     <div class="body" id="storyBody"><span class="muted">No session. In the command window, create one and call <code>story(session)</code>.</span></div></section>
   <section id="command"><header>Command window</header>
@@ -153,8 +154,11 @@ async function showFacts(world, name, start) {
 // Story
 async function refreshStory(explicit) {
   const data = await api("/api/present");
+  if (data.error) { if (explicit) { $("storyBody").textContent = ""; $("storyBody").append(el("span", { class: "muted" }, data.error)); } return; }
+  renderStory(data);
+}
+function renderStory(data) {
   const body = $("storyBody");
-  if (data.error) { if (explicit) { body.textContent = ""; body.append(el("span", { class: "muted" }, data.error)); } return; }
   if (!data.session) return;
   body.textContent = ""; $("turn").textContent = "turn " + data.turn;
   if (!data.storylets.length) body.append(el("span", { class: "muted" }, "Nothing is available."));
@@ -166,9 +170,33 @@ async function refreshStory(explicit) {
 }
 async function choose(s, c) {
   const data = await api("/api/choose", { s, c }, "");
-  if (data.error) logLine(data.error + "\n", "err");
-  refreshStory(true); refreshWorkspace();
+  if (data.error) { logLine(data.error + "\n", "err"); return; }
+  renderStory(data);
+  // What the turn changed, as the engine committed it.
+  const diff = await api("/api/changes");
+  for (const change of diff.changes || []) {
+    for (const row of change.removed) logLine("- " + change.relation + "(" + row.join(", ") + ")\n", "err");
+    for (const row of change.added) logLine("+ " + change.relation + "(" + row.join(", ") + ")\n", "in");
+  }
+  refreshWorkspace();
 }
+async function loadContent() {
+  const data = await api("/api/content");
+  const select = $("whyId"); const keep = select.value; select.textContent = "";
+  for (const id of data.storylets || []) select.append(el("option", { value: id }, id));
+  if (keep) select.value = keep;
+}
+$("whyId").addEventListener("focus", loadContent);
+$("why").onclick = async () => {
+  await loadContent();
+  const id = $("whyId").value; if (!id) return;
+  const data = await api("/api/why", { id });
+  if (data.error && !data.goals) { logLine(data.error + "\n", "err"); return; }
+  logLine("why " + id + ": " + (data.eligible ? "available" : "not available") + ", " + data.instances.length + " instance(s)\n", "in");
+  for (const g of data.goals) logLine("  condition " + g.index + " (" + g.kind + "): " + g.outcome + ", " + g.before + " -> " + g.after + " candidates\n");
+  for (const i of data.instances) logLine("  instance " + i.key + ": " + (i.eligible ? "eligible" : "excluded: " + i.exclusions.join(", ")) + "\n");
+  if (data.error) logLine("  " + data.error + "\n", "err");
+};
 $("refreshStory").onclick = () => refreshStory(true);
 
 // Editor

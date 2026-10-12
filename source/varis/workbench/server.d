@@ -148,15 +148,58 @@ function W.present()
     return encode({ session = true, turn = W.session:turn(), storylets = storylets })
 end
 
+-- Choosing reports what the turn changed: the facts added and removed, per relation.
 function W.choose(storylet, choice)
     local p = W.presentation
     if not p then error("present the story first") end
     local st = p.storylets[storylet]
     local c = st and st.choices[choice]
     if not c then error("no such choice") end
+    local world = W.session:world()
+    local before = W.snapshot(world)
     W.session:choose(c.token)
     W.presentation = nil
+    local changes = W.changes(before, world)
+    for _, change in ipairs(changes) do
+        for _, rows in ipairs({ change.added, change.removed }) do
+            for _, row in ipairs(rows) do
+                for i = 1, #row do row[i] = tostring(row[i]) end
+            end
+        end
+    end
+    W.lastChanges = changes
     return W.present()
+end
+
+function W.turnChanges()
+    return encode({ changes = W.lastChanges or {} })
+end
+
+-- "Why is this storylet (not) showing?": narrative.explain, flattened for display.
+function W.why(id)
+    if not W.session then error("no session; call story(session) first") end
+    local e = narrative.explain(W.session, logic.symbol(id))
+    local goals = {}
+    local trace = e.availability
+    if trace and trace.goals then
+        for i = 1, #trace.goals do
+            local g = trace.goals[i]
+            goals[i] = { index = g.index, kind = tostring(g.kind), outcome = tostring(g.outcome), before = g.before, after = g.after }
+        end
+    end
+    local instances = {}
+    for i = 1, #e.instances do
+        local inst = e.instances[i]
+        local exclusions = {}
+        for j = 1, #inst.exclusions do exclusions[j] = tostring(inst.exclusions[j].reason or inst.exclusions[j]) end
+        instances[i] = { key = tostring(inst.instance_key), eligible = inst.eligible, exclusions = exclusions }
+    end
+    return encode({ id = id, kind = tostring(e.kind), eligible = e.eligible, success = trace and trace.success,
+        error = trace and trace.error and tostring(trace.error) or "", goals = goals, instances = instances })
+end
+
+function W.contentList()
+    return encode({ storylets = W.storyletIds() })
 end
 LUA";
 
@@ -548,6 +591,84 @@ private void installNatives(LuaState state) {
             }, "workbench.facts")));
 }
 
+/// The fact tables of a world at one moment (tables are immutable, so holding them is enough).
+private final class WorldSnapshot {
+    import varis.logic.store : FactTable;
+
+    FactTable[string] tables;
+}
+
+private void installStoryNatives(LuaState state) {
+    import varis.logic.store : FactTable;
+
+    auto table = state.getGlobal("__workbench").asTable;
+    table.rawset(LuaValue("snapshot"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] args) {
+                auto world = args.length ? unwrapWorld(args[0]) : null;
+                if (world is null)
+                    throw new LuaException("expected a world");
+                auto snapshot = new WorldSnapshot;
+                foreach (name, relation; world.relations)
+                    snapshot.tables[name] = visibleRelation(relation).factTable();
+                return [LuaValue(new LuaUserData(snapshot))];
+            }, "workbench.snapshot")));
+    table.rawset(LuaValue("changes"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] args) {
+                auto before = args.length > 0 && args[0].typeOf() == LuaType.UserData ? cast(WorldSnapshot) args[0]
+                .asUserData.payload : null;
+                auto world = args.length > 1 ? unwrapWorld(args[1]) : null;
+                if (before is null || world is null)
+                    throw new LuaException("expected a snapshot and a world");
+                LuaTable rowsOf(FactTable from, FactTable other) {
+                    auto rows = new LuaTable();
+                    long count;
+                    if (from !is null)
+                        foreach (ref tuple; from.rows) {
+                            if (other !is null && other.contains(tuple.values))
+                                continue;
+                            auto row = new LuaTable();
+                            foreach (column, value; tuple.values)
+                                row.rawset(LuaValue(cast(long) column + 1), value.isNil ? LuaValue("nil") : value);
+                            rows.rawset(LuaValue(++count), LuaValue(row));
+                        }
+                    return rows;
+                }
+
+                string[] names;
+                foreach (name, relation; world.relations)
+                    names ~= name;
+                sortStrings(names);
+                auto list = new LuaTable();
+                long index;
+                foreach (name; names) {
+                    auto now = visibleRelation(world.relations[name]).factTable();
+                    auto was = name in before.tables;
+                    if (was !is null && *was is now)
+                        continue; // an unchanged relation still has the same table
+                    auto added = rowsOf(now, was is null ? null : *was);
+                    auto removed = rowsOf(was is null ? null : *was, now);
+                    if (added.rawget(LuaValue(1L)).isNil && removed.rawget(LuaValue(1L)).isNil)
+                        continue;
+                    auto entry = new LuaTable();
+                    entry.rawset(LuaValue("relation"), LuaValue(name));
+                    entry.rawset(LuaValue("added"), LuaValue(added));
+                    entry.rawset(LuaValue("removed"), LuaValue(removed));
+                    list.rawset(LuaValue(++index), LuaValue(entry));
+                }
+                return [LuaValue(list)];
+            }, "workbench.changes")));
+    table.rawset(LuaValue("storyletIds"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] args) {
+                auto owner = cast(LuaState) pointer;
+                string[] ids;
+                if (owner.narrativeRegistry !is null)
+                    foreach (definition; owner.narrativeRegistry.storylets())
+                        ids ~= definition.id;
+                sortStrings(ids);
+                auto list = new LuaTable();
+                foreach (i, id; ids)
+                    list.rawset(LuaValue(cast(long) i + 1), LuaValue(id));
+                return [LuaValue(list)];
+            }, "workbench.storyletIds")));
+}
+
 private string makeToken() {
     ubyte[16] bytes;
     auto source = fopen("/dev/urandom", "rb");
@@ -660,6 +781,15 @@ private void handle(LuaState state, int socket, ref Request request, string toke
             LuaValue(numberOf(parameter("s"), 0)), LuaValue(numberOf(parameter("c"), 0))
         ], ok));
         return;
+    case "/api/changes":
+        respond(socket, 200, "application/json", callView(state, "turnChanges", [], ok));
+        return;
+    case "/api/why":
+        respond(socket, 200, "application/json", callView(state, "why", [LuaValue(parameter("id"))], ok));
+        return;
+    case "/api/content":
+        respond(socket, 200, "application/json", callView(state, "contentList", [], ok));
+        return;
     case "/api/files": {
             string[] found;
             listFiles(".", "", 0, found);
@@ -707,6 +837,7 @@ int serveWorkbench(LuaState state, string directory, ushort port) {
         return 1;
     }
     installNatives(state);
+    installStoryNatives(state);
     // Project modules resolve from the project directory, as when a game is run from it.
     evaluate(state, `package.path = "./?.lua;" .. package.path`, "=workbench");
 

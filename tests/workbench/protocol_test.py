@@ -71,6 +71,17 @@ def main():
         second = call("/api/choose", {"s": 1, "c": 1}, body="")
         assert second["turn"] == first["turn"] + 1, (first["turn"], second["turn"])
 
+        # Story-level debugging: what the turn changed, the storylet list, and "why".
+        changes = call("/api/changes")["changes"]
+        assert isinstance(changes, list)
+        for change in changes:
+            assert change["relation"] and (change["added"] or change["removed"])
+        ids = call("/api/content")["storylets"]
+        assert "lamp" in ids and "walk" in ids, ids
+        why = call("/api/why", {"id": "lamp"})
+        assert why["id"] == "lamp" and why["eligible"] is False and why["goals"], why
+        assert call("/api/why", {"id": "walk"})["eligible"] is True
+
         # Files: listing, reading, the syntax check, and path safety.
         files = call("/api/files")["files"]
         assert "game.lua" in files and "content/lamp.lua" in files
