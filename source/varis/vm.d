@@ -207,7 +207,7 @@ private enum string enterFrameCode = q{
             if (!p.prepared) prepareForExecution(p);
             size_t slots = cast(size_t)p.maxStackSize + 1;
             checkStackLimits(frameThread, sp, slots);
-            frameThread.stackSlots += slots;
+            if (slots > LuaThread.smallFrameSlots) frameThread.stackSlots += slots;
             frameSlots = slots;
             closure = efClosure;
             proto = p;
@@ -287,8 +287,8 @@ private enum string leaveFrameCode = q{
                 }
             }
             --frameThread.registerDepth;
-            frameThread.stackSlots -= frameSlots;
-            if (frameThread.overflowed && frameThread.stackSlots + 400 <= luaMaxStack
+            if (frameSlots > LuaThread.smallFrameSlots) frameThread.stackSlots -= frameSlots;
+            if (frameThread.overflowed && frameThread.stackUse() + 400 <= luaMaxStack
                 && sp > frameThread.nativeSoftLimit + 256 * 1024)
                 frameThread.overflowed = false;
         
@@ -329,7 +329,8 @@ private enum string restoreCallerCode = q{
 
 /// Raises the Lua/native stack overflow errors before any state of the frame being entered exists.
 private void checkStackLimits(LuaThread frameThread, size_t sp, size_t slots) {
-    size_t total = frameThread.stackSlots + slots;
+    // Approximate (see LuaThread.stackUse): small frames are charged a flat amount each.
+    size_t total = frameThread.stackUse() + (slots > LuaThread.smallFrameSlots ? slots : LuaThread.smallFrameCharge);
     if (total > luaMaxStack || (frameThread.nativeStackLimit != 0 && sp < frameThread.nativeSoftLimit)) {
         bool nativeSoft = frameThread.nativeStackLimit != 0 && sp < frameThread.nativeSoftLimit;
         bool nativeHard = frameThread.nativeStackLimit != 0 && sp < frameThread.nativeStackLimit;
@@ -895,25 +896,32 @@ struct VM {
         auto frameThread = state.currentThread();
         size_t nativeMarker;
         size_t sp = cast(size_t)&nativeMarker;
+        // The slot count is approximate (owner decision): frames of up to smallFrameSlots slots are
+        // charged a flat amount through the frame depth, so an ordinary call updates no counter;
+        // only larger frames are counted exactly, which still bounds memory.
         size_t frameSlots = cast(size_t) proto.maxStackSize + 1;
-        frameThread.stackSlots += frameSlots;
+        immutable bool bigFrame = frameSlots > LuaThread.smallFrameSlots;
+        if (bigFrame)
+            frameThread.stackSlots += frameSlots;
         scope (exit) {
-            frameThread.stackSlots -= frameSlots;
-            if (frameThread.overflowed && frameThread.stackSlots + 400 <= luaMaxStack
+            if (bigFrame)
+                frameThread.stackSlots -= frameSlots;
+            if (frameThread.overflowed && frameThread.stackUse() + 400 <= luaMaxStack
                     && sp > frameThread.nativeSoftLimit + 256 * 1024)
                 frameThread.overflowed = false;
         }
+        immutable size_t stackUse = frameThread.stackUse() + LuaThread.smallFrameCharge;
         // Far from both limits (the soft native limit lies above the hard one): nothing to check.
-        if (frameThread.stackSlots > luaMaxStack ||
+        if (stackUse > luaMaxStack ||
                 (frameThread.nativeStackLimit != 0 && sp < frameThread.nativeSoftLimit)) {
             bool nativeSoft = frameThread.nativeStackLimit != 0 && sp < frameThread.nativeSoftLimit;
             bool nativeHard = frameThread.nativeStackLimit != 0 && sp < frameThread.nativeStackLimit;
-            if (nativeHard || frameThread.stackSlots > luaMaxStack + 200) {
+            if (nativeHard || stackUse > luaMaxStack + 200) {
                 auto nested = new LuaException("error in error handling");
                 nested.needsLocation = false;
                 throw nested;
             }
-            if ((nativeSoft || frameThread.stackSlots > luaMaxStack) && !frameThread.overflowed) {
+            if ((nativeSoft || stackUse > luaMaxStack) && !frameThread.overflowed) {
                 frameThread.overflowed = true;
                 throw new LuaException("stack overflow");
             }

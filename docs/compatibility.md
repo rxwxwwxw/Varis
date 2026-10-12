@@ -69,8 +69,13 @@ words are contextual, preserving ordinary identifier uses. Opening libraries add
 those names can replace the library values. Dedicated language operations do not
 work by calling these replaceable globals.
 
-No deliberate divergence from Lua 5.4 has been made in this edition. The policy
-for future ones (owner decisions, October 11, 2026; see the decision record in the
+One deliberate divergence from Lua 5.4 has been made (owner decision, October 12,
+2026): the depth at which a runaway recursion raises `stack overflow` is
+approximate. Frames of up to 16 stack slots are charged a flat 6 slots each
+against the 1,000,000-slot limit instead of their exact size, so ordinary calls
+do no accounting; larger frames are counted exactly. The error, its message and
+its recoverability are unchanged, and no test result changed. The policy
+for further ones (owner decisions, October 11, 2026; see the decision record in the
 [roadmap](../ROADMAP.md)):
 
 - The official Lua suite, the core differential fixture, and the regression

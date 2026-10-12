@@ -337,7 +337,7 @@ void openTableLib(LuaState state) {
         if (i > e)
             return cast(LuaValue[])[];
         ulong n = cast(ulong) e - cast(ulong) i;
-        if (n >= 1_000_000 - L.currentThread().stackSlots - 40)
+        if (n >= 1_000_000 - L.currentThread().stackUse() - 40)
             throw new LuaException("too many results to unpack");
         auto result = new LuaValue[cast(size_t) n + 1];
         foreach (k; 0 .. cast(size_t) n + 1)

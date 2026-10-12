@@ -227,6 +227,20 @@ Until one of these is decided, use the stated default and say so in the change.
 | 9 | Workbench choices: the editor component, whether the server uses a third-party HTTP library, and the exact panel layout. | See [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md) §9. |
 | 10 | A target below 1.0× C Lua for milestone 47. | None until parity is reached and measured. |
 
+Decided October 12, 2026 (owner, asked while planning the executor work):
+
+- **Stack limits may be approximate.** Done: small frames are charged a flat amount (see
+  `docs/compatibility.md` §9.1). Measured gain on `core.fib`: within noise; `regression.limits`
+  went to 0.83× C Lua.
+- **Call records and register clearing stay exact.** The owner did not choose lazy call records
+  or weaker dead-register clearing, so tracebacks, `debug.getinfo` and the weak-table and
+  finalizer emulation keep their current behaviour and cost. With both kept, the measurements in
+  the performance plan put the reachable call speed at roughly 1.5–2× C Lua, not parity.
+- **Coroutines without fibers must keep "yield from Lua and across `pcall`".** Yielding inside
+  `table.sort` comparators, `gsub` callbacks and similar natives may remain an error (it already
+  is for sort and gsub). This is the specification for replacing `core.thread.Fiber`; it is not
+  implemented.
+
 ## Closed: Phase 8 — core-Lua performance and conformance
 
 Closed October 11, 2026. State at closure ([docs/STATUS.md](docs/STATUS.md), commit `15522b1`):

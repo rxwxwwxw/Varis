@@ -1028,7 +1028,19 @@ class LuaThread {
     LuaValue[] tailArguments;
     Object tailWorld;
     int cCalls; // nested VM re-entries from native code (emulates nCcalls)
-    size_t stackSlots; // Lua stack slots in use (emulates LUAI_MAXSTACK)
+    /// Lua stack slots in use by frames larger than `smallFrameSlots`. Smaller frames are not
+    /// counted one by one: `stackUse` charges each active frame a flat `smallFrameCharge` instead,
+    /// so an ordinary call does no accounting (owner decision: approximate stack limits).
+    size_t stackSlots;
+    enum smallFrameSlots = 16;
+    enum smallFrameCharge = 6;
+
+    /// Approximate number of Lua stack slots in use (emulates LUAI_MAXSTACK).
+    pragma(inline, true)
+    final size_t stackUse() const nothrow @nogc @safe {
+        return stackSlots + registerDepth * smallFrameCharge;
+    }
+
     bool overflowed; // a stack overflow error is being handled
     size_t nativeStackLimit; // lowest usable native stack address (0 = unchecked)
     size_t nativeSoftLimit; // raises "stack overflow" here; the rest is reserved for error handling
