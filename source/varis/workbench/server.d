@@ -1274,6 +1274,13 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
     case "/api/messages":
         respond(socket, 200, "application/json", callView(state, "messages", [], ok));
         return Disposition.done;
+    case "/api/branches": {
+            // Every branch of the plurals and selects of a text, rendered with sample values.
+            import varis.services.l10n : branchPreviewJson;
+
+            respond(socket, 200, "application/json", branchPreviewJson(parameter("lang"), request.body_));
+            return Disposition.done;
+        }
     case "/api/catalog": {
             import varis.services.l10n : catalogEntriesJson;
 

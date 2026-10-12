@@ -194,7 +194,7 @@ game does with `narrative.load_pack(DIR)`: the pack is accepted or rejected as a
 the error names the language and each bad key. Packs are registered with
 `narrative.translate` (section 7). In the workbench the story panel has a language
 selector (a switch renders the current presentation again) and a panel to edit a
-translation, which is saved to `l10n/L.json` as a draft.
+translation, which is saved to `l10n/L.json` as a draft; for a message with `{#plural}` or `{#select}` it lists every branch rendered with sample values, in the language's plural rules, as the translation is typed. The editor highlights comments, strings and their template tags, symbols, logic variables, numbers and the content words.
 
 ## 9 — Compatibility and implementation limits
 

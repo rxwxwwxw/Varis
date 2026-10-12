@@ -63,6 +63,7 @@ final class TranslationTemplate {
     string[][] variantNames; // per group, the option names ("" for an unnamed one)
     string[][] choiceLabels; // per plural/select, the branch labels written (`one`, `case:x`, ...)
     string[] choiceKinds; // "plural" or "select", parallel to choiceLabels
+    string[] choiceParameters; // the argument each plural/select chooses on, parallel too
     bool hasStructure; // `structure` is meaningful (the text parsed)
 
     /// The text of a message that is only text (a translated name).
@@ -379,6 +380,7 @@ private struct Parser {
                 if (!haveDefault)
                     return fail(plural ? "{#plural} needs {#other}" : "{#select} needs {#default}");
                 result.choiceKinds ~= plural ? "plural" : "select";
+                result.choiceParameters ~= parameter;
                 result.choiceLabels ~= labels;
             } else if (token == "#variants") {
                 node.kind = TNode.Kind.variants;

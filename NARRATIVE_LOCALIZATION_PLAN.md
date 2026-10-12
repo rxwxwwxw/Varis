@@ -377,8 +377,8 @@ condition results and variant draws its messages used), whole-message fallback, 
 a save-format change, AGENTS §8.1 item 5), and the **syntax** of `select`, plural and named variants
 (T0, milestone 27); until then translations use the source's own conditions and variant groups, by
 position. The workbench language selector and translation panel (§7.7) exist in a first
-version (switch, list of the presentation's messages with status, save as draft; the plural and
-select branch views wait for the syntax). T4 is built except the font-subset output and the
+version (switch, list of the presentation's messages with status, save as draft, every plural and
+select branch rendered with sample values). T4 is built except the font-subset output and the
 manifest's per-locale coverage: kits with context, glossary, character sets and ids, delta kits,
 the XLIFF and CSV adapters, import with stale/draft states, `l10n review`, `l10n check --kit`,
 `l10n build` packs and `narrative.load_pack` with whole-pack rejection, the key overlay and the

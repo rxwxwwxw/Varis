@@ -43,7 +43,15 @@ immutable string workbenchPage = q"HTML
   #prompt { display: flex; border-top: 1px solid var(--line); }
   #prompt span { padding: 6px 4px 6px 8px; color: var(--accent); }
   #input { flex: 1; border: 0; outline: 0; padding: 6px 8px 6px 0; background: transparent; color: var(--ink); resize: none; }
-  #source { flex: 1; width: 100%; border: 0; outline: 0; padding: 8px; background: transparent; color: var(--ink); resize: none; tab-size: 4; }
+  #edwrap { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+  #hl, #source { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; border: 0; outline: 0; padding: 8px;
+                 background: transparent; resize: none; tab-size: 4; white-space: pre; overflow: auto; box-sizing: border-box; }
+  #hl { color: var(--ink); pointer-events: none; }
+  #source { color: transparent; caret-color: var(--ink); }
+  #hl .c { color: var(--soft); font-style: italic; } #hl .s { color: #0b7a3b; } #hl .k { color: var(--accent); font-weight: 600; }
+  #hl .y { color: #8250c8; } #hl .v { color: #b35900; } #hl .n { color: #a4262c; } #hl .t { color: #0b7a3b; font-weight: 600; }
+  @media (prefers-color-scheme: dark) { #hl .s, #hl .t { color: #7bd88f; } #hl .y { color: #c3a6ff; } #hl .v { color: #ffb86c; } #hl .n { color: #f28b82; } }
+  .branches { margin: 2px 0 4px 8px; padding-left: 8px; border-left: 2px solid var(--line); }
   button, select { font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 2px 8px; }
   button:hover { border-color: var(--accent); }
   table { border-collapse: collapse; width: 100%; }
@@ -82,7 +90,7 @@ immutable string workbenchPage = q"HTML
     <div id="debugBar" class="mono" hidden><span id="where"></span> <button id="dbgContinue">Continue</button>
       <button id="dbgOver">Step over</button><button id="dbgInto">Step into</button><button id="dbgOut">Step out</button></div>
     <div id="breaks" class="muted mono"></div>
-    <textarea id="source" spellcheck="false"></textarea></section>
+    <div id="edwrap"><pre id="hl" aria-hidden="true"></pre><textarea id="source" spellcheck="false" wrap="off"></textarea></div></section>
   <section id="problems"><header>Problems</header><div class="body mono" id="problemsBody"><span class="muted">None.</span></div></section>
 </div>
 <script>
@@ -251,9 +259,20 @@ async function showTranslations() {
       if (!r.ok) { logLine(m.key + ": " + r.error + "\n", "err"); return; }
       $("language").onchange();
     } }, "Save draft");
+    const preview = el("div", { class: "branches muted" });
+    const showBranches = async () => {
+      const r = await api("/api/branches", { lang, key: m.key }, area.value || m.source);
+      preview.textContent = "";
+      for (const p of r.previews || []) {
+        preview.append(el("div", {}, p.kind + " on {" + p.param + "}:"));
+        for (const row of p.rows) preview.append(el("div", { class: "mono" }, "  " + row.value + (row.category ? " (" + row.category + ")" : "") + " → " + row.text));
+      }
+    };
+    area.addEventListener("input", showBranches);
     panel.append(el("div", { class: "translation" },
       el("div", { class: "muted mono" }, m.key + "  [" + (status[m.key] || "untranslated") + "]"),
-      el("div", {}, m.source), area, save));
+      el("div", {}, m.source), area, save, preview));
+    if (/\{#(plural|select) /.test(m.source)) showBranches();
   }
 }
 function renderStory(data) {
@@ -300,7 +319,33 @@ $("refreshStory").onclick = () => refreshStory(true);
 
 // Editor
 let current = ""; let saved = "";
-function markDirty() { $("dirty").textContent = $("source").value !== saved ? "modified" : ""; }
+function markDirty() { $("dirty").textContent = $("source").value !== saved ? "modified" : ""; highlight(); }
+// Syntax highlighting: a coloured copy of the text under a transparent textarea. Comments, strings
+// (with their template tags), :symbols, ?variables, numbers and the content words.
+const KEYWORDS = new Set("and break do else elseif end for function goto if in local not or repeat return then until while".split(" "));
+const CONTENT = new Set("storylet action choice deck relation rule fact retract set delete adjust when title text effect priority weight cooldown repeatable sticky order phase once_per query transaction rollback key by".split(" "));
+function esc(s) { return s.replace(/&/g, "&amp;").replace(/</g, "&lt;"); }
+function highlight() {
+  const text = $("source").value, out = [];
+  const re = /(--\[(=*)\[[\s\S]*?\]\2\]|--[^\n]*)|("(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|\[(=*)\[[\s\S]*?\]\4\])|((?<![\w)\]}"']):[A-Za-z_]\w*)|(\?[A-Za-z_]\w*)|(\b\d+(?:\.\d+)?\b)|([A-Za-z_]\w*)/g;
+  let last = 0, m;
+  while ((m = re.exec(text))) {
+    out.push(esc(text.slice(last, m.index))); last = re.lastIndex;
+    const t = m[0];
+    if (m[1] !== undefined) out.push('<span class="c">' + esc(t) + "</span>");
+    else if (m[3] !== undefined) out.push('<span class="s">' + esc(t).replace(/\{[^{}]*\}/g, tag => '<span class="t">' + tag + "</span>") + "</span>");
+    else if (m[5] !== undefined) out.push('<span class="y">' + esc(t) + "</span>");
+    else if (m[6] !== undefined) out.push('<span class="v">' + esc(t) + "</span>");
+    else if (m[7] !== undefined) out.push('<span class="n">' + esc(t) + "</span>");
+    else if (KEYWORDS.has(t) || CONTENT.has(t)) out.push('<span class="k">' + esc(t) + "</span>");
+    else out.push(esc(t));
+  }
+  out.push(esc(text.slice(last)));
+  $("hl").innerHTML = out.join("") + "\n";
+  $("hl").scrollTop = $("source").scrollTop; $("hl").scrollLeft = $("source").scrollLeft;
+}
+$("source").addEventListener("input", highlight);
+$("source").addEventListener("scroll", () => { $("hl").scrollTop = $("source").scrollTop; $("hl").scrollLeft = $("source").scrollLeft; });
 async function loadFiles() {
   const data = await api("/api/files");
   const select = $("files"); select.textContent = "";

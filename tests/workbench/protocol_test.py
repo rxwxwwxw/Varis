@@ -82,6 +82,16 @@ def main():
         assert back["storylets"][0]["title"] == messages[0]["source"] or not back["storylets"][0]["title"].startswith("[")
         assert call("/api/translate", {"lang": "fr", "key": "walk.title"}, body="Aller {nope}")["ok"] is False
 
+        # Plural and select branches are previewed with sample values, in the language's rules.
+        ru = call("/api/branches", {"lang": "ru"}, body="{#plural n}{#one}{n} монета{#few}{n} монеты{#many}{n} монет{#other}{n} монеты{/plural}")
+        rows = {r["category"]: r["text"] for r in ru["previews"][0]["rows"]}
+        assert rows == {"one": "1 монета", "few": "2 монеты", "many": "0 монет", "other": "1.5 монеты"}, rows
+        sel = call("/api/branches", {"lang": "fr"}, body="{#select k}{#case m}Il{#case f}Elle{#default}Iel{/select}")
+        assert [r["text"] for r in sel["previews"][0]["rows"]] == ["Il", "Elle", "Iel"], sel
+        assert call("/api/branches", {"lang": "fr"}, body="{#if broken")["error"]
+        # The page highlights the editor's text.
+        assert 'id="hl"' in page and "function highlight" in page
+
         # Story-level debugging: what the turn changed, the storylet list, and "why".
         changes = call("/api/changes")["changes"]
         assert isinstance(changes, list)

@@ -1295,6 +1295,81 @@ string saveTranslation(string locale, string key, string text) {
     return null;
 }
 
+/// For the translation panel: every branch of the plurals and selects in `text` (a translation
+/// being typed, or the source), rendered with sample values, in the rules of `locale`. Returns
+/// `{"previews":[{"param":..,"kind":..,"rows":[{"value":..,"category":..,"text":..}]}]}`.
+string branchPreviewJson(string locale, string text) {
+    import varis.narrative.translation : renderTranslation, RenderTrace;
+    import varis.narrative.plural : pluralCategory, requiredPluralCategories;
+    import varis.types : LuaValue, Symbol;
+
+    TranslationTemplate parsed;
+    string error;
+    if (!parseTranslation(text, parsed, error))
+        return `{"previews":[],"error":` ~ jsonQuote(error) ~ `}`;
+    string tag = locale.length && locale != pseudoLocale ? locale : "en";
+    string json = `{"previews":[`;
+    bool firstPreview = true;
+    foreach (g, kind; parsed.choiceKinds) {
+        auto parameter = parsed.choiceParameters[g];
+        struct Sample {
+            string value;
+            string category;
+            LuaValue bound;
+        }
+
+        Sample[] samples;
+        if (kind == "plural") {
+            string[] categories = requiredPluralCategories(tag).dup;
+            foreach (label; parsed.choiceLabels[g]) {
+                bool known;
+                foreach (c; categories)
+                    known = known || c == label;
+                if (!known)
+                    categories ~= label;
+            }
+            foreach (category; categories) {
+                // The smallest number the language puts in this category.
+                bool found;
+                foreach (n; 0 .. 1000) {
+                    if (pluralCategory(tag, n) == category) {
+                        samples ~= Sample(number(n), category, LuaValue(cast(long) n));
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found && category == "other")
+                    samples ~= Sample("1.5", category, LuaValue(1.5));
+            }
+        } else {
+            foreach (label; parsed.choiceLabels[g])
+                samples ~= Sample(label, "", LuaValue(Symbol(label)));
+            samples ~= Sample("(any other value)", "default", LuaValue(Symbol("\u0001other")));
+        }
+        string rows;
+        foreach (i, sample; samples) {
+            LuaValue[string] bindings;
+            foreach (name; parsed.placeholders)
+                bindings[name] = LuaValue("\u2039" ~ name ~ "\u203a");
+            bindings[parameter] = sample.bound;
+            RenderTrace trace;
+            string output;
+            renderTranslation(parsed, bindings, (LuaValue v) {
+                import varis.types : toLuaString;
+
+                return toLuaString(v);
+            }, trace, tag, output);
+            rows ~= (i ? "," : "") ~ `{"value":` ~ jsonQuote(sample.value) ~ `,"category":` ~ jsonQuote(
+                    sample.category)
+                ~ `,"text":` ~ jsonQuote(output) ~ `}`;
+        }
+        json ~= (firstPreview ? "" : ",") ~ `{"param":` ~ jsonQuote(parameter) ~ `,"kind":` ~ jsonQuote(
+                kind) ~ `,"rows":[` ~ rows ~ `]}`;
+        firstPreview = false;
+    }
+    return json ~ "]}";
+}
+
 /// `varis l10n <command> ...`: returns the process exit status.
 int l10nMain(string[] args) {
     if (args.length == 0) {
