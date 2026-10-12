@@ -11,6 +11,7 @@
 module varis.logic.model;
 
 import varis.types;
+public import varis.relterms : TermKind, CompareOp, GoalKind, PlanHolder;
 import varis.exception : LuaException;
 import varis.logic.world : Relation;
 import std.format : format;
@@ -73,13 +74,6 @@ struct RelTuple {
     }
 }
 
-/// Term kind for relational patterns
-enum TermKind {
-    Constant,
-    Variable,
-    Anonymous
-}
-
 /// A term appearing in a relational goal or head
 struct Term {
     TermKind kind;
@@ -113,25 +107,6 @@ struct Term {
         t.kind = TermKind.Anonymous;
         return t;
     }
-}
-
-/// Comparison operator
-enum CompareOp {
-    Eq,
-    Neq,
-    Lt,
-    Le,
-    Gt,
-    Ge
-}
-
-/// Kind of goal in rule or query body
-enum GoalKind {
-    PositiveAtom,
-    NegatedAtom,
-    Comparison,
-    Guard,
-    Aggregate
 }
 
 /// Unique reference to a relation
@@ -211,11 +186,6 @@ class Goal {
         g.guardVarIds = varIds;
         return g;
     }
-}
-
-/// Where a query template keeps its compiled plan between queries (owned by logic.evaluate).
-final class PlanHolder {
-    Object plan;
 }
 
 /// Rule definition

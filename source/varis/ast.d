@@ -458,7 +458,7 @@ final class LabelStmt : Stmt {
 // Declarative / Datalog AST Nodes (Phase 6)
 // -----------------------------------------------------------------------------
 
-import varis.logic.model : CompareOp;
+import varis.relterms : CompareOp;
 
 final class AstRelRef : AstNode {
     string[] worldPath;

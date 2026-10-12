@@ -12,10 +12,8 @@ module varis.fiber;
 
 import varis.types;
 import varis.state : CallInfo;
-import varis.logic.world : isReadOnlyEvaluation, isNotificationDispatch, isNoYieldScope;
 import varis.exception : LuaException;
 import core.thread : Fiber;
-import varis.logic.world : World;
 
 // Internal unwinding signal bypasses Lua protected calls when a thread is closed.
 class CoroutineClose : Throwable {
@@ -30,6 +28,51 @@ class CoroutineClose : Throwable {
 
 /// The Lua coroutine currently executing, or null on the main interpreter fiber. Maintained by
 /// `callFiber` around every resume, so lookups avoid thread-local access and class casts.
+// Execution scopes. They are core concepts (where a coroutine may yield, where state may be
+// written); the world model and the narrative runtime open and close them.
+private __gshared size_t readOnlyEvaluations; // one interpreter thread; thread-local access is slow on macOS
+private __gshared size_t notificationDepth; // one interpreter thread; thread-local access is slow on macOS
+// Dynamic no-yield scopes include helpers and synchronously resumed coroutines.
+private __gshared size_t noYieldDepth; // one interpreter thread; thread-local access is slow on macOS
+void beginNoYieldScope() {
+    noYieldDepth++;
+}
+
+void endNoYieldScope() {
+    assert(noYieldDepth);
+    noYieldDepth--;
+}
+
+bool isNoYieldScope() {
+    return noYieldDepth != 0;
+}
+
+void beginNotificationDispatch() {
+    notificationDepth++;
+}
+
+void endNotificationDispatch() {
+    assert(notificationDepth);
+    notificationDepth--;
+}
+
+bool isNotificationDispatch() {
+    return notificationDepth != 0;
+}
+
+void beginReadOnlyEvaluation() {
+    readOnlyEvaluations++;
+}
+
+void endReadOnlyEvaluation() {
+    assert(readOnlyEvaluations > 0);
+    readOnlyEvaluations--;
+}
+
+bool isReadOnlyEvaluation() {
+    return readOnlyEvaluations != 0;
+}
+
 __gshared VarisFiber activeLuaFiber;
 
 pragma(inline, true)
@@ -52,7 +95,7 @@ class VarisFiber : Fiber {
     LuaThread thread;
     CallInfo[] callStack;
     CallInfo[] callStackStorage; // capacity retained across calls; inactive records are cleared
-    World callWorld; // lexical world of the call in progress (see VM.doCall)
+    Object callWorld; // lexical world of the call in progress (see VM.doCall); a logic.world.World
     void* luaStatePtr;
 
     LuaValue[] resumeArgs;

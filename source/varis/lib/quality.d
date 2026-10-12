@@ -43,7 +43,7 @@ private string qualityName(LuaValue value) {
 
 void openQualityLib(LuaState state) {
     state.configureWorld = (World world) { configureQualityWorld(state, world); };
-    state.configureWorld(state.globalWorld);
+    configureWorld(state)(state.globalWorld);
     auto library = new LuaTable();
     void add(string name, LuaNativeFunction.NativeDelegate callback) {
         library.rawset(LuaValue(name), LuaValue(new LuaNativeFunction(callback, "quality." ~ name)));

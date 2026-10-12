@@ -34,6 +34,7 @@ import varis.vm;
 import varis.exception : LuaException;
 import varis.logic.world : World, Relation, unwrapWorld, visibleRelation;
 import varis.workbench.page : workbenchPage;
+import varis.narrative.registry : narrativeRegistry;
 
 private enum loopbackAddress = 0x7F000001; // 127.0.0.1
 

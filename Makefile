@@ -13,7 +13,7 @@ SRC_FILES = source/varis/package.d \
             source/varis/ast.d \
             source/varis/lexer.d \
             source/varis/parser.d \
-            source/varis/opcode.d \
+            source/varis/relterms.d source/varis/opcode.d \
             source/varis/fiber.d \
             source/varis/compiler.d \
             source/varis/vm.d \

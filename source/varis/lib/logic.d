@@ -41,7 +41,7 @@ void openLogicLib(LuaState state) {
                 auto state = cast(LuaState) sPtr;
                 auto world = new World();
                 if (state.configureWorld !is null)
-                    state.configureWorld(world);
+                    configureWorld(state)(world);
                 return [wrapWorld(world)];
             }, "emptyworld")));
 

@@ -15,7 +15,7 @@ import varis.types;
 import varis.table;
 import varis.state;
 import varis.fiber;
-import varis.logic.world : isNoYieldScope, isReadOnlyEvaluation, isNotificationDispatch;
+import varis.fiber : isNoYieldScope, isReadOnlyEvaluation, isNotificationDispatch;
 import varis.exception : LuaException;
 import varis.lib.auxlib;
 import core.thread : Fiber;

@@ -19,6 +19,52 @@ import std.format : format;
 import std.conv : to;
 import core.thread : Fiber;
 import varis.fiber : VarisFiber, currentLuaFiber;
+public import varis.fiber : beginNoYieldScope, endNoYieldScope, isNoYieldScope, beginNotificationDispatch,
+    endNotificationDispatch, isNotificationDispatch, beginReadOnlyEvaluation, endReadOnlyEvaluation, isReadOnlyEvaluation;
+import varis.state : LuaState, stateCreatedHooks;
+
+// The Lua core keeps the world model's per-state objects as opaque references (see
+// LuaState.globalWorldObject); these accessors give them their types back. They are found by
+// UFCS, so `state.globalWorld` and `state.callWorld = w` read as before.
+
+/// The state's global world (`logic.global`).
+World globalWorld(LuaState state) {
+    return cast(World) cast(void*) state.globalWorldObject;
+}
+
+/// ditto
+void globalWorld(LuaState state, World world) {
+    state.globalWorldObject = world;
+}
+
+/// The lexical world of the call in progress.
+World callWorld(LuaState state) {
+    return cast(World) cast(void*) state.callWorldObject;
+}
+
+/// ditto
+void callWorld(LuaState state, World world) {
+    state.callWorldObject = world;
+}
+
+/// Hook that prepares a newly created world (set by the quality library).
+ref void delegate(World) configureWorld(LuaState state) {
+    auto holder = cast(WorldConfiguration) cast(void*) state.worldConfigurationObject;
+    if (holder is null) {
+        holder = new WorldConfiguration;
+        state.worldConfigurationObject = holder;
+    }
+    return holder.configure;
+}
+
+private final class WorldConfiguration {
+    void delegate(World) configure;
+}
+
+shared static this() {
+    // Every state owns a global world from the moment it exists.
+    stateCreatedHooks ~= (LuaState state) { state.globalWorldObject = new World(); };
+}
 
 private size_t g_nextRelId = 1;
 private size_t g_nextWorldId = 1;
@@ -30,49 +76,6 @@ size_t getNextRuleId() {
 
 /// Transaction state is coroutine-specific; overlays never modify committed relations.
 private Transaction[Fiber] activeTransactions;
-private __gshared size_t readOnlyEvaluations; // one interpreter thread; thread-local access is slow on macOS
-private __gshared size_t notificationDepth; // one interpreter thread; thread-local access is slow on macOS
-// Dynamic no-yield scopes include helpers and synchronously resumed coroutines.
-private __gshared size_t noYieldDepth; // one interpreter thread; thread-local access is slow on macOS
-void beginNoYieldScope() {
-    noYieldDepth++;
-}
-
-void endNoYieldScope() {
-    assert(noYieldDepth);
-    noYieldDepth--;
-}
-
-bool isNoYieldScope() {
-    return noYieldDepth != 0;
-}
-
-void beginNotificationDispatch() {
-    notificationDepth++;
-}
-
-void endNotificationDispatch() {
-    assert(notificationDepth);
-    notificationDepth--;
-}
-
-bool isNotificationDispatch() {
-    return notificationDepth != 0;
-}
-
-void beginReadOnlyEvaluation() {
-    readOnlyEvaluations++;
-}
-
-void endReadOnlyEvaluation() {
-    assert(readOnlyEvaluations > 0);
-    readOnlyEvaluations--;
-}
-
-bool isReadOnlyEvaluation() {
-    return readOnlyEvaluations != 0;
-}
-
 Transaction currentTransaction() {
     return activeTransactions.get(Fiber.getThis(), null);
 }

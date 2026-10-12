@@ -16,7 +16,7 @@ import varis.ast;
 import varis.opcode;
 import varis.types;
 import varis.exception : LuaException;
-import varis.logic.model;
+import varis.relterms;
 import std.format : format;
 
 class Compiler {

@@ -19,6 +19,7 @@ import varis.logic.model;
 import varis.narrative.session;
 import varis.narrative.codec;
 import varis.narrative.fingerprint;
+import varis.narrative.registry : narrativeRegistry;
 import std.json;
 import std.conv : to;
 import std.algorithm : sort;

@@ -16,9 +16,12 @@ import varis.table;
 import varis.exception;
 import std.sumtype;
 import core.thread : Fiber;
-import varis.logic.world : World;
 
 import varis.vm : LuaClosure;
+
+/// Called with every new state, so upper layers can attach their per-state objects (registered
+/// from module constructors; the core does not import those layers).
+__gshared void function(LuaState)[] stateCreatedHooks;
 
 struct CallInfo {
     LuaFunction fn;
@@ -210,16 +213,19 @@ class LuaState {
     AnalysisBudget analysisBudget;
     Object logicCache; // owned by varis.logic.evaluate (derived relations per closure)
     // Per-Fiber so a suspended ordinary coroutine cannot leak its call context.
-    World mainCallWorld;
+    Object mainCallWorld;
 
-    final World callWorld() {
+    /// The lexical world of the call in progress, as an opaque reference: the core carries it
+    /// from call sites to natives without knowing its type (varis.logic.world gives it one).
+    final Object callWorldObject() {
         import varis.fiber : VarisFiber, currentLuaFiber;
 
         auto fiber = currentLuaFiber();
         return fiber is null ? mainCallWorld : fiber.callWorld;
     }
 
-    final void callWorld(World world) {
+    /// ditto
+    final void callWorldObject(Object world) {
         import varis.fiber : VarisFiber, currentLuaFiber;
 
         auto fiber = currentLuaFiber();
@@ -500,13 +506,12 @@ class LuaState {
         }
     }
 
-    import varis.logic.world : World, wrapWorld;
-
-    World globalWorld;
-    void delegate(World) configureWorld;
-    import varis.narrative.registry : ContentRegistry;
-
-    ContentRegistry narrativeRegistry;
+    // Per-state objects of the layers above the core, kept as opaque references. Their typed
+    // accessors are free functions in the owning modules (varis.logic.world: globalWorld,
+    // callWorld, configureWorld; varis.narrative.registry: narrativeRegistry).
+    Object globalWorldObject;
+    Object worldConfigurationObject;
+    Object narrativeRegistryObject;
 
     this() {
         this.mainThread = new LuaThread();
@@ -514,7 +519,8 @@ class LuaState {
         guardOperatingSystemStack();
         this.globals = new LuaTable();
         this.registry = new LuaTable();
-        this.globalWorld = new World();
+        foreach (hook; stateCreatedHooks)
+            hook(this);
 
         // Standard self-reference _G = _G
         this.globals.rawset(LuaValue("_G"), LuaValue(globals));

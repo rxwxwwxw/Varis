@@ -176,7 +176,7 @@ class Session : TransactionParticipant {
         this.world = world;
         this.registry = state.narrativeRegistry;
         if (state.configureWorld !is null)
-            state.configureWorld(world);
+            configureWorld(state)(world);
         registry.seal();
         eventRelation = world.getRelation("narrative_event");
         if (eventRelation !is null && (!eventRelation.protectedRelation || eventRelation.arity != 4))

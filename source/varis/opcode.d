@@ -98,7 +98,7 @@ enum OpCode {
     MakeQuery // a, bx         : R[a] = create query iterator from query template bx
 }
 
-import varis.logic.model : CompareOp, TermKind, GoalKind, PlanHolder;
+import varis.relterms : CompareOp, TermKind, GoalKind, PlanHolder;
 
 /// Template for a relational term
 struct TermTemplate {

@@ -68,6 +68,17 @@ class QualityDefinition {
     string label;
 }
 
+/// The state's content registry (the core keeps it as an opaque reference). Found by UFCS, so
+/// `state.narrativeRegistry` reads and assigns as before.
+ContentRegistry narrativeRegistry(LuaState state) {
+    return cast(ContentRegistry) cast(void*) state.narrativeRegistryObject;
+}
+
+/// ditto
+void narrativeRegistry(LuaState state, ContentRegistry registry) {
+    state.narrativeRegistryObject = registry;
+}
+
 /// State-owned immutable-after-sealing authored content, independent of worlds.
 class ContentRegistry {
     LuaState state;

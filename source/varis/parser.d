@@ -14,7 +14,7 @@ import varis.types : LuaValue;
 
 import varis.ast;
 import varis.lexer;
-import varis.logic.model : CompareOp;
+import varis.relterms : CompareOp;
 import varis.exception : LuaException, shortSourceName;
 import std.format : format;
 import std.conv : to;

@@ -22,7 +22,7 @@ import varis.logic.model;
 import varis.logic.world;
 import varis.logic.validate;
 import varis.logic.query;
-import varis.narrative.registry : ContentRegistry, ContentDefinition, DeckDefinition;
+import varis.narrative.registry : ContentRegistry, ContentDefinition, DeckDefinition, narrativeRegistry;
 import std.format : format;
 import std.conv : to;
 import std.array : replace;
