@@ -104,7 +104,12 @@ private string shellShimDirectory() {
     auto dir = buildPath(tempDir(), "varis_sh_shim");
     mkdirRecurse(dir);
     auto script = buildPath(dir, "sh");
-    std.file.write(script, "#!/bin/sh\n/bin/sh \"$@\"\nexit $?\n");
+    enum content = "#!/bin/sh\n/bin/sh \"$@\"\nexit $?\n";
+    // Rewritten only when different: concurrent lanes (and a running test) must never see the
+    // script truncated.
+    if (exists(script) && readText(script) == content)
+        return dir;
+    std.file.write(script, content);
     version (Posix) {
         import core.sys.posix.sys.stat : chmod;
 
@@ -327,6 +332,41 @@ int main(string[] args) {
     TestResult[] results;
     size_t passedCount, partialCount, skippedCount, failedCount, referenceAlsoFails;
 
+    // The suite's own driver (all.lua) dominates the wall time and runs in its own scratch copy of
+    // the suite, so it runs concurrently with the remaining files, which stay sequential in the
+    // suite directory (several of them use fixed temporary names there).
+    struct Lane {
+        Thread thread;
+        RunPlan plan;
+        string status, diagnostic;
+        int exitCode;
+        double elapsed;
+    }
+
+    Lane* driverLane;
+    if (testFiles.canFind("all.lua") && (filterPattern.length == 0 || "all.lua".indexOf(filterPattern) >= 0)
+            && ("all.lua" !in knownSpecs || !knownSpecs["all.lua"].isSkip)) {
+        driverLane = new Lane;
+        driverLane.plan = planFor(testDir, "all.lua");
+        auto lane = driverLane;
+        lane.thread = new Thread({
+            // Children inherit the signal mask; the interrupt checks of main.lua need SIGINT.
+            version (Posix) {
+                import core.sys.posix.signal : sigset_t, sigemptyset, pthread_sigmask, SIG_SETMASK;
+
+                sigset_t none;
+                sigemptyset(&none);
+                pthread_sigmask(SIG_SETMASK, &none, null);
+            }
+            auto sw = StopWatch(AutoStart.yes);
+            execute(luaBin, testDir, lane.plan, timeoutSecs, false, lane.status, lane.exitCode, lane.diagnostic);
+            lane.elapsed = sw.peek().total!"msecs" / 1000.0;
+        });
+        lane.thread.start();
+        // Reported last so that the other files run while it works.
+        testFiles = testFiles.filter!(f => f != "all.lua").array ~ "all.lua";
+    }
+
     foreach (filename; testFiles) {
         if (filterPattern.length > 0 && filename.indexOf(filterPattern) < 0)
             continue;
@@ -343,13 +383,24 @@ int main(string[] args) {
             continue;
         }
 
-        auto plan = planFor(testDir, filename);
-        auto sw = StopWatch(AutoStart.yes);
+        RunPlan plan;
         string testStatus, diagnostic;
         int exitCode;
-        execute(luaBin, testDir, plan, timeoutSecs, verbose, testStatus, exitCode, diagnostic);
-        sw.stop();
-        double elapsed = sw.peek().total!"msecs" / 1000.0;
+        double elapsed;
+        if (filename == "all.lua" && driverLane !is null) {
+            driverLane.thread.join();
+            plan = driverLane.plan;
+            testStatus = driverLane.status;
+            diagnostic = driverLane.diagnostic;
+            exitCode = driverLane.exitCode;
+            elapsed = driverLane.elapsed;
+        } else {
+            plan = planFor(testDir, filename);
+            auto sw = StopWatch(AutoStart.yes);
+            execute(luaBin, testDir, plan, timeoutSecs, verbose, testStatus, exitCode, diagnostic);
+            sw.stop();
+            elapsed = sw.peek().total!"msecs" / 1000.0;
+        }
 
         TestResult res;
         res.name = filename;

@@ -27,6 +27,13 @@ class Evaluate(unittest.TestCase):
         self.assertTrue(B.hard_failed(f))
         self.assertFalse(B.hard_failed(B.evaluate(rec(clua=2.1), {"gate": {"clua": 2.2}})))
 
+    def test_time_gate_is_an_absolute_budget(self):
+        r = rec(clua=1.0)
+        r["binaries"] = {"candidate": {"median": 0.2}}
+        self.assertTrue(B.hard_failed(B.evaluate(r, {"gate": {"time": 0.15}})))
+        self.assertFalse(B.hard_failed(B.evaluate(r, {"gate": {"time": 0.25}})))
+        self.assertNotIn("time", B.needed_labels({"comparable": False}, {"gate": {"time": 1.0}}))
+
     def test_floor_is_a_minimum_speedup(self):
         t = {"floor": {"v0-snapshot": 15.0}}
         self.assertTrue(B.hard_failed(B.evaluate(rec(**{"v0-snapshot": 1 / 10}), t)))     # only 10x faster
@@ -48,9 +55,12 @@ class Derive(unittest.TestCase):
         t = B.derive(rec(group="programs", clua=1.0))
         self.assertAlmostEqual(t["gate"]["clua"], 1.3, places=2)
 
-    def test_floor_is_sixty_percent_of_measured_speedup(self):
-        t = B.derive(rec(**{"v0-snapshot": 1 / 25}))
-        self.assertEqual(t["floor"]["v0-snapshot"], 15.0)
+    def test_time_budget_is_headroom_rounded_up_with_a_floor(self):
+        r = rec(clua=1.0)
+        r["binaries"] = {"candidate": {"median": 0.111}}
+        self.assertEqual(B.derive(r)["gate"]["time"], 0.17)      # 0.111 * 1.5 = 0.1665 -> 2 significant figures
+        r["binaries"]["candidate"]["median"] = 0.003
+        self.assertEqual(B.derive(r)["gate"]["time"], 0.02)      # never below the noise floor
 
 
 class Trailer(unittest.TestCase):

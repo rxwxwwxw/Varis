@@ -263,6 +263,11 @@ and a body that **asserts its own result**. Python strings disappear. Each workl
 
 ### 4.3 Comparators and targets
 
+> **Amended 2026-10-11:** `v0-snapshot` and `v1-perf-final` were retired from the default run (10–40× slower;
+> more than 80 % of the benchmark time). Their floors and ratchets are replaced by an absolute `gate.time`
+> budget per workload (measured median × 1.5, rounded up to two significant figures, ≥ 0.02 s) next to the
+> `gate.clua` ratio; sampling also stops early for long, stable workloads. The table below is historical.
+
 Comparators are named in `benchmarks/targets.toml`:
 
 | Label | What | Notes |

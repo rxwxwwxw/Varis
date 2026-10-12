@@ -1,5 +1,7 @@
 import concurrent.futures as cf
 import json
+import os
+import threading
 import platform
 import subprocess
 import time
@@ -67,18 +69,35 @@ def execute(cases, ctx, jobs=4, on_result=None):
     heavy = [c for c in cases if c.kind in ("official",)]
     light = [c for c in cases if c.kind not in ("official",)]
 
-    # Heavy, timing-sensitive groups (the official suite) run alone after everything else: a
-    # one-off 240 s timeout of all.lua was observed when it shared the machine with other cases.
-    for batch, width in ((light, jobs), (heavy, 1)):
+    # The official suite runs concurrently with everything else: its own driver (all.lua) is the
+    # critical path of the whole tier, so starting it first and filling the remaining cores with the
+    # light cases roughly halves the wall time. Machines with few cores (< 6) keep the old
+    # sequential order so that timing-sensitive files are not starved.
+    overlap = (os.cpu_count() or 1) >= 6
+    lock = threading.Lock()
+
+    def collect(rs):
+        with lock:
+            for r in rs:
+                results.append(r)
+                if on_result:
+                    on_result(r)
+
+    def run_batch(batch, width):
         if not batch:
-            continue
+            return
         with cf.ThreadPoolExecutor(max_workers=max(1, width)) as pool:
-            futs = {pool.submit(one, c): c for c in batch}
-            for f in cf.as_completed(futs):
-                for r in f.result():
-                    results.append(r)
-                    if on_result:
-                        on_result(r)
+            for f in cf.as_completed([pool.submit(one, c) for c in batch]):
+                collect(f.result())
+
+    if overlap and heavy:
+        side = threading.Thread(target=run_batch, args=(heavy, 1))
+        side.start()
+        run_batch(light, jobs)
+        side.join()
+    else:
+        run_batch(light, jobs)
+        run_batch(heavy, 1)
     return results
 
 

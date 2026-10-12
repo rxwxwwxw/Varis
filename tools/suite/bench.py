@@ -29,8 +29,12 @@ end
 local t0 = os.clock()
 local body = assert(loadfile(path))
 local compile = os.clock() - t0
-body()
 local reps = tonumber(os.getenv("BENCH_REPEATS")) or 5
+local w0 = os.clock()
+body()
+w0 = os.clock() - w0
+-- A slow kernel needs fewer repetitions for the same precision (the result is a per-repetition mean).
+if w0 >= 0.3 then reps = math.min(reps, 2) elseif w0 >= 0.1 then reps = math.min(reps, 3) end
 t0 = os.clock()
 for _ = 1, reps do body() end
 report(string.format("%.9f %.9f", (os.clock() - t0) / reps, compile))
@@ -201,6 +205,19 @@ def summarize(xs):
     return {"median": med, "min": min(xs), "max": max(xs), "cv": (1.4826 * mad / med) if med else 0.0, "samples": xs}
 
 
+MIN_RUNS = 3
+SETTLED_SAMPLE_SECONDS = 0.4   # estimated process time of one sample at which sampling may stop early
+SETTLED_CV = 0.03
+
+
+def _settled(xs, w):
+    """True when the candidate's samples are individually expensive and already agree closely."""
+    if len(xs) < MIN_RUNS:
+        return False
+    per_sample = statistics.median(xs) * (w["repeats"] + 1 if w["kind"] == "inproc" else 1)
+    return per_sample >= SETTLED_SAMPLE_SECONDS and summarize(xs)["cv"] <= SETTLED_CV
+
+
 def run_workload(w, cand, comps, runs=None, log=lambda *_: None, caps=None):
     """Interleaved samples. Returns a record with per-binary summaries and paired ratios."""
     runs = runs or w["runs"]
@@ -211,6 +228,9 @@ def run_workload(w, cand, comps, runs=None, log=lambda *_: None, caps=None):
     outs = {l: set() for l in labels}
     failed = {}
     for i in range(runs):
+        if i >= MIN_RUNS and _settled(series["candidate"], w):
+            runs = i  # long, stable workload: further samples would only repeat the same number
+            break
         order = list(labels)
         if i % 2:
             order.reverse()
@@ -254,8 +274,14 @@ def run_workload(w, cand, comps, runs=None, log=lambda *_: None, caps=None):
 def evaluate(rec, target):
     """Findings: dicts {kind, label, value, limit, ok}. goal misses are informational."""
     findings = []
+    cand = rec.get("binaries", {}).get("candidate", {}).get("median")
     for kind in ("goal", "gate"):
         for label, limit in target.get(kind, {}).items():
+            if label == "time":  # absolute CPU-second budget of the candidate, no comparator involved
+                if kind == "gate" and cand is not None:
+                    findings.append({"kind": "gate", "label": "time", "value": cand, "limit": limit,
+                                     "ok": cand <= limit})
+                continue
             r = rec["ratios"].get(label)
             if r is None:
                 findings.append({"kind": kind, "label": label, "value": None, "limit": limit, "ok": None})
@@ -284,6 +310,7 @@ def needed_labels(w, target):
     labels = set()
     for kind in ("goal", "gate", "floor", "memory"):
         labels |= set(target.get(kind, {}))
+    labels.discard("time")
     if not labels and w["comparable"]:
         labels.add("clua")
     return labels
@@ -298,8 +325,22 @@ SHORT_HEADROOM = 1.60
 GATE_SLACK = 0.10  # absolute ratio slack added to every derived gate
 
 
+TIME_FLOOR = 0.02       # seconds; below this a budget would be pure process-start noise
+TIME_HEADROOM = 1.5     # absolute budgets tolerate machine state; the clua ratio is the sharp check
+
+
+def _ceil_sig(x, digits=2):
+    """Rounds up to `digits` significant figures (0.1234 -> 0.13, 17.2 -> 18)."""
+    if x <= 0:
+        return x
+    scale = 10 ** (math.floor(math.log10(x)) - digits + 1)
+    return round(math.ceil(x / scale - 1e-9) * scale, 6)
+
+
 def derive(rec, history=None):
-    """Initial targets for one measured workload using the policy in CONSOLIDATION_PLAN.md §4.3."""
+    """Initial targets for one measured workload (policy in CONSOLIDATION_PLAN.md §4.3, amended:
+    the candidate's own median time with 50 % headroom is the absolute budget, rounded up to two
+    significant figures; the older version comparators are gone)."""
     head = HEADROOM.get(rec["group"], DEFAULT_HEADROOM)
     cand = rec.get("binaries", {}).get("candidate", {}).get("median")
     if cand is not None and cand < SHORT_SECONDS:
@@ -312,18 +353,17 @@ def derive(rec, history=None):
         if label == "clua":
             t["goal"]["clua"] = 2.0
             t["gate"]["clua"] = round(worst * head + GATE_SLACK, 2)
-        elif label == "v0-snapshot":
-            sp = 1.0 / r["median"]
-            if sp > 1.5:
-                t["floor"][label] = round(sp * 0.6, 1)
         else:
             t["gate"][label] = round(max(worst, 1.0) * head + GATE_SLACK, 2)
+    if cand:
+        t["gate"]["time"] = max(TIME_FLOOR, _ceil_sig(cand * max(head, TIME_HEADROOM)))
     return {k: v for k, v in t.items() if v}
 
 
 def render_targets(derived):
     out = ["# Performance targets. Ratios are candidate/comparator CPU time measured in one session.",
-           "# goal: project target, reported only.   gate: regression ratchet (fatal when exceeded).",
+           "# goal: project target, reported only.   gate: regression ratchet (fatal when exceeded);",
+           "# gate.time is the candidate's absolute CPU-second budget, gate.<comparator> a ratio.",
            "# floor: minimum speedup over a named older version (fatal when below).",
            "# Loosening a gate/floor needs a `Perf-Regression-Accepted:` commit trailer (see commit-msg hook).", ""]
     for wid in sorted(derived):

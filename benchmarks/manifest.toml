@@ -8,17 +8,11 @@ timeout = 180
 
 # Comparators. `path` is a prebuilt binary; `ref` is a git ref built on demand with the same
 # profile as the candidate (identity = commit + flags + compiler, cached under .cache/builds).
+# Only clua is declared: the historical v0-snapshot/v1-perf-final comparators were retired (they
+# dominated the run time); gate.time budgets in targets.toml replace their floors and ratchets.
 [comparator.clua]
 path = "c-implementation/src/lua"
 note = "stock C Lua 5.4.9, built -O2 by c-implementation/src/Makefile"
-
-[comparator.v0-snapshot]
-ref = "baseline/v0-snapshot"
-note = "2026-10-09 19:19 pre-optimization snapshot"
-
-[comparator.v1-perf-final]
-ref = "baseline/v1-perf-final"
-note = "tree after the 2026-10-09 performance work"
 
 # kind = inproc : load once, warm once, `repeats` timed executions per sample, os.clock CPU seconds
 # kind = process: fresh process per sample, CPU seconds (user+sys) from rusage, peak RSS

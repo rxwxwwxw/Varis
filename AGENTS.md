@@ -238,10 +238,10 @@ make varis
 # Tests: one driver, one manifest (tests/manifest.toml); tiers smoke < fast < full
 make test-smoke
 make test-fast
-make test            # full tier incl. official Lua suite (~45 s)
+make test            # full tier incl. official Lua suite (~20 s; all.lua runs concurrently with the rest)
 python3 tools/suite test --filter <case-id substring>
 
-# Performance: ratios vs C Lua and earlier versions (benchmarks/targets.toml)
+# Performance: ratios vs C Lua plus absolute time budgets (benchmarks/targets.toml), ~2 min
 make bench
 make bench-check     # fails on gate/floor regressions
 
@@ -260,7 +260,8 @@ make clean
 
 The project is a git repository (`main`). History begins with two reconstructed import commits,
 tagged `baseline/v0-snapshot` (the 2026-10-09 pre-optimization tree) and `baseline/v1-perf-final`;
-benchmark comparators are built from these tags, so never move or delete them.
+the tags are reference points (ad-hoc `ref =` comparators build from them), so never move or delete them.
+They are no longer part of the default benchmark run.
 
 - Run `make hooks` once per clone. Pre-commit rejects non-dfmt-clean `.d` files, missing license
   headers, source modules absent from the Makefile list, build outputs and blobs over 1 MiB;

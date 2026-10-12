@@ -140,8 +140,8 @@ Tiers are cumulative:
 | --- | --- | --- | --- |
 | `make test-smoke` | smoke | parser/VM/foundation unit groups, Datalog acceptance, five regression programs | seconds |
 | `make test-fast` | fast | + all unit groups, extension cases, regression programs, small-scale scenarios | ~10 s |
-| `make test` | full | + official Lua 5.4.9 suite, large-scale scenarios, core differential, runner self-tests | ~45 s |
-| `make release` | release | `make test` + enforced benchmark gates (`make bench-check`) | minutes |
+| `make test` | full | + official Lua 5.4.9 suite, large-scale scenarios, core differential, runner self-tests | ~20 s |
+| `make release` | release | `make test` + enforced benchmark gates (`make bench-check`) and the gate-enforcement checks | ~3 min |
 
 ```bash
 make test                                         # full tier

@@ -7,24 +7,26 @@ Design and rationale: [CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md) §4.
 
 | Group | Kind | Source | Comparators |
 | --- | --- | --- | --- |
-| `core` | in-process (`os.clock`, load once, warm once, 5 timed repeats per sample) | `workloads/core/*.lua` | C Lua, previous versions |
+| `core` | in-process (`os.clock`, load once, warm once, up to 5 timed repeats per sample; 3 or 2 for kernels slower than 0.1 s / 0.3 s) | `workloads/core/*.lua` | C Lua |
 | `programs` | fresh process, CPU time (rusage) | `workloads/programs/*.lua` | C Lua (output must match) |
 | `regression` | fresh process | `tests/regression/*.lua` (checksum programs reused) | C Lua |
 | `startup` | fresh process | `workloads/startup/*.lua` | C Lua |
-| `datalog` | fresh process, `large` scale | `tests/datalog/NN_*.lua` | previous versions only |
-| `narrative` | fresh process | `sample-game/tools/check.lua` | previous versions only |
+| `datalog` | fresh process, `large` scale | `tests/datalog/NN_*.lua` | none (absolute budget only) |
+| `narrative` | fresh process | `sample-game/tools/check.lua` | none (absolute budget only) |
 
 Every sample is interleaved across interpreters (alternating order); ratios are paired per
 sample and the **median of paired ratios** is reported. Peak RSS is recorded. A candidate
-whose samples have CV > 15 % is flagged `noisy`.
+whose samples have CV > 15 % is flagged `noisy`. Sampling stops after 3 rounds when a workload's
+samples are expensive (≥ 0.4 s each) and agree within 3 % CV, so long kernels are not repeated
+needlessly. A full `bench --check` takes about two minutes.
 
 ## Comparators
 
-Declared in [manifest.toml](manifest.toml): `clua` (stock Lua 5.4.9, `-O2`),
-`v0-snapshot` (git tag `baseline/v0-snapshot`, the pre-optimization tree) and
-`v1-perf-final` (tag `baseline/v1-perf-final`). A git-ref comparator is built on demand with
-`make varis` in a worktree under `.cache/src/` and cached by (commit, profile, compiler) in
-`.cache/builds/`. Add a `release-*` tag and a `prev` comparator when releases begin.
+Declared in [manifest.toml](manifest.toml): only `clua` (stock Lua 5.4.9, `-O2`). Older versions
+(`baseline/v0-snapshot`, `baseline/v1-perf-final`) were retired as comparators: they were 10–40×
+slower and cost more than 80 % of the run time. The mechanism for `ref = "<git ref>"` comparators
+(built on demand under `.cache/`) remains available for ad-hoc comparisons, e.g. a future
+`release-*` tag, via `--compare`.
 
 ## Targets
 
@@ -33,12 +35,18 @@ Declared in [manifest.toml](manifest.toml): `clua` (stock Lua 5.4.9, `-O2`),
 * `goal.<comparator>` – project target (≤ 2.0× C Lua). Reported as "behind goal", never fatal.
 * `gate.<comparator>` – regression ratchet; exceeding it fails `make bench-check`
   (confirmed by two re-runs before failing).
-* `floor.<comparator>` – minimum speedup over an older version.
+* `gate.time` – absolute budget in candidate CPU seconds (per repetition for in-process kernels).
+  It catches gross regressions without any comparator; `gate.clua` is the sharp,
+  machine-independent check.
+* `floor.<comparator>` – minimum speedup over a named comparator (none is defined at present).
 
 Gates are derived from measurement (`python3 tools/suite targets benchmarks/baselines/*.json`):
 worst observed ratio × 1.10 (core) or × 1.20 (others; 1.60 for workloads under 20 ms) plus
-0.10 absolute slack; floors are 60 % of the measured speedup over `v0-snapshot`.
-Gates only tighten automatically. Loosening one (or a floor) is blocked by the commit-msg
+0.10 absolute slack; `gate.time` is the measured median × 1.5 (at least the group headroom), rounded
+up to two significant figures and never below 0.02 s. Absolute budgets depend on the machine class:
+re-derive them (`python3 tools/suite targets <bench.json> --merge` after deleting the old
+`gate.time` lines) when the reference machine changes. Gates only tighten automatically.
+Loosening one (or a floor) is blocked by the commit-msg
 hook unless the message carries `Perf-Regression-Accepted: <reason>`.
 
 Known cost centres are visible as goal misses: `core.pcall_error` (D exceptions through the
@@ -54,13 +62,12 @@ python3 tools/suite bench --list
 make bench-record LABEL=2026-11-01  # store benchmarks/baselines/LABEL.json
 ```
 
-A comparator entry may set `runs = N` to cap its interleaved samples (none does at present).
 Gates are strict: a machine busy with other work can make memory-heavy workloads such as
 `core.deep_recursion` exceed its `gate.clua`; that is a failed check, not an exemption. Run the
 benchmarks on an idle machine.
 
-Run on an otherwise idle machine. Ratios are portable between machines; absolute seconds are not
-and are never enforced. `history/2026-10-09-perf/` holds the pre-suite experiment records
+Run on an otherwise idle machine. Ratios are portable between machines; the absolute
+`gate.time` budgets are generous (50 % headroom) but belong to this machine class. `history/2026-10-09-perf/` holds the pre-suite experiment records
 (including the old suite-level Datalog baseline); they are informational only.
 [PERFORMANCE_WORK.md](PERFORMANCE_WORK.md) records the optimization work itself.
 
@@ -77,7 +84,7 @@ Recorded 2026-10-10 (plan Phase 3 done-criterion). A scratch worktree of `main` 
 three atomic additions injected into the `ForLoop` handler of the interpreter loop (about 3.7× on
 `for` loops), then run as `python3 tools/suite bench --check --group core --candidate <that build>`:
 
-| Workload | Candidate / C Lua | Candidate / `v1-perf-final` | Result |
+| Workload | Candidate / C Lua | Candidate / `v1-perf-final` (retired comparator) | Result |
 | --- | --- | --- | --- |
 | `core.numeric_loop` | 5.34× | 3.33× | **GATE** clua, **GATE** v1, **FLOOR** v0 |
 | `core.array_access` | 3.58× | 1.96× | **GATE** clua, **GATE** v1, **FLOOR** v0 |
