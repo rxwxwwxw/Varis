@@ -57,8 +57,9 @@ or public programmatic Lua rule/query builder is defined by this manual.
 ### 9.1 — Relationship to Lua
 
 Varis is derived from Lua 5.4 and is not a Lua implementation: conformance to
-Lua 5.4 is not a goal. Lua supplied the procedural core, and that core is kept
-where it costs nothing, because existing knowledge and examples carry over.
+Lua 5.4 is not a goal. Lua supplied the procedural core, and that core is kept as
+a complete language, because existing knowledge and examples carry over and
+because games are meant to be modded with all of it.
 
 Varis currently retains the implemented procedural syntax, values, libraries, lexical
 closures, multivalue behavior, and coroutine model inherited from Lua 5.4, while
@@ -69,22 +70,29 @@ those names can replace the library values. Dedicated language operations do not
 work by calling these replaceable globals.
 
 No deliberate divergence from Lua 5.4 has been made in this edition. The policy
-for future ones (owner decision, October 11, 2026; see the [roadmap](../ROADMAP.md)):
+for future ones (owner decisions, October 11, 2026; see the decision record in the
+[roadmap](../ROADMAP.md)):
 
 - The official Lua suite, the core differential fixture, and the regression
   programs remain executable regression evidence for the procedural core. No work
   is planned on the differences they still record.
 - A Lua behavior may be changed or removed when that serves authoring, saves and
-  replay, portability, or performance on low-end hardware. Each such change is
-  listed in this section and in the test ledger when it is made.
+  replay, portability, or performance. Each such change is listed in this section
+  and in the test ledger when it is made.
 - These inherited facilities are frozen and are candidates for removal: the C API
   subset and native module loading (8.2), binary chunks, weak-table and finalizer
   emulation with collector tuning modes, debug-hook and line-attribution
-  fidelity (9.3), and exact upstream error text.
+  fidelity (9.3), and exact upstream error text. They keep working while they
+  exist. Planned authoring tools debug at the level of source lines and story
+  turns and are not built on the `debug` library.
 - A restricted tier for content files is planned, excluding coroutines, function
   values that capture mutable state, and the `io`, `os`, `debug`, `package`, and
-  `load` facilities and metatables from authored content. It is not implemented;
-  every file is currently compiled as the full language.
+  `load` facilities and metatables from authored content. Engine scripts and
+  script mods keep the full language. The tier is not implemented; every file is
+  currently compiled as the full language.
+- The internal representation of values, instructions and errors is planned to
+  change for performance. Such changes are not divergences: they must leave every
+  behavior defined in this manual, and saved games, unchanged.
 
 This edition does
 not rename syntax or claim support for proposed story/game features absent from

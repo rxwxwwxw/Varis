@@ -46,7 +46,8 @@ exist.
 1. **Keys come from authored names.** A storylet's title is `topic_lamp.title`, a choice's is
    `topic_lamp.nod.title`, a scene line uses the stable line id of milestone 29. Renaming a
    storylet already breaks saves, so these names are already permanent; no generated identifiers
-   appear in content files. The language server's rename rewrites catalogs. Two messages with the
+   appear in content files. The rename of the language services (ROADMAP milestone 32, used by both the workbench and the
+   language server) rewrites catalogs. Two messages with the
    same English text stay separate.
 2. **Scene lines need an id that survives editing.** Lines have no authored name, and an id
    derived from position breaks when a line is inserted. Milestone 29 must choose between a short
@@ -76,7 +77,8 @@ exist.
    content and how saves record the set of packages are a separate design, not part of this
    plan. Whether identifiers (as opposed to display text) may use non-ASCII letters is a
    milestone 27 decision. The restricted content tier of ROADMAP milestone 26 is also what makes
-   loading someone else's package safe.
+   loading someone else's content-only package safe; script mods use the full language and
+   are trusted like any program (ROADMAP open decision 6).
 
 ## 4. What each target language needs
 
@@ -195,7 +197,8 @@ Folded into the planned tools rather than a separate suite of commands:
   hard-coded strings before any translator is involved.
 - The playtest host takes `--locale` and can overlay message keys on screen, so a tester can
   report "this line is wrong" by key.
-- The language server shows missing and stale translations as diagnostics on the source line.
+- The language services show missing and stale translations as diagnostics on the source line,
+  in the workbench editor and through the language server.
 
 Machine translation or translation memory is the publisher's business; anything imported
 arrives as draft and is never marked reviewed automatically.

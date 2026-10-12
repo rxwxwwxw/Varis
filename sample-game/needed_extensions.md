@@ -82,7 +82,7 @@ Inventories, dialogue history, paths and multi-part arguments have to be split a
 ### 1.11 Inference performance (P0 for real games)
 Each `present()` evaluates every storylet, choice, action and template condition by recomputing from scratch: naive fixpoint, unindexed nested-loop joins, no materialization cache. This game is small enough that it doesn't matter. A 100-room map with `reachable` is slow: a synthetic game of that size measures about 0.8 s per presentation on an Apple M1 (see [benchmarks/PERFORMANCE_PLAN.md](../benchmarks/PERFORMANCE_PLAN.md), which also holds the staged fix).
 
-**Needed:** a version-keyed cache shared across all queries in one presentation snapshot, argument indexes, semi-naive evaluation, and slot-based bindings.
+**Needed:** shared fact storage instead of per-query copies, slot-based bindings, argument indexes, semi-naive evaluation, a version-keyed cache shared across all queries in one presentation snapshot, and storylets indexed by the constant parts of their conditions (track W of the performance plan, ROADMAP milestone 35).
 
 ---
 

@@ -2,13 +2,18 @@
 
 One suite, one driver: `python3 tools/suite bench` (Make: `make bench`, `make bench-check`).
 
-**Role since October 11, 2026:** matching C Lua is no longer a project goal. The C Lua ratios
-below are kept as regression gates for the procedural core. The performance targets that matter
-for the product (turn latency, content load time and memory on a reference game running on
-low-end hardware) are planned in [ROADMAP.md](../ROADMAP.md), Phase 11, and are **not yet in this
-suite**; the `datalog`, `scenarios`, `narrative` and `narrative_e2e` groups are the closest existing
-measures. [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md) has the first scale measurements (from
-`experiments/synthetic_game.lua`, which is not part of the suite) and the staged plan.
+**Role (revised October 11, 2026):** there are two performance targets
+([PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md) §1, [ROADMAP.md](../ROADMAP.md) decisions D4 and D5).
+
+1. **Lua core: never slower than C Lua.** The `core`, `programs`, `regression` and `startup`
+   groups compare against C Lua. Each workload has `goal.clua = 1.0` (reported) and a
+   `gate.clua` regression ratchet (enforced). Most workloads are behind the goal today; the plan's
+   L and X stages are how they get there.
+2. **World model: a turn within a budget on low-end hardware.** The reference game that measures
+   turn latency, content load time and memory is **not yet in this suite** (plan stage S0 adds it
+   as the `narrative_scale` group). The `datalog`, `scenarios`, `narrative` and `narrative_e2e`
+   groups are the closest existing measures. The first scale measurements come from
+   `experiments/synthetic_game.lua`, which is not part of the suite.
 Design and rationale: [CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md) §4.
 
 ## What is measured
@@ -44,9 +49,10 @@ slower and cost more than 80 % of the run time. The mechanism for `ref = "<git r
 
 [targets.toml](targets.toml): per workload,
 
-* `goal.<comparator>` – an informational ratio against C Lua: 1.2 on twelve `core` workloads
-  (set in commit `15522b1`) and 2.0, the former project target, elsewhere. Reported as
-  "behind goal", never fatal; no planned work aims at these values.
+* `goal.<comparator>` – the project target: `goal.clua = 1.0` on every workload with a C Lua
+  comparator (ROADMAP decision D4: the core is never slower than C Lua), and `goal.souffle = 2.0`
+  on the `datalog_comp` group. Reported as "behind goal", never fatal. A workload behind its goal
+  is work to do under PERFORMANCE_PLAN.md, not a failed check.
 * `gate.<comparator>` – regression ratchet; exceeding it fails `make bench-check`
   (confirmed by two re-runs before failing).
 * `gate.time` – absolute budget in candidate CPU seconds (per repetition for in-process kernels).
@@ -63,8 +69,9 @@ re-derive them (`python3 tools/suite targets <bench.json> --merge` after deletin
 Loosening one (or a floor) is blocked by the commit-msg
 hook unless the message carries `Perf-Regression-Accepted: <reason>`.
 
-Known cost centres are visible as goal misses: `core.pcall_error` (D exceptions through the
-platform unwinder) and `core.deep_recursion` (flat-stack executor past ~150 frames).
+Known cost centres are visible as the largest goal misses: `core.pcall_error` (D exceptions
+through the platform unwinder; plan stage L1 replaces exceptions with return values) and
+`core.deep_recursion` (the flat-stack executor past ~150 frames allocates per frame).
 
 ## Commands
 

@@ -2,11 +2,16 @@
 > referenced below were replaced by `tools/suite bench`; see [README.md](README.md). Raw results
 > are in `history/2026-10-09-perf/`.
 
-> **Direction note (2026-10-11):** the ≤2× C Lua goal this document works toward is closed and
-> no longer pursued; see [ROADMAP.md](../ROADMAP.md). The measurements and the list of remaining
-> costs are still accurate as a record. Future performance work targets narrative turn latency
-> and memory on low-end hardware, starting with the inference engine: see
-> [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md). File links below point into
+> **Direction note (2026-10-11, revised the same day):** the ≤2× C Lua goal this document works
+> toward is closed; see [ROADMAP.md](../ROADMAP.md). The measurements and the list of remaining
+> costs are still accurate as a record. The current plan,
+> [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md), has two targets: narrative turn latency and memory
+> on low-end hardware, and a Lua core that is never slower than C Lua. It reaches the second by
+> restructuring (errors as values, a 16-byte value, a compact execution encoding, a core
+> separated from the world model), which this document's tuning work deliberately avoided. Where
+> this document says a design choice is "preserved" (`SumType`, typed 32-byte instructions, D
+> exceptions), read that as history, not as a constraint. The D garbage collector is still a
+> constraint. File links below point into
 > `history/2026-10-09-perf/`, where the raw results now live; other mentions of `results/` in the
 > text refer to the same directory.
 

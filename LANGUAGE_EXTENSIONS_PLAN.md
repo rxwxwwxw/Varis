@@ -7,11 +7,15 @@
 > language requirements. See [the migration map](docs/coverage.md) for former
 > section numbers and decisions incorporated into the manual.
 >
-> **Direction change (October 11, 2026):** Lua 5.4 conformance and the ≤2× C Lua
-> target are no longer project goals. Phase 8 below is **closed**: milestones 19 and
-> 20 are done and milestones 21–25 are retired, not completed. Current goals and
-> planned phases 9–12 (authoring syntax, authoring tools, low-end runtime,
-> ergonomics) are in [ROADMAP.md](ROADMAP.md). This file is engineering history.
+> **Direction change (October 11, 2026):** Lua 5.4 conformance is no longer a project
+> goal. Phase 8 below is **closed**: milestones 19 and 20 are done and milestones
+> 21–25 (tuning the existing design toward ≤2× C Lua) are retired, not completed.
+> Core performance is a goal again under a stricter target (never slower than C Lua)
+> and a different method (restructuring the interpreter); that work, the current
+> goals, the decision record and planned phases 9–12 are in [ROADMAP.md](ROADMAP.md)
+> and [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md). This file is
+> engineering history: statements below such as "retain `SumType`" or "errors are D
+> exceptions" describe the design of the time, not current policy.
 
 
 This plan records implementation of the relational and narrative facilities now defined in the [Varis reference](docs/README.md). Milestones 0–8 describe the existing Phase 6 implementation sequence; milestones 9–18 below track Phase 7. Milestones 9–18 are fully implemented, including aggregates, sessions/scheduling, portable persistence/replay, explanations, subscriptions, bounded analysis, custom display formatters, and deterministic weighted text variants in templates. The final requirement/error matrix and support limits are in [tests/narrative/README.md](tests/narrative/README.md).

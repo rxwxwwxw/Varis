@@ -1,9 +1,13 @@
 # Lua 5.4.9 conformance audit
 
 **Role (October 11, 2026):** Lua 5.4 conformance is no longer a project goal (see
-[ROADMAP.md](../../ROADMAP.md)). This suite stays in `make test` as a regression net for the
-procedural core: a new failure is still a failure, but no work is planned on the remaining
-issues listed here, and a deliberate divergence may turn a file into a ledgered skip.
+[ROADMAP.md](../../ROADMAP.md), decision D3). This suite stays in `make test` as a regression net
+for the procedural core, which remains a complete language because mods use all of it (D2): a new
+failure is still a failure, but no work is planned on the remaining issues listed here, and a
+deliberate divergence may turn a file into a ledgered skip. The planned restructuring of the
+interpreter for speed (errors as values, a new value representation; see
+[benchmarks/PERFORMANCE_PLAN.md](../../benchmarks/PERFORMANCE_PLAN.md)) must keep this suite at its
+recorded result.
 
 **Scope (decided by the project owner):** conformance means the official suite as a normal
 Lua 5.4 binary runs it (`T == nil`), with only `gc.lua` excluded. Running `api.lua`/`code.lua` with

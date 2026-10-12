@@ -1,80 +1,81 @@
 # Performance targets. Ratios are candidate/comparator CPU time measured in one session.
 # goal: project target, reported only.   gate: regression ratchet (fatal when exceeded);
+# goal.clua is 1.0 everywhere: the Lua core must not be slower than C Lua (ROADMAP decision D4).
 # gate.time is the candidate's absolute CPU-second budget, gate.<comparator> a ratio.
 # Loosening a gate/floor needs a `Perf-Regression-Accepted:` commit trailer (see commit-msg hook).
 
 [workload."core.array_access"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 2.14
 gate.time = 0.036
 
 [workload."core.closures"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 2.26
 gate.time = 0.15
 
 [workload."core.coroutine_switch"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 2.39
 gate.time = 0.086
 
 [workload."core.deep_recursion"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 9.16
 gate.time = 0.25
 
 [workload."core.fib"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 2.76
 gate.time = 0.17
 
 [workload."core.gc_churn"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 1.2
 gate.time = 0.13
 
 [workload."core.hash_access"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 2.37
 gate.time = 0.032
 
 [workload."core.method_dispatch"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 2.1
 gate.time = 0.29
 
 [workload."core.numeric_loop"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 1.9
 gate.time = 0.086
 
 [workload."core.pcall_error"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 41.27
 gate.time = 1.1
 
 [workload."core.sieve"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 2.25
 gate.time = 0.02
 
 [workload."core.string_manip"]
-goal.clua = 1.2
+goal.clua = 1.0
 gate.clua = 1.05
 gate.time = 0.02
 
 [workload."core.string_ops"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.63
 gate.time = 0.052
 
 [workload."core.table_insert_remove"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 1.29
 gate.time = 0.094
 
 [workload."core.table_sort"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 1.15
 gate.time = 0.062
 
@@ -128,147 +129,147 @@ gate.time = 0.02
 gate.time = 0.45
 
 [workload."programs.bintrees"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.33
 gate.time = 0.25
 
 [workload."programs.closures"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.63
 gate.time = 0.25
 
 [workload."programs.coro"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.66
 gate.time = 0.096
 
 [workload."programs.mandel"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.46
 gate.time = 0.048
 
 [workload."programs.matmul"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.46
 gate.time = 0.02
 
 [workload."programs.oop"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.24
 gate.time = 0.57
 
 [workload."programs.pairs"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 0.84
 gate.time = 0.18
 
 [workload."programs.queens"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.84
 gate.time = 0.02
 
 [workload."programs.sort"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 0.36
 gate.time = 0.38
 
 [workload."programs.strings"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 1.51
 gate.time = 0.35
 
 [workload."programs.varargs"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 1.92
 gate.time = 0.089
 
 [workload."regression.coroutines"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 3.35
 gate.time = 0.02
 
 [workload."regression.deepframes"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.59
 gate.time = 0.13
 
 [workload."regression.errors"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.99
 gate.time = 0.02
 
 [workload."regression.fastpaths"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 1.97
 gate.time = 0.064
 
 [workload."regression.fuzz_expr"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.67
 gate.time = 0.045
 
 [workload."regression.fuzz_table"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 3.07
 gate.time = 0.02
 
 [workload."regression.int_float"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.7
 gate.time = 0.02
 
 [workload."regression.io_os"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 1.97
 gate.time = 0.02
 
 [workload."regression.limits"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 1.74
 gate.time = 0.17
 
 [workload."regression.load_dump"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.84
 gate.time = 0.02
 
 [workload."regression.metamethods"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.68
 gate.time = 0.02
 
 [workload."regression.random_math"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.57
 gate.time = 0.02
 
 [workload."regression.strings"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.5
 gate.time = 0.02
 
 [workload."regression.tables"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.51
 gate.time = 0.02
 
 [workload."regression.tbc_goto"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.71
 gate.time = 0.02
 
 [workload."regression.weak_gc"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.72
 gate.time = 0.023
 
 [workload."regression.workloads"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.52
 gate.time = 0.37
 
 [workload."regression.wrapcalls"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.8
 gate.time = 0.02
 
@@ -330,11 +331,11 @@ gate.time = 3.4
 gate.time = 1.9
 
 [workload."startup.empty"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.58
 gate.time = 0.02
 
 [workload."startup.stdlibs"]
-goal.clua = 2.0
+goal.clua = 1.0
 gate.clua = 2.47
 gate.time = 0.02

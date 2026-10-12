@@ -11,9 +11,11 @@ this repository, including the facilities previously described as Lua extensions
 The implementation is built as `bin/varis`, uses `.lua` source files, and reports a
 Lua compatibility version. This manual describes **only what is implemented**. The
 project's goals and planned changes, including a restricted tier for content
-files, a distinct source extension, scenes, a project checker and a language
-server, are in the [roadmap](../ROADMAP.md) and are not part of the language until
-they appear here. Lua 5.4 conformance is not a goal of Varis; section 9 states the
+files, a distinct source extension, scenes, a project checker, language services
+and a web workbench with a debugger, are in the [roadmap](../ROADMAP.md) and are not
+part of the language until they appear here. The procedural core stays a complete
+Lua-derived language so that games can be modded with all of it; passing more of
+the official Lua 5.4 test suite is not a goal of Varis. Section 9 states the
 relationship.
 
 ## Contents
