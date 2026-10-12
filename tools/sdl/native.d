@@ -14,6 +14,13 @@ extern (C) @nogc nothrow {
     void v_close();
     void* v_image(const(char)* path);
     void* v_text(const(char)* text, int wrap, uint color);
+    void* v_font(const(char)* path, float size);
+    void v_font_free(void* font);
+    void* v_text_font(void* font, const(char)* text, int wrap, uint color);
+    void v_text_size(void* texture, float* w, float* h);
+    void v_outline(float x, float y, float w, float h, uint color);
+    void v_volume(float gain);
+    void v_fullscreen(int on);
     void v_free(void* texture);
     void v_begin();
     void v_rect(float x, float y, float w, float h, uint color);

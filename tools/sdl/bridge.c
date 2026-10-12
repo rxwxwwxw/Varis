@@ -46,6 +46,19 @@ void *v_text(const char *text, int wrap, unsigned color) {
     SDL_DestroySurface(s);
     return t;
 }
+/* Extra font sizes: the player opens one handle per size. */
+void *v_font(const char *path, float size) { return TTF_OpenFont(path, size); }
+void v_font_free(void *f) { if (f) TTF_CloseFont(f); }
+void *v_text_font(void *f, const char *text, int wrap, unsigned color) {
+    if (!*text) return NULL;
+    SDL_Color c = {color >> 24, color >> 16, color >> 8, color};
+    SDL_Surface *s = TTF_RenderText_Blended_Wrapped(f, text, 0, c, wrap);
+    if (!s) return NULL;
+    SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
+    SDL_DestroySurface(s);
+    return t;
+}
+void v_text_size(void *texture, float *w, float *h) { SDL_GetTextureSize(texture, w, h); }
 void v_free(void *texture) { if (texture) SDL_DestroyTexture(texture); }
 void v_begin(void) { SDL_SetRenderDrawColor(renderer, 14, 20, 34, 255); SDL_RenderClear(renderer); }
 void v_rect(float x, float y, float w, float h, unsigned color) {
@@ -69,13 +82,19 @@ int v_capture(const char *path) {
     if (!s) return 0;
     int ok = SDL_SaveBMP(s, path); SDL_DestroySurface(s); return ok;
 }
+void v_outline(float x, float y, float w, float h, unsigned color) {
+    SDL_SetRenderDrawColor(renderer, color >> 24, color >> 16, color >> 8, color);
+    SDL_FRect r = {x,y,w,h}; SDL_RenderRect(renderer, &r);
+}
+void v_volume(float gain) { if (mixer) MIX_SetMixerGain(mixer, gain); }
+void v_fullscreen(int on) { if (window) SDL_SetWindowFullscreen(window, on != 0); }
 void v_clip(int x, int y, int w, int h) {
     SDL_Rect r = {x,y,w,h}; SDL_SetRenderClipRect(renderer, w ? &r : NULL);
 }
 void v_end(void) { SDL_RenderPresent(renderer); }
 void v_delay(void) { SDL_Delay(16); }
 unsigned long long v_ticks(void) { return SDL_GetTicks(); }
-/* 1 quit, 2 advance, 3 backspace, 4 text, 5 click, 6 key. */
+/* 1 quit, 2 advance, 3 backspace, 4 text, 5 click, 6 key, 7 motion, 8 wheel (key = +-1). */
 int v_event(int *key, float *x, float *y, const char **text) {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -83,11 +102,15 @@ int v_event(int *key, float *x, float *y, const char **text) {
         if (e.type == SDL_EVENT_QUIT) return 1;
         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
             *key = e.key.key;
-            if (*key == SDLK_ESCAPE) return 1;
+            if (*key == SDLK_ESCAPE) return 6;
             if (*key == SDLK_BACKSPACE) return 3;
             if (*key == SDLK_RETURN || *key == SDLK_SPACE) return 2;
             return 6;
         }
+        if (e.type == SDL_EVENT_MOUSE_MOTION) {
+            SDL_RenderCoordinatesFromWindow(renderer, e.motion.x, e.motion.y, x, y); return 7;
+        }
+        if (e.type == SDL_EVENT_MOUSE_WHEEL) { *key = e.wheel.y > 0 ? 1 : -1; return 8; }
         if (e.type == SDL_EVENT_TEXT_INPUT) { *text = e.text.text; return 4; }
         if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT) {
             SDL_RenderCoordinatesFromWindow(renderer, e.button.x, e.button.y, x, y); return 5;

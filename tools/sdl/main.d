@@ -10,6 +10,7 @@
 module tools.sdl.main;
 
 import tools.sdl.native;
+import tools.sdl.gameplayer : runGame;
 import varis.services.presentation;
 import varis.services.json;
 import varis.narrative.scenes : field, nameOf;
@@ -320,7 +321,7 @@ class Player {
     }
 
     bool event(int type, int key, float x, float y, string typed) {
-        if (type == 1)
+        if (type == 1 || (type == 6 && key == 27))
             return false;
         auto kind = host.view.kind;
         if (type == 6 && key == 'h') {
@@ -431,6 +432,14 @@ int main(string[] args) {
         return 1;
     }
     bool smoke = args.length == 4 && args[2] == "--smoke";
+    {
+        // A manifest with a `project` is a whole game (hub, status, overlays); otherwise it is a
+        // scene-only game with an empty world.
+        JsonValue probe;
+        string problem;
+        if (parseJson(readText(args[1]), probe, problem) && probe.get("project") !is null)
+            return runGame(args[1], smoke ? args[3] : "");
+    }
     auto player = new Player;
     scope (exit)
         player.close();

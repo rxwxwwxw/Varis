@@ -147,6 +147,7 @@ function M.build_world()
         fact riddle(2, 40)
         fact riddle(3, 55)
     end
+    narrative.program(w, M.RULES_VERSION)
     return w
 end
 

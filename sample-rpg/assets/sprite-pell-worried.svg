@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="600" viewBox="0 0 400 600">
+<rect x="110" y="260" width="180" height="340" rx="40" fill="#8d83c9"/>
+<circle cx="200" cy="170" r="85" fill="#f1d3b0"/>
+<circle cx="170" cy="150" r="9" fill="#222"/><circle cx="230" cy="150" r="9" fill="#222"/>
+<path d="M165 215 Q200 192 235 215" stroke="#222" stroke-width="7" fill="none" stroke-linecap="round"/>
+<text x="200" y="420" text-anchor="middle" font-family="sans-serif" font-size="30" fill="#fff">Pell</text>
+</svg>

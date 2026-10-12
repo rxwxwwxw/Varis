@@ -1,0 +1,624 @@
+{
+ "title": "The Hollowbrook Summer",
+ "project": ".",
+ "scene": "prologue",
+ "font_size": 22,
+ "save": "quicksave.json",
+ "autosave": "autosave.json",
+ "settings": "settings.json",
+ "languages": [
+  {
+   "tag": "",
+   "name": "English"
+  },
+  {
+   "tag": "fr",
+   "name": "Fran\u00e7ais"
+  }
+ ],
+ "choice_labels": [
+  "look"
+ ],
+ "clock": [
+  "Morning",
+  "Afternoon",
+  "Evening",
+  "Night"
+ ],
+ "backgrounds": [
+  {
+   "id": "house",
+   "file": "assets/bg-house.svg"
+  },
+  {
+   "id": "square",
+   "file": "assets/bg-square.svg"
+  },
+  {
+   "id": "market",
+   "file": "assets/bg-market.svg"
+  },
+  {
+   "id": "forge",
+   "file": "assets/bg-forge.svg"
+  },
+  {
+   "id": "archive",
+   "file": "assets/bg-archive.svg"
+  },
+  {
+   "id": "tavern",
+   "file": "assets/bg-tavern.svg"
+  },
+  {
+   "id": "docks",
+   "file": "assets/bg-docks.svg"
+  },
+  {
+   "id": "quarry",
+   "file": "assets/bg-quarry.svg"
+  },
+  {
+   "id": "green",
+   "file": "assets/bg-green.svg"
+  },
+  {
+   "id": "road",
+   "file": "assets/bg-road.svg"
+  },
+  {
+   "id": "title",
+   "file": "assets/bg-title.svg"
+  }
+ ],
+ "sprites": [
+  {
+   "character": "odile",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/sprite-odile-neutral.svg"
+  },
+  {
+   "character": "odile",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/sprite-odile-happy.svg"
+  },
+  {
+   "character": "odile",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/sprite-odile-worried.svg"
+  },
+  {
+   "character": "mara",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/sprite-mara-neutral.svg"
+  },
+  {
+   "character": "mara",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/sprite-mara-happy.svg"
+  },
+  {
+   "character": "mara",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/sprite-mara-worried.svg"
+  },
+  {
+   "character": "pell",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/sprite-pell-neutral.svg"
+  },
+  {
+   "character": "pell",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/sprite-pell-happy.svg"
+  },
+  {
+   "character": "pell",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/sprite-pell-worried.svg"
+  },
+  {
+   "character": "tilly",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/sprite-tilly-neutral.svg"
+  },
+  {
+   "character": "tilly",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/sprite-tilly-happy.svg"
+  },
+  {
+   "character": "tilly",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/sprite-tilly-worried.svg"
+  },
+  {
+   "character": "hask",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/sprite-hask-neutral.svg"
+  },
+  {
+   "character": "hask",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/sprite-hask-happy.svg"
+  },
+  {
+   "character": "hask",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/sprite-hask-worried.svg"
+  },
+  {
+   "character": "dane",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/sprite-dane-neutral.svg"
+  },
+  {
+   "character": "dane",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/sprite-dane-happy.svg"
+  },
+  {
+   "character": "dane",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/sprite-dane-worried.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "casual",
+    "expression": "neutral"
+   },
+   "file": "assets/sprite-player-casual-neutral.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "casual",
+    "expression": "happy"
+   },
+   "file": "assets/sprite-player-casual-happy.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "casual",
+    "expression": "worried"
+   },
+   "file": "assets/sprite-player-casual-worried.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "sporty",
+    "expression": "neutral"
+   },
+   "file": "assets/sprite-player-sporty-neutral.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "sporty",
+    "expression": "happy"
+   },
+   "file": "assets/sprite-player-sporty-happy.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "sporty",
+    "expression": "worried"
+   },
+   "file": "assets/sprite-player-sporty-worried.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "scholarly",
+    "expression": "neutral"
+   },
+   "file": "assets/sprite-player-scholarly-neutral.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "scholarly",
+    "expression": "happy"
+   },
+   "file": "assets/sprite-player-scholarly-happy.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "scholarly",
+    "expression": "worried"
+   },
+   "file": "assets/sprite-player-scholarly-worried.svg"
+  }
+ ],
+ "portraits": [
+  {
+   "character": "odile",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/portrait-odile-neutral.svg"
+  },
+  {
+   "character": "odile",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/portrait-odile-happy.svg"
+  },
+  {
+   "character": "odile",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/portrait-odile-worried.svg"
+  },
+  {
+   "character": "mara",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/portrait-mara-neutral.svg"
+  },
+  {
+   "character": "mara",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/portrait-mara-happy.svg"
+  },
+  {
+   "character": "mara",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/portrait-mara-worried.svg"
+  },
+  {
+   "character": "pell",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/portrait-pell-neutral.svg"
+  },
+  {
+   "character": "pell",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/portrait-pell-happy.svg"
+  },
+  {
+   "character": "pell",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/portrait-pell-worried.svg"
+  },
+  {
+   "character": "tilly",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/portrait-tilly-neutral.svg"
+  },
+  {
+   "character": "tilly",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/portrait-tilly-happy.svg"
+  },
+  {
+   "character": "tilly",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/portrait-tilly-worried.svg"
+  },
+  {
+   "character": "hask",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/portrait-hask-neutral.svg"
+  },
+  {
+   "character": "hask",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/portrait-hask-happy.svg"
+  },
+  {
+   "character": "hask",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/portrait-hask-worried.svg"
+  },
+  {
+   "character": "dane",
+   "attributes": {
+    "expression": "neutral"
+   },
+   "file": "assets/portrait-dane-neutral.svg"
+  },
+  {
+   "character": "dane",
+   "attributes": {
+    "expression": "happy"
+   },
+   "file": "assets/portrait-dane-happy.svg"
+  },
+  {
+   "character": "dane",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/portrait-dane-worried.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "casual",
+    "expression": "neutral"
+   },
+   "file": "assets/portrait-player-casual-neutral.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "casual",
+    "expression": "happy"
+   },
+   "file": "assets/portrait-player-casual-happy.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "casual",
+    "expression": "worried"
+   },
+   "file": "assets/portrait-player-casual-worried.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "sporty",
+    "expression": "neutral"
+   },
+   "file": "assets/portrait-player-sporty-neutral.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "sporty",
+    "expression": "happy"
+   },
+   "file": "assets/portrait-player-sporty-happy.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "sporty",
+    "expression": "worried"
+   },
+   "file": "assets/portrait-player-sporty-worried.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "scholarly",
+    "expression": "neutral"
+   },
+   "file": "assets/portrait-player-scholarly-neutral.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "scholarly",
+    "expression": "happy"
+   },
+   "file": "assets/portrait-player-scholarly-happy.svg"
+  },
+  {
+   "character": "player",
+   "attributes": {
+    "outfit": "scholarly",
+    "expression": "worried"
+   },
+   "file": "assets/portrait-player-scholarly-worried.svg"
+  }
+ ],
+ "slots": [
+  {
+   "id": "left",
+   "x": 60,
+   "y": 44,
+   "width": 400,
+   "height": 350
+  },
+  {
+   "id": "center",
+   "x": 440,
+   "y": 44,
+   "width": 400,
+   "height": 350
+  },
+  {
+   "id": "right",
+   "x": 820,
+   "y": 44,
+   "width": 400,
+   "height": 350
+  }
+ ],
+ "audio": [
+  {
+   "id": "title_theme",
+   "file": "assets/title_theme.wav"
+  },
+  {
+   "id": "day_theme",
+   "file": "assets/day_theme.wav"
+  },
+  {
+   "id": "trial_theme",
+   "file": "assets/trial_theme.wav"
+  },
+  {
+   "id": "ending_theme",
+   "file": "assets/ending_theme.wav"
+  },
+  {
+   "id": "stat_up",
+   "file": "assets/stat_up.wav"
+  },
+  {
+   "id": "click",
+   "file": "assets/click.wav"
+  },
+  {
+   "id": "fail",
+   "file": "assets/fail.wav"
+  }
+ ],
+ "channels": [
+  {
+   "id": "music",
+   "loop": 1
+  },
+  {
+   "id": "ambience",
+   "loop": 1
+  },
+  {
+   "id": "sfx",
+   "loop": 0
+  }
+ ],
+ "map": {
+  "places": [
+   {
+    "id": "house",
+    "x": 90,
+    "y": 400
+   },
+   {
+    "id": "square",
+    "x": 330,
+    "y": 330
+   },
+   {
+    "id": "market",
+    "x": 560,
+    "y": 330
+   },
+   {
+    "id": "forge",
+    "x": 330,
+    "y": 150
+   },
+   {
+    "id": "archive",
+    "x": 150,
+    "y": 190
+   },
+   {
+    "id": "tavern",
+    "x": 440,
+    "y": 480
+   },
+   {
+    "id": "docks",
+    "x": 760,
+    "y": 330
+   },
+   {
+    "id": "quarry",
+    "x": 880,
+    "y": 160
+   },
+   {
+    "id": "green",
+    "x": 600,
+    "y": 130
+   }
+  ],
+  "roads": [
+   [
+    "house",
+    "square"
+   ],
+   [
+    "square",
+    "market"
+   ],
+   [
+    "square",
+    "forge"
+   ],
+   [
+    "square",
+    "archive"
+   ],
+   [
+    "square",
+    "tavern"
+   ],
+   [
+    "market",
+    "docks"
+   ],
+   [
+    "docks",
+    "quarry"
+   ],
+   [
+    "square",
+    "green"
+   ]
+  ]
+ }
+}

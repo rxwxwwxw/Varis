@@ -17,3 +17,7 @@ benchmarks/results/local/
 __pycache__/
 *.pyc
 .dub/
+# Player data written by the SDL3 player
+sample-rpg/autosave.json
+sample-rpg/quicksave.json
+sample-rpg/settings.json

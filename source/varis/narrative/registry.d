@@ -144,6 +144,7 @@ class ContentRegistry {
     private ContentDefinition[string] procedures_;
     private DeckDefinition[string] decks_;
     private QualityDefinition[string] qualities_;
+    private string[] qualityOrder_;
     private string[string] names_;
     private TranslationTemplate[string][string] translations_; // locale -> key -> message
     private LuaValue[string] handlers_;
@@ -205,6 +206,14 @@ class ContentRegistry {
         return qualities_.get(id, null);
     }
 
+    /// The quality definitions in registration order (a host's stable status display).
+    QualityDefinition[] qualityDefinitions() {
+        QualityDefinition[] result;
+        foreach (name; qualityOrder_)
+            result ~= qualities_[name];
+        return result;
+    }
+
     string[] handlerNames() {
         return handlers_.keys;
     }
@@ -257,6 +266,7 @@ class ContentRegistry {
                 .minimum))
             throw new LuaException("quality minimum exceeds maximum");
         validateQualityValue(definition, definition.initial);
+        qualityOrder_ ~= definition.id;
         qualities_[definition.id] = definition;
     }
 
@@ -529,6 +539,7 @@ class ContentRegistry {
             copied.visible = definition.visible;
             copied.label = definition.label;
             destination.qualities_[name] = copied;
+            destination.qualityOrder_ = qualityOrder_.dup;
         }
         foreach (name, definition; storylets_)
             destination.storylets_[name] = cloneDefinition(definition);
