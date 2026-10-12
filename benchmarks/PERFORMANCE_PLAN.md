@@ -459,6 +459,24 @@ Exit: `core.numeric_loop`, `core.array_access`, `core.sieve` at or below 1.2×.
 
 **L4 — Call path.**
 
+*Measured October 11, 2026, so nobody repeats these as guesses.* `core.fib` makes 1.35 million
+calls at about 78 ns each (C Lua: 34 ns). In `executeFrame`:
+
+| Experiment (measurement only, not committed) | `core.fib` |
+| --- | ---: |
+| Baseline | 2.30× |
+| No call records (`pushCall`/`popCall`) | 2.18× |
+| No stack-slot accounting | 2.23× |
+| Clearing fewer registers on exit | no change |
+| No per-call world swap | no change |
+| Every call through `executeDeepFrame` (frames as records) | 2.95× |
+| Instruction pointer kept out of memory, published to `ipSlot` after each fetch | 2.60× (`numeric_loop` improved 1.54× → 1.45×, `array_access` and `sieve` got worse) |
+
+There is no single dominant cost, and the existing record-based executor is slower per call than
+native recursion. Parity on calls therefore needs a lean executor designed for it (a frame is a
+base pointer into one contiguous value stack, a call record is a few words, there are no
+per-frame scope guards), not further trimming of this one.
+
 - Remove per-call work that exists only for rare cases: build call records lazily (only when an
   error, a traceback or the debugger needs them), merge the two stack-limit counters into one
   comparison, clear only the registers that were live.
