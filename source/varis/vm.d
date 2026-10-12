@@ -450,6 +450,13 @@ private enum string sharedOpcodeCases1 = q{
                                 copyValue(registers[instr.a], elements[slot]);
                                 break;
                             }
+                        } else if (container.isTable && instr.cIsK && key.isString) {
+                            // Field read with a constant name: the node this site hit last time.
+                            auto hit = container.asTable.hintedHit(key.asString, proto.lookupHints[cast(int)(ip - codeBase) - 1]);
+                            if (hit !is null) {
+                                copyValue(registers[instr.a], *hit);
+                                break;
+                            }
                         }
                     }
                     execGetTable(state, proto, registers, instr, cast(int)(ip - codeBase) - 1);
@@ -464,6 +471,15 @@ private enum string sharedOpcodeCases1 = q{
                             auto value = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
                             if (table.metatable is null && slot < table.arrayPart.length && !value.isNil) {
                                 copyValue(table.arrayPart[slot], *value);
+                                break;
+                            }
+                        } else if (container.isTable && instr.bIsK && key.isString) {
+                            // Field write with a constant name to a field that already holds a value
+                            // (__newindex does not apply to an existing field).
+                            auto value = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
+                            auto hit = container.asTable.hintedHit(key.asString, proto.lookupHints[cast(int)(ip - codeBase) - 1]);
+                            if (hit !is null && !value.isNil) {
+                                copyValue(*hit, *value);
                                 break;
                             }
                         }

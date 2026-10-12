@@ -489,6 +489,12 @@ are not and why, with the next stage that addresses each.
 
 These are things C Lua's design does not do. Each is its own change with its own measurement.
 
+- *X1, first steps done October 12, 2026:* a field read or write with a constant name checks,
+  inline in the dispatch loop, whether the node this site hit last time still holds the same
+  interned key (`LuaTable.hintedHit`); `text:method(...)` looks the method up with the
+  constant's cached hash; string library calls borrow their argument slice. `core.method_dispatch`
+  1.71× → 1.63×, `programs.oop` 1.70× → 1.58×, `core.string_ops` 2.13× → 1.72×. A method found
+  through an `__index` chain is still looked up every time.
 - **X1 — Inline caches.** Field reads and writes with constant string keys remember the slot they
   hit; method calls remember the result of the `__index` chain walk, guarded by a version on the
   metatable; global reads remember their node. `findStringHinted` is the existing start of this.

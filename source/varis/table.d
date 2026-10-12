@@ -255,7 +255,22 @@ class LuaTable {
     /// Inline-cache lookup of a constant string key. `hint` is a node index remembered by the
     /// caller (per instruction); it is validated against the key before use. Returns a pointer to
     /// the stored value (possibly nil) or null when the key has no node.
+    pragma(inline, true) /// The inline-cache hit of a constant-key read: the node the site hit last time still holds
+    /// this very key (same slice: constants are interned) and a value. Null means "take the
+    /// general path", never "absent".
     pragma(inline, true)
+    LuaValue* hintedHit(string key, int hint) @trusted nothrow {
+        if (cast(size_t) hint < nodeCount) {
+            auto node = &nodes[cast(size_t) hint];
+            if (node.key.isString) {
+                auto stored = node.key.asString;
+                if (stored.ptr is key.ptr && stored.length == key.length && !node.value.isNil)
+                    return &node.value;
+            }
+        }
+        return null;
+    }
+
     LuaValue* findStringHinted(string key, ref int hint) {
         size_t h = cast(size_t) hint;
         if (h < nodeCount) {
