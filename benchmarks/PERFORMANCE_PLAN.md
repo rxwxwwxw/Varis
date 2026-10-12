@@ -191,6 +191,13 @@ exit test and all of §7 pass.
 
 ### Stage S0 — Safety net and measurement (milestone 34)
 
+**Status: done October 11, 2026, except item 4.** The `sample-game` test suite (fast tier) runs
+`tools/check.lua` and compares `tools/golden.lua` with `tests/sample_game/golden.expected`; the
+`narrative_scale` benchmark group has `reference_game` (4.3 s for load, five turns and a save)
+and `wide_game` (0.75 s for forty turns without recursion) with `gate.time` budgets; the baseline
+is `benchmarks/baselines/2026-10-11-pre-restructure.json`. The reference game does not yet use an
+aggregate, and engine counters (item 4) are left to the first W stage that needs them.
+
 Do this before changing any runtime code. It is what makes the later stages safe.
 
 1. **Sample game in the test tiers.** Today `sample-game/tools/check.lua` runs only as the

@@ -128,6 +128,12 @@ gate.time = 0.02
 [workload."narrative_e2e.sample_game_check"]
 gate.time = 0.45
 
+[workload."narrative_scale.reference_game"]
+gate.time = 6.5
+
+[workload."narrative_scale.wide_game"]
+gate.time = 1.2
+
 [workload."programs.bintrees"]
 goal.clua = 1.0
 gate.clua = 2.33

@@ -69,10 +69,10 @@ def workloads(manifest):
                 entries.append({"id": p.stem, "path": str(p.relative_to(ROOT)),
                                 "cwd": str(p.parent.relative_to(ROOT)) if g.get("cwd_is_parent") else g.get("cwd", ".")})
         for c in g.get("cases", []):
-            entries.append({"id": c["id"], "path": c["path"], "cwd": c.get("cwd", ".")})
+            entries.append({"id": c["id"], "path": c["path"], "cwd": c.get("cwd", "."), "args": c.get("args")})
         for e in entries:
             out.append({"id": f"{g['id']}.{e['id']}", "group": g["id"], "kind": g["kind"], "path": e["path"],
-                        "cwd": e["cwd"], "args": g.get("args", []), "comparable": g.get("comparable", False), "silent": g.get("silent", False),
+                        "cwd": e["cwd"], "args": e.get("args") or g.get("args", []), "comparable": g.get("comparable", False), "silent": g.get("silent", False),
                         "comparator": g.get("comparator", "clua"),
                         "runs": g.get("runs", d.get("runs", 7)), "repeats": g.get("repeats", d.get("repeats", 5)),
                         "timeout": g.get("timeout", d.get("timeout", 180))})

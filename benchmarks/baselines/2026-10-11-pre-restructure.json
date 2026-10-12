@@ -1,0 +1,4550 @@
+{
+  "schema": 1,
+  "kind": "bench",
+  "machine": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "arch": "arm64",
+  "toolchain": "LDC - the LLVM D compiler (1.43.0):",
+  "commit": "b68991d",
+  "runs": null,
+  "binaries": {
+    "candidate": {
+      "path": "/Users/alex/repos/dlua/bin/varis",
+      "sha256": "669bb233d45f08f8db49b401d107612080036b6c075336fdaa90a66a7347139a"
+    },
+    "clua": {
+      "path": "/Users/alex/repos/dlua/c-implementation/src/lua",
+      "sha256": "d25eb3e663b080591e87dee7aa5bc9755f71ec321f4f2f150840ca1a73dacc70"
+    },
+    "souffle": {
+      "path": "/opt/homebrew/bin/souffle",
+      "sha256": "0933066a5a05c5260c154e88c629ccb3f9c7b42737f786b99f73d528b7ba810c"
+    }
+  },
+  "records": [
+    {
+      "id": "core.array_access",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0229176,
+          "min": 0.022842,
+          "max": 0.0247994,
+          "cv": 0.0035710336160853446,
+          "samples": [
+            0.0247994,
+            0.022842,
+            0.0229176,
+            0.0229404,
+            0.0231436,
+            0.0228624,
+            0.0228666
+          ],
+          "rss_kb": 62000.0
+        },
+        "clua": {
+          "median": 0.012417,
+          "min": 0.0123446,
+          "max": 0.0124454,
+          "cv": 0.003056661029234189,
+          "samples": [
+            0.012417,
+            0.0124256,
+            0.0123446,
+            0.0124052,
+            0.0124454,
+            0.0124426,
+            0.0123664
+          ],
+          "rss_kb": 102272.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.8492567632928127,
+          "min": 1.8374294761545016,
+          "max": 1.9972134976242248,
+          "rss": 0.606226533166458
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.8492567632928127,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.8492567632928127,
+          "limit": 2.14,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0229176,
+          "limit": 0.036,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.closures",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0984106,
+          "min": 0.098244,
+          "max": 0.0984344,
+          "cv": 0.0003585577163436305,
+          "samples": [
+            0.098244,
+            0.0984344,
+            0.0984106
+          ],
+          "rss_kb": 4112.0
+        },
+        "clua": {
+          "median": 0.0496488,
+          "min": 0.0495918,
+          "max": 0.049665,
+          "cv": 0.00048376033257604186,
+          "samples": [
+            0.0496488,
+            0.049665,
+            0.0495918
+          ],
+          "rss_kb": 1648.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.9819671801067151,
+          "min": 1.9787789432977232,
+          "max": 1.9844127456555318,
+          "rss": 2.495145631067961
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.9819671801067151,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.9819671801067151,
+          "limit": 2.26,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0984106,
+          "limit": 0.15,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.coroutine_switch",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0570778,
+          "min": 0.0567674,
+          "max": 0.0572852,
+          "cv": 0.0033351993244308833,
+          "samples": [
+            0.0570214,
+            0.0572852,
+            0.0571296,
+            0.0570778,
+            0.0569494,
+            0.0572568,
+            0.0567674
+          ],
+          "rss_kb": 3408.0
+        },
+        "clua": {
+          "median": 0.0272454,
+          "min": 0.0270444,
+          "max": 0.028996,
+          "cv": 0.010937721597040222,
+          "samples": [
+            0.0272454,
+            0.028996,
+            0.0270444,
+            0.0275836,
+            0.0272128,
+            0.0276676,
+            0.0270562
+          ],
+          "rss_kb": 1680.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 2.0927431208842897,
+          "min": 1.9756242240309008,
+          "max": 2.1124373252873054,
+          "rss": 2.0285714285714285
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 2.0927431208842897,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 2.0927431208842897,
+          "limit": 2.39,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0570778,
+          "limit": 0.086,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.deep_recursion",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.158656333,
+          "min": 0.158463,
+          "max": 0.158800667,
+          "cv": 0.0013487617188277885,
+          "samples": [
+            0.158656333,
+            0.158463,
+            0.158800667
+          ],
+          "rss_kb": 14608.0
+        },
+        "clua": {
+          "median": 0.0194196,
+          "min": 0.0193094,
+          "max": 0.0194216,
+          "cv": 0.0001526910955942947,
+          "samples": [
+            0.0194196,
+            0.0194216,
+            0.0193094
+          ],
+          "rss_kb": 2352.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 8.169907361634639,
+          "min": 8.159111504716398,
+          "max": 8.22400835862326,
+          "rss": 6.210884353741497
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 8.169907361634639,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 8.169907361634639,
+          "limit": 9.16,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.158656333,
+          "limit": 0.25,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.fib",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.110520333,
+          "min": 0.110216667,
+          "max": 0.112307667,
+          "cv": 0.004073596227763729,
+          "samples": [
+            0.110216667,
+            0.110520333,
+            0.112307667
+          ],
+          "rss_kb": 3280.0
+        },
+        "clua": {
+          "median": 0.0456406,
+          "min": 0.0455706,
+          "max": 0.0459012,
+          "cv": 0.0022738964868998413,
+          "samples": [
+            0.0459012,
+            0.0456406,
+            0.0455706
+          ],
+          "rss_kb": 1680.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 2.421535496904072,
+          "min": 2.40117179943008,
+          "max": 2.464476372924649,
+          "rss": 1.9523809523809523
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 2.421535496904072,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 2.421535496904072,
+          "limit": 2.76,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.110520333,
+          "limit": 0.17,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.gc_churn",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0827874,
+          "min": 0.082062,
+          "max": 0.0829928,
+          "cv": 0.0036784104827547715,
+          "samples": [
+            0.0827874,
+            0.082062,
+            0.0829928
+          ],
+          "rss_kb": 188336.0
+        },
+        "clua": {
+          "median": 0.0812462,
+          "min": 0.0804886,
+          "max": 0.0813876,
+          "cv": 0.0025803008633019115,
+          "samples": [
+            0.0804886,
+            0.0812462,
+            0.0813876
+          ],
+          "rss_kb": 2736.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.019722906192098,
+          "min": 1.0100410849984367,
+          "max": 1.028560566341072,
+          "rss": 68.83625730994152
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.019722906192098,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.019722906192098,
+          "limit": 1.2,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0827874,
+          "limit": 0.13,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.hash_access",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0195648,
+          "min": 0.0194664,
+          "max": 0.0196252,
+          "cv": 0.0024097706084397954,
+          "samples": [
+            0.0196222,
+            0.019533,
+            0.0195516,
+            0.0195718,
+            0.0194664,
+            0.0196252,
+            0.0195648
+          ],
+          "rss_kb": 4208.0
+        },
+        "clua": {
+          "median": 0.0152162,
+          "min": 0.014991,
+          "max": 0.0153266,
+          "cv": 0.01075689331107636,
+          "samples": [
+            0.0150446,
+            0.0150396,
+            0.014991,
+            0.0152162,
+            0.0153034,
+            0.0153266,
+            0.0153252
+          ],
+          "rss_kb": 1888.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.28624755195121,
+          "min": 1.272031051923102,
+          "max": 1.3042686412400462,
+          "rss": 2.2288135593220337
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.28624755195121,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.28624755195121,
+          "limit": 2.37,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0195648,
+          "limit": 0.032,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.method_dispatch",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.188711667,
+          "min": 0.188221333,
+          "max": 0.189783333,
+          "cv": 0.0038522747425044643,
+          "samples": [
+            0.188221333,
+            0.188711667,
+            0.189783333
+          ],
+          "rss_kb": 4112.0
+        },
+        "clua": {
+          "median": 0.104991667,
+          "min": 0.103006,
+          "max": 0.106166667,
+          "cv": 0.016592316797865624,
+          "samples": [
+            0.103006,
+            0.104991667,
+            0.106166667
+          ],
+          "rss_kb": 1664.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.7973966162476496,
+          "min": 1.7875981074172742,
+          "max": 1.8272851387297826,
+          "rss": 2.4711538461538463
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.7973966162476496,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.7973966162476496,
+          "limit": 2.1,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.188711667,
+          "limit": 0.29,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.numeric_loop",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.056587,
+          "min": 0.0564682,
+          "max": 0.056804,
+          "cv": 0.0030392422287804106,
+          "samples": [
+            0.056742,
+            0.0564682,
+            0.056471,
+            0.0564868,
+            0.056804,
+            0.0566748,
+            0.056587
+          ],
+          "rss_kb": 3216.0
+        },
+        "clua": {
+          "median": 0.0359724,
+          "min": 0.0345358,
+          "max": 0.0366284,
+          "cv": 0.027036995029522504,
+          "samples": [
+            0.0366284,
+            0.036393,
+            0.034567,
+            0.0359724,
+            0.0346046,
+            0.0363884,
+            0.0345358
+          ],
+          "rss_kb": 1664.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.5702816603840721,
+          "min": 1.5491258149414118,
+          "max": 1.6415158678326003,
+          "rss": 1.9326923076923077
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.5702816603840721,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.5702816603840721,
+          "limit": 1.9,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.056587,
+          "limit": 0.086,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.pcall_error",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.7106045,
+          "min": 0.709839,
+          "max": 0.7128845,
+          "cv": 0.0015971335672655634,
+          "samples": [
+            0.7128845,
+            0.7106045,
+            0.709839
+          ],
+          "rss_kb": 4128.0
+        },
+        "clua": {
+          "median": 0.0191798,
+          "min": 0.0191074,
+          "max": 0.01927,
+          "cv": 0.0055965255112149425,
+          "samples": [
+            0.01927,
+            0.0191074,
+            0.0191798
+          ],
+          "rss_kb": 1680.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 37.0097185580663,
+          "min": 36.99452516865595,
+          "max": 37.190015386708815,
+          "rss": 2.4571428571428573
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 37.0097185580663,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 37.0097185580663,
+          "limit": 41.27,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.7106045,
+          "limit": 1.1,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.sieve",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.003131,
+          "min": 0.0031174,
+          "max": 0.0031646,
+          "cv": 0.006345206004471518,
+          "samples": [
+            0.0031174,
+            0.0031482,
+            0.003131,
+            0.0031646,
+            0.0031176,
+            0.0031432,
+            0.0031248
+          ],
+          "rss_kb": 7200.0
+        },
+        "clua": {
+          "median": 0.0023406,
+          "min": 0.0023262,
+          "max": 0.0023624,
+          "cv": 0.005954216867469955,
+          "samples": [
+            0.0023624,
+            0.0023262,
+            0.0023338,
+            0.0023574,
+            0.0023494,
+            0.0023406,
+            0.0023312
+          ],
+          "rss_kb": 8016.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.3415888250921244,
+          "min": 1.3195902472062309,
+          "max": 1.353366004642765,
+          "rss": 0.8982035928143712
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.3415888250921244,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.3415888250921244,
+          "limit": 2.25,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.003131,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.string_manip",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.006426,
+          "min": 0.0064058,
+          "max": 0.0064392,
+          "cv": 0.002168758169934568,
+          "samples": [
+            0.0064196,
+            0.006426,
+            0.0064354,
+            0.006414,
+            0.0064058,
+            0.0064308,
+            0.0064392
+          ],
+          "rss_kb": 4096.0
+        },
+        "clua": {
+          "median": 0.0106702,
+          "min": 0.0106128,
+          "max": 0.0107476,
+          "cv": 0.0074753875278813445,
+          "samples": [
+            0.0106128,
+            0.0107476,
+            0.0106702,
+            0.0106642,
+            0.0106164,
+            0.0107278,
+            0.0106714
+          ],
+          "rss_kb": 1664.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 0.6031189668422335,
+          "min": 0.5979009267185232,
+          "max": 0.6048922056384742,
+          "rss": 2.4615384615384617
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 0.6031189668422335,
+          "limit": 1.0,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 0.6031189668422335,
+          "limit": 1.05,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.006426,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.string_ops",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0340844,
+          "min": 0.0340388,
+          "max": 0.0344704,
+          "cv": 0.0014963279388809968,
+          "samples": [
+            0.0340696,
+            0.0344704,
+            0.0341188,
+            0.0340388,
+            0.0340844,
+            0.0341232,
+            0.0340836
+          ],
+          "rss_kb": 4112.0
+        },
+        "clua": {
+          "median": 0.0147172,
+          "min": 0.0146706,
+          "max": 0.0148992,
+          "cv": 0.003807944445954322,
+          "samples": [
+            0.0146706,
+            0.0148992,
+            0.0147684,
+            0.0147172,
+            0.0147092,
+            0.0146794,
+            0.0147392
+          ],
+          "rss_kb": 1664.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 2.313573883161512,
+          "min": 2.3102570352915683,
+          "max": 2.3245636742646156,
+          "rss": 2.4711538461538463
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 2.313573883161512,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 2.313573883161512,
+          "limit": 2.63,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0340844,
+          "limit": 0.052,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.table_insert_remove",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.061843667,
+          "min": 0.061477667,
+          "max": 0.062169,
+          "cv": 0.004874573588917358,
+          "samples": [
+            0.061570333,
+            0.062047,
+            0.061843667,
+            0.061770333,
+            0.061477667,
+            0.061866667,
+            0.062169
+          ],
+          "rss_kb": 52896.0
+        },
+        "clua": {
+          "median": 0.0565168,
+          "min": 0.0559276,
+          "max": 0.0590658,
+          "cv": 0.015456429238739581,
+          "samples": [
+            0.0590658,
+            0.0583844,
+            0.0577926,
+            0.0563964,
+            0.0559276,
+            0.0565168,
+            0.056018
+          ],
+          "rss_kb": 58448.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.09465976488407,
+          "min": 1.0424024223831727,
+          "max": 1.109803991574137,
+          "rss": 0.9050095811661648
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.09465976488407,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.09465976488407,
+          "limit": 1.29,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.061843667,
+          "limit": 0.094,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "core.table_sort",
+      "group": "core",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0401578,
+          "min": 0.0401266,
+          "max": 0.0402382,
+          "cv": 0.0008786806050131281,
+          "samples": [
+            0.0401338,
+            0.0402382,
+            0.0401816,
+            0.0401754,
+            0.0401266,
+            0.0401566,
+            0.0401578
+          ],
+          "rss_kb": 24112.0
+        },
+        "clua": {
+          "median": 0.0422102,
+          "min": 0.042011,
+          "max": 0.0424838,
+          "cv": 0.006132687359927358,
+          "samples": [
+            0.0422852,
+            0.042011,
+            0.0424838,
+            0.0424372,
+            0.0422102,
+            0.042089,
+            0.0420356
+          ],
+          "rss_kb": 9296.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 0.9506375236317287,
+          "min": 0.9458099322565306,
+          "max": 0.9578015281711934,
+          "rss": 2.593803786574871
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 0.9506375236317287,
+          "limit": 1.0,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 0.9506375236317287,
+          "limit": 1.15,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0401578,
+          "limit": 0.062,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.bintrees",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.160382,
+          "min": 0.160133,
+          "max": 0.160883,
+          "cv": 0.0008227319774040011,
+          "samples": [
+            0.160883,
+            0.160382,
+            0.160293,
+            0.160133,
+            0.160446
+          ],
+          "rss_kb": 53552.0
+        },
+        "clua": {
+          "median": 0.090484,
+          "min": 0.09010699999999999,
+          "max": 0.10130299999999999,
+          "cv": 0.006177226913045438,
+          "samples": [
+            0.10130299999999999,
+            0.091475,
+            0.09021,
+            0.09010699999999999,
+            0.090484
+          ],
+          "rss_kb": 6592.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.7731974713761551,
+          "min": 1.5881365803579361,
+          "max": 1.777142730309521,
+          "rss": 8.12378640776699
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.7731974713761551,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.7731974713761551,
+          "limit": 2.33,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.160382,
+          "limit": 0.25,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.closures",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.15992099999999998,
+          "min": 0.159903,
+          "max": 0.161662,
+          "cv": 0.00016687489447905865,
+          "samples": [
+            0.160401,
+            0.159903,
+            0.15992099999999998,
+            0.161662,
+            0.159909
+          ],
+          "rss_kb": 4048.0
+        },
+        "clua": {
+          "median": 0.07585599999999999,
+          "min": 0.07436599999999999,
+          "max": 0.076054,
+          "cv": 0.0038698955916474046,
+          "samples": [
+            0.07436599999999999,
+            0.074969,
+            0.07585599999999999,
+            0.076054,
+            0.076037
+          ],
+          "rss_kb": 1632.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 2.1256212690982723,
+          "min": 2.1030419401081053,
+          "max": 2.1569131054514163,
+          "rss": 2.480392156862745
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 2.1256212690982723,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 2.1256212690982723,
+          "limit": 2.63,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.15992099999999998,
+          "limit": 0.25,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.coro",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.06379499999999999,
+          "min": 0.063258,
+          "max": 0.063948,
+          "cv": 0.003555730072890056,
+          "samples": [
+            0.063258,
+            0.06390199999999999,
+            0.063567,
+            0.06379499999999999,
+            0.063948
+          ],
+          "rss_kb": 3232.0
+        },
+        "clua": {
+          "median": 0.029560999999999997,
+          "min": 0.029394999999999998,
+          "max": 0.0304,
+          "cv": 0.008325550556476413,
+          "samples": [
+            0.029427,
+            0.029771,
+            0.029394999999999998,
+            0.0304,
+            0.029560999999999997
+          ],
+          "rss_kb": 1632.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 2.1496584769089613,
+          "min": 2.098519736842105,
+          "max": 2.1632556408781847,
+          "rss": 1.9803921568627452
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 2.1496584769089613,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 2.1496584769089613,
+          "limit": 2.66,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.06379499999999999,
+          "limit": 0.096,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.mandel",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.031594,
+          "min": 0.031493,
+          "max": 0.0319,
+          "cv": 0.004739589795530652,
+          "samples": [
+            0.0319,
+            0.031594,
+            0.03154,
+            0.031722,
+            0.031493
+          ],
+          "rss_kb": 3168.0
+        },
+        "clua": {
+          "median": 0.016047,
+          "min": 0.015783,
+          "max": 0.017123,
+          "cv": 0.02439125070106565,
+          "samples": [
+            0.01602,
+            0.016887,
+            0.017123,
+            0.015783,
+            0.016047
+          ],
+          "rss_kb": 1648.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.9625475166697828,
+          "min": 1.8419669450446767,
+          "max": 2.0098840524615094,
+          "rss": 1.9223300970873787
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.9625475166697828,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.9625475166697828,
+          "limit": 2.46,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.031594,
+          "limit": 0.048,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.matmul",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.010595,
+          "min": 0.010539999999999999,
+          "max": 0.010813,
+          "cv": 0.0018191411042945986,
+          "samples": [
+            0.010595,
+            0.010582,
+            0.010596999999999999,
+            0.010539999999999999,
+            0.010813
+          ],
+          "rss_kb": 4864.0
+        },
+        "clua": {
+          "median": 0.007260999999999999,
+          "min": 0.007094,
+          "max": 0.0076619999999999995,
+          "cv": 0.02899451866134119,
+          "samples": [
+            0.007094,
+            0.007119,
+            0.007260999999999999,
+            0.0073219999999999995,
+            0.0076619999999999995
+          ],
+          "rss_kb": 2192.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.4594408483679935,
+          "min": 1.4112503262855651,
+          "max": 1.4935156470256556,
+          "rss": 2.218978102189781
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.4594408483679935,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.4594408483679935,
+          "limit": 2.46,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.010595,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.oop",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.376274,
+          "min": 0.375655,
+          "max": 0.379585,
+          "cv": 0.002438992330057276,
+          "samples": [
+            0.376028,
+            0.377824,
+            0.376274,
+            0.375655,
+            0.379585
+          ],
+          "rss_kb": 4064.0
+        },
+        "clua": {
+          "median": 0.21345199999999998,
+          "min": 0.209339,
+          "max": 0.217691,
+          "cv": 0.02365747615388954,
+          "samples": [
+            0.21345199999999998,
+            0.212233,
+            0.216858,
+            0.209339,
+            0.217691
+          ],
+          "rss_kb": 1632.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.7616513314468827,
+          "min": 1.7351169889974085,
+          "max": 1.7944816780437474,
+          "rss": 2.4901960784313726
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.7616513314468827,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.7616513314468827,
+          "limit": 2.24,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.376274,
+          "limit": 0.57,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.pairs",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.11524799999999999,
+          "min": 0.114683,
+          "max": 0.116418,
+          "cv": 0.0072684037900874136,
+          "samples": [
+            0.116418,
+            0.11524799999999999,
+            0.114683,
+            0.116219,
+            0.11493199999999999
+          ],
+          "rss_kb": 44704.0
+        },
+        "clua": {
+          "median": 0.19308899999999998,
+          "min": 0.18766599999999997,
+          "max": 0.20030099999999998,
+          "cv": 0.03953569286701977,
+          "samples": [
+            0.19308899999999998,
+            0.18794,
+            0.18766599999999997,
+            0.194567,
+            0.20030099999999998
+          ],
+          "rss_kb": 34928.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 0.6029240402094371,
+          "min": 0.5737964363632733,
+          "max": 0.6132169841438757,
+          "rss": 1.2798900595510765
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 0.6029240402094371,
+          "limit": 1.0,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 0.6029240402094371,
+          "limit": 0.84,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.11524799999999999,
+          "limit": 0.18,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.queens",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.006395,
+          "min": 0.006351,
+          "max": 0.006717,
+          "cv": 0.010200844409695022,
+          "samples": [
+            0.006627,
+            0.006385,
+            0.006351,
+            0.006717,
+            0.006395
+          ],
+          "rss_kb": 3168.0
+        },
+        "clua": {
+          "median": 0.003973,
+          "min": 0.003786,
+          "max": 0.004212,
+          "cv": 0.013807248930279277,
+          "samples": [
+            0.003786,
+            0.004212,
+            0.003981999999999999,
+            0.003973,
+            0.003936
+          ],
+          "rss_kb": 1648.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.6247459349593494,
+          "min": 1.5159069325735994,
+          "max": 1.7503961965134707,
+          "rss": 1.9223300970873787
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.6247459349593494,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.6247459349593494,
+          "limit": 2.84,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.006395,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.sort",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.24991999999999998,
+          "min": 0.24855899999999997,
+          "max": 0.25237899999999996,
+          "cv": 0.00807385803457107,
+          "samples": [
+            0.25133,
+            0.24948499999999998,
+            0.25237899999999996,
+            0.24855899999999997,
+            0.24991999999999998
+          ],
+          "rss_kb": 39872.0
+        },
+        "clua": {
+          "median": 1.18244,
+          "min": 1.172908,
+          "max": 1.2065940000000002,
+          "cv": 0.011951678901254873,
+          "samples": [
+            1.197666,
+            1.1778870000000001,
+            1.2065940000000002,
+            1.172908,
+            1.18244
+          ],
+          "rss_kb": 14464.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 0.21135956158452013,
+          "min": 0.20916646361576466,
+          "max": 0.21191687668598044,
+          "rss": 2.756637168141593
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 0.21135956158452013,
+          "limit": 1.0,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 0.21135956158452013,
+          "limit": 0.36,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.24991999999999998,
+          "limit": 0.38,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.strings",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.230238,
+          "min": 0.228439,
+          "max": 0.23081799999999997,
+          "cv": 0.003734865660750852,
+          "samples": [
+            0.23081799999999997,
+            0.230238,
+            0.230626,
+            0.228439,
+            0.22883699999999998
+          ],
+          "rss_kb": 55808.0
+        },
+        "clua": {
+          "median": 0.199474,
+          "min": 0.198348,
+          "max": 0.19985899999999998,
+          "cv": 0.0023858477796604174,
+          "samples": [
+            0.19985899999999998,
+            0.199474,
+            0.198348,
+            0.199203,
+            0.199795
+          ],
+          "rss_kb": 39152.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.154225613363145,
+          "min": 1.1453589929677919,
+          "max": 1.1627341843628372,
+          "rss": 1.4254188802615448
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.154225613363145,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.154225613363145,
+          "limit": 1.51,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.230238,
+          "limit": 0.35,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "programs.varargs",
+      "group": "programs",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.058516,
+          "min": 0.058135,
+          "max": 0.059018,
+          "cv": 0.009653267482397962,
+          "samples": [
+            0.058961999999999994,
+            0.058135,
+            0.059018,
+            0.058322,
+            0.058516
+          ],
+          "rss_kb": 4048.0
+        },
+        "clua": {
+          "median": 0.038737999999999995,
+          "min": 0.038612,
+          "max": 0.038916,
+          "cv": 0.003521069750632523,
+          "samples": [
+            0.038704,
+            0.038829999999999996,
+            0.038737999999999995,
+            0.038612,
+            0.038916
+          ],
+          "rss_kb": 1696.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.5104630684761213,
+          "min": 1.4971671388101984,
+          "max": 1.5235169600908671,
+          "rss": 2.3867924528301887
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.5104630684761213,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.5104630684761213,
+          "limit": 1.92,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.058516,
+          "limit": 0.089,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.coroutines",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.005357,
+          "min": 0.005204,
+          "max": 0.005867,
+          "cv": 0.04234418517827128,
+          "samples": [
+            0.005204,
+            0.005867,
+            0.005357
+          ],
+          "rss_kb": 9216.0
+        },
+        "clua": {
+          "median": 0.002303,
+          "min": 0.002209,
+          "max": 0.002339,
+          "cv": 0.02317568389057751,
+          "samples": [
+            0.002209,
+            0.002303,
+            0.002339
+          ],
+          "rss_kb": 1968.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 2.355817111815301,
+          "min": 2.2902949978623344,
+          "max": 2.5475466782457663,
+          "rss": 4.682926829268292
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 2.355817111815301,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 2.355817111815301,
+          "limit": 3.35,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.005357,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.deepframes",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.081831,
+          "min": 0.081569,
+          "max": 0.083949,
+          "cv": 0.004746870990211503,
+          "samples": [
+            0.081831,
+            0.083949,
+            0.081569
+          ],
+          "rss_kb": 175424.0
+        },
+        "clua": {
+          "median": 0.041554999999999995,
+          "min": 0.039913,
+          "max": 0.042842,
+          "cv": 0.045917607989411746,
+          "samples": [
+            0.039913,
+            0.042842,
+            0.041554999999999995
+          ],
+          "rss_kb": 51184.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.9629166165323069,
+          "min": 1.95950235749965,
+          "max": 2.0502342595144443,
+          "rss": 3.42732103782432
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.9629166165323069,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.9629166165323069,
+          "limit": 2.59,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.081831,
+          "limit": 0.13,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.errors",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.004533,
+          "min": 0.004516,
+          "max": 0.0047279999999999996,
+          "cv": 0.005560158835208358,
+          "samples": [
+            0.0047279999999999996,
+            0.004533,
+            0.004516
+          ],
+          "rss_kb": 3904.0
+        },
+        "clua": {
+          "median": 0.002411,
+          "min": 0.002244,
+          "max": 0.002811,
+          "cv": 0.10269357113231029,
+          "samples": [
+            0.002411,
+            0.002244,
+            0.002811
+          ],
+          "rss_kb": 1952.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.9610120282040646,
+          "min": 1.606545713269299,
+          "max": 2.020053475935829,
+          "rss": 2.0
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.9610120282040646,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.9610120282040646,
+          "limit": 2.99,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.004533,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.fastpaths",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.042097,
+          "min": 0.0418,
+          "max": 0.042231,
+          "cv": 0.004719300662754897,
+          "samples": [
+            0.0418,
+            0.042231,
+            0.042097
+          ],
+          "rss_kb": 12144.0
+        },
+        "clua": {
+          "median": 0.027153,
+          "min": 0.027143,
+          "max": 0.027596,
+          "cv": 0.0005460170146944866,
+          "samples": [
+            0.027143,
+            0.027153,
+            0.027596
+          ],
+          "rss_kb": 1888.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.539991894779501,
+          "min": 1.5254747064792,
+          "max": 1.5552977571539055,
+          "rss": 6.432203389830509
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.539991894779501,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.539991894779501,
+          "limit": 1.97,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.042097,
+          "limit": 0.064,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.fuzz_expr",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.029382,
+          "min": 0.029297,
+          "max": 0.030025999999999997,
+          "cv": 0.004289054523177368,
+          "samples": [
+            0.029297,
+            0.029382,
+            0.030025999999999997
+          ],
+          "rss_kb": 11952.0
+        },
+        "clua": {
+          "median": 0.014093999999999999,
+          "min": 0.013597,
+          "max": 0.014110999999999999,
+          "cv": 0.001788292890591705,
+          "samples": [
+            0.014093999999999999,
+            0.013597,
+            0.014110999999999999
+          ],
+          "rss_kb": 1840.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 2.127843526326979,
+          "min": 2.078685965659146,
+          "max": 2.1609178495256307,
+          "rss": 6.495652173913044
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 2.127843526326979,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 2.127843526326979,
+          "limit": 2.67,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.029382,
+          "limit": 0.045,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.fuzz_table",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.008556,
+          "min": 0.008468999999999999,
+          "max": 0.009283,
+          "cv": 0.015075525946704115,
+          "samples": [
+            0.008556,
+            0.009283,
+            0.008468999999999999
+          ],
+          "rss_kb": 4592.0
+        },
+        "clua": {
+          "median": 0.004469,
+          "min": 0.004331,
+          "max": 0.004536999999999999,
+          "cv": 0.022559140747370605,
+          "samples": [
+            0.004469,
+            0.004536999999999999,
+            0.004331
+          ],
+          "rss_kb": 1872.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.955437543292542,
+          "min": 1.9145222644886999,
+          "max": 2.0460656821688343,
+          "rss": 2.452991452991453
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.955437543292542,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.955437543292542,
+          "limit": 3.07,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.008556,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.int_float",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0048449999999999995,
+          "min": 0.004774,
+          "max": 0.004850999999999999,
+          "cv": 0.001836037151702765,
+          "samples": [
+            0.004774,
+            0.004850999999999999,
+            0.0048449999999999995
+          ],
+          "rss_kb": 3968.0
+        },
+        "clua": {
+          "median": 0.002875,
+          "min": 0.002802,
+          "max": 0.0033689999999999996,
+          "cv": 0.03764514782608703,
+          "samples": [
+            0.0033689999999999996,
+            0.002802,
+            0.002875
+          ],
+          "rss_kb": 1776.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.6852173913043478,
+          "min": 1.417037696645889,
+          "max": 1.7312633832976445,
+          "rss": 2.234234234234234
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.6852173913043478,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.6852173913043478,
+          "limit": 2.7,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0048449999999999995,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.io_os",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.012357,
+          "min": 0.011826999999999999,
+          "max": 0.012688,
+          "cv": 0.03971357125515898,
+          "samples": [
+            0.012357,
+            0.011826999999999999,
+            0.012688
+          ],
+          "rss_kb": 3872.0
+        },
+        "clua": {
+          "median": 0.010286,
+          "min": 0.010075,
+          "max": 0.011165,
+          "cv": 0.03041304685980936,
+          "samples": [
+            0.010286,
+            0.011165,
+            0.010075
+          ],
+          "rss_kb": 2032.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.2013416293991834,
+          "min": 1.0592924317062247,
+          "max": 1.2593548387096773,
+          "rss": 1.905511811023622
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.2013416293991834,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.2013416293991834,
+          "limit": 1.97,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.012357,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.limits",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.10438099999999999,
+          "min": 0.104051,
+          "max": 0.105726,
+          "cv": 0.004687232350714928,
+          "samples": [
+            0.105726,
+            0.104051,
+            0.10438099999999999
+          ],
+          "rss_kb": 274016.0
+        },
+        "clua": {
+          "median": 0.080174,
+          "min": 0.07926399999999999,
+          "max": 0.080695,
+          "cv": 0.009634477511412817,
+          "samples": [
+            0.07926399999999999,
+            0.080695,
+            0.080174
+          ],
+          "rss_kb": 83632.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.301930800508893,
+          "min": 1.289435528843175,
+          "max": 1.3338463867581754,
+          "rss": 3.276449206045533
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.301930800508893,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.301930800508893,
+          "limit": 1.74,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.10438099999999999,
+          "limit": 0.17,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.load_dump",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0047409999999999996,
+          "min": 0.004521,
+          "max": 0.005541,
+          "cv": 0.06879814385150804,
+          "samples": [
+            0.005541,
+            0.004521,
+            0.0047409999999999996
+          ],
+          "rss_kb": 4432.0
+        },
+        "clua": {
+          "median": 0.002744,
+          "min": 0.002528,
+          "max": 0.003603,
+          "cv": 0.11670612244897963,
+          "samples": [
+            0.002744,
+            0.002528,
+            0.003603
+          ],
+          "rss_kb": 2064.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.7883702531645569,
+          "min": 1.3158479045240077,
+          "max": 2.0193148688046647,
+          "rss": 2.147286821705426
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.7883702531645569,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.7883702531645569,
+          "limit": 2.84,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0047409999999999996,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.metamethods",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0038859999999999997,
+          "min": 0.003728,
+          "max": 0.0038919999999999996,
+          "cv": 0.0022891405043746517,
+          "samples": [
+            0.0038859999999999997,
+            0.003728,
+            0.0038919999999999996
+          ],
+          "rss_kb": 3712.0
+        },
+        "clua": {
+          "median": 0.002123,
+          "min": 0.001961,
+          "max": 0.00287,
+          "cv": 0.11313292510598198,
+          "samples": [
+            0.002123,
+            0.001961,
+            0.00287
+          ],
+          "rss_kb": 1728.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.830428638718794,
+          "min": 1.3560975609756096,
+          "max": 1.9010708822029576,
+          "rss": 2.1481481481481484
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.830428638718794,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.830428638718794,
+          "limit": 2.68,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0038859999999999997,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.random_math",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.003521,
+          "min": 0.003405,
+          "max": 0.0035909999999999996,
+          "cv": 0.02947514910536769,
+          "samples": [
+            0.0035909999999999996,
+            0.003521,
+            0.003405
+          ],
+          "rss_kb": 3472.0
+        },
+        "clua": {
+          "median": 0.002113,
+          "min": 0.002052,
+          "max": 0.002882,
+          "cv": 0.042801041173686605,
+          "samples": [
+            0.002113,
+            0.002052,
+            0.002882
+          ],
+          "rss_kb": 1696.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.6994794131566493,
+          "min": 1.18147120055517,
+          "max": 1.71588693957115,
+          "rss": 2.047169811320755
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.6994794131566493,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.6994794131566493,
+          "limit": 2.57,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.003521,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.strings",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.003687,
+          "min": 0.003652,
+          "max": 0.0038669999999999998,
+          "cv": 0.014074043938161229,
+          "samples": [
+            0.0038669999999999998,
+            0.003687,
+            0.003652
+          ],
+          "rss_kb": 3568.0
+        },
+        "clua": {
+          "median": 0.002375,
+          "min": 0.002144,
+          "max": 0.0030229999999999996,
+          "cv": 0.14420235789473676,
+          "samples": [
+            0.002375,
+            0.002144,
+            0.0030229999999999996
+          ],
+          "rss_kb": 1712.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.6282105263157893,
+          "min": 1.2080714521998017,
+          "max": 1.7196828358208955,
+          "rss": 2.0841121495327104
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.6282105263157893,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.6282105263157893,
+          "limit": 2.5,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.003687,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.tables",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.003951,
+          "min": 0.0037669999999999995,
+          "max": 0.004116,
+          "cv": 0.06191571753986341,
+          "samples": [
+            0.003951,
+            0.004116,
+            0.0037669999999999995
+          ],
+          "rss_kb": 3664.0
+        },
+        "clua": {
+          "median": 0.002549,
+          "min": 0.002413,
+          "max": 0.003152,
+          "cv": 0.07910302079246753,
+          "samples": [
+            0.002549,
+            0.002413,
+            0.003152
+          ],
+          "rss_kb": 1840.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.550019615535504,
+          "min": 1.1951142131979695,
+          "max": 1.705760464152507,
+          "rss": 1.991304347826087
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.550019615535504,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.550019615535504,
+          "limit": 2.51,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.003951,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.tbc_goto",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0036759999999999996,
+          "min": 0.003603,
+          "max": 0.003766,
+          "cv": 0.029442274211098907,
+          "samples": [
+            0.0036759999999999996,
+            0.003766,
+            0.003603
+          ],
+          "rss_kb": 3600.0
+        },
+        "clua": {
+          "median": 0.002085,
+          "min": 0.002051,
+          "max": 0.002571,
+          "cv": 0.024176690647482138,
+          "samples": [
+            0.002085,
+            0.002051,
+            0.002571
+          ],
+          "rss_kb": 1712.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.7630695443645081,
+          "min": 1.4014002333722286,
+          "max": 1.8361774744027304,
+          "rss": 2.102803738317757
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.7630695443645081,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.7630695443645081,
+          "limit": 2.71,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0036759999999999996,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.weak_gc",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.013429,
+          "min": 0.01341,
+          "max": 0.014117999999999999,
+          "cv": 0.002097654330180943,
+          "samples": [
+            0.01341,
+            0.013429,
+            0.014117999999999999
+          ],
+          "rss_kb": 11600.0
+        },
+        "clua": {
+          "median": 0.00861,
+          "min": 0.008480999999999999,
+          "max": 0.009042999999999999,
+          "cv": 0.022213170731707428,
+          "samples": [
+            0.009042999999999999,
+            0.00861,
+            0.008480999999999999
+          ],
+          "rss_kb": 5312.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.5596980255516841,
+          "min": 1.4829149618489441,
+          "max": 1.6646621860629642,
+          "rss": 2.183734939759036
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.5596980255516841,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.5596980255516841,
+          "limit": 2.72,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.013429,
+          "limit": 0.023,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.workloads",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.239233,
+          "min": 0.238565,
+          "max": 0.242897,
+          "cv": 0.004139800111188685,
+          "samples": [
+            0.239233,
+            0.238565,
+            0.242897
+          ],
+          "rss_kb": 25008.0
+        },
+        "clua": {
+          "median": 0.122292,
+          "min": 0.12024099999999999,
+          "max": 0.122469,
+          "cv": 0.0021458492787753487,
+          "samples": [
+            0.12024099999999999,
+            0.122469,
+            0.122292
+          ],
+          "rss_kb": 11872.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.9862051483334968,
+          "min": 1.9479623414904996,
+          "max": 1.989612528172587,
+          "rss": 2.106469002695418
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.9862051483334968,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.9862051483334968,
+          "limit": 2.52,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.239233,
+          "limit": 0.37,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "regression.wrapcalls",
+      "group": "regression",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.005422,
+          "min": 0.004852,
+          "max": 0.007674,
+          "cv": 0.1558616746587973,
+          "samples": [
+            0.004852,
+            0.005422,
+            0.007674
+          ],
+          "rss_kb": 3824.0
+        },
+        "clua": {
+          "median": 0.0038269999999999997,
+          "min": 0.002819,
+          "max": 0.005255999999999999,
+          "cv": 0.39050452051215045,
+          "samples": [
+            0.005255999999999999,
+            0.0038269999999999997,
+            0.002819
+          ],
+          "rss_kb": 1744.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.416775542200157,
+          "min": 0.9231354642313548,
+          "max": 2.7222419297623275,
+          "rss": 2.1926605504587156
+        }
+      },
+      "noisy": true,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.416775542200157,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.416775542200157,
+          "limit": 2.8,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.005422,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "startup.empty",
+      "group": "startup",
+      "kind": "process",
+      "runs": 15,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.002874,
+          "min": 0.002575,
+          "max": 0.004031,
+          "cv": 0.014444258872651486,
+          "samples": [
+            0.003118,
+            0.002575,
+            0.002877,
+            0.002874,
+            0.0028459999999999996,
+            0.004031,
+            0.0028629999999999997,
+            0.002889,
+            0.0032519999999999997,
+            0.0029219999999999997,
+            0.0028599999999999997,
+            0.002809,
+            0.003107,
+            0.0028699999999999997,
+            0.002874
+          ],
+          "rss_kb": 3056.0
+        },
+        "clua": {
+          "median": 0.0019169999999999999,
+          "min": 0.001669,
+          "max": 0.0024939999999999997,
+          "cv": 0.09976807511737106,
+          "samples": [
+            0.0024419999999999997,
+            0.0019489999999999998,
+            0.0024939999999999997,
+            0.001669,
+            0.002046,
+            0.0019169999999999999,
+            0.002043,
+            0.0018609999999999998,
+            0.002438,
+            0.001754,
+            0.001905,
+            0.00178,
+            0.00182,
+            0.002079,
+            0.001882
+          ],
+          "rss_kb": 1584.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.5013123359580052,
+          "min": 1.1535685645549318,
+          "max": 2.1027647365675537,
+          "rss": 1.9292929292929293
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.5013123359580052,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.5013123359580052,
+          "limit": 2.58,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.002874,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "startup.stdlibs",
+      "group": "startup",
+      "kind": "process",
+      "runs": 15,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.00292,
+          "min": 0.002806,
+          "max": 0.003647,
+          "cv": 0.045696575342465656,
+          "samples": [
+            0.0034729999999999995,
+            0.00292,
+            0.002881,
+            0.0030099999999999997,
+            0.00289,
+            0.0028719999999999996,
+            0.002849,
+            0.002828,
+            0.003647,
+            0.002806,
+            0.003085,
+            0.0032619999999999997,
+            0.0028899999999999998,
+            0.002979,
+            0.003176
+          ],
+          "rss_kb": 3120.0
+        },
+        "clua": {
+          "median": 0.002021,
+          "min": 0.0018039999999999998,
+          "max": 0.003228,
+          "cv": 0.11810915388421551,
+          "samples": [
+            0.00186,
+            0.002021,
+            0.001884,
+            0.0029439999999999996,
+            0.002355,
+            0.002372,
+            0.001911,
+            0.001816,
+            0.002034,
+            0.0018039999999999998,
+            0.002026,
+            0.003228,
+            0.001911,
+            0.001859,
+            0.002166
+          ],
+          "rss_kb": 1600.0
+        }
+      },
+      "ratios": {
+        "clua": {
+          "median": 1.5122972265829409,
+          "min": 1.0105328376703842,
+          "max": 1.8672043010752684,
+          "rss": 1.95
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "clua",
+          "value": 1.5122972265829409,
+          "limit": 1.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "clua",
+          "value": 1.5122972265829409,
+          "limit": 2.47,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.00292,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "datalog.incremental_updates",
+      "group": "datalog",
+      "kind": "inproc",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.211868667,
+          "min": 0.208565,
+          "max": 0.217088333,
+          "cv": 0.023118173930834308,
+          "samples": [
+            0.217088333,
+            0.211868667,
+            0.208565
+          ],
+          "rss_kb": 12064.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.211868667,
+          "limit": 0.32,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "datalog.join_triangles",
+      "group": "datalog",
+      "kind": "inproc",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.0757402,
+          "min": 0.0756132,
+          "max": 0.0762732,
+          "cv": 0.0024860008291499435,
+          "samples": [
+            0.0762732,
+            0.0756132,
+            0.0757402
+          ],
+          "rss_kb": 19456.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.0757402,
+          "limit": 0.12,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "datalog.negation_strata",
+      "group": "datalog",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.017335,
+          "min": 0.0171958,
+          "max": 0.0175834,
+          "cv": 0.0017789489472167313,
+          "samples": [
+            0.017335,
+            0.0173174,
+            0.0173142,
+            0.0175834,
+            0.0174,
+            0.0171958,
+            0.0173508
+          ],
+          "rss_kb": 11968.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.017335,
+          "limit": 0.028,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "datalog.transitive_closure",
+      "group": "datalog",
+      "kind": "inproc",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.528639,
+          "min": 0.525254,
+          "max": 0.535062,
+          "cv": 0.009493436920090947,
+          "samples": [
+            0.535062,
+            0.528639,
+            0.525254
+          ],
+          "rss_kb": 55056.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.528639,
+          "limit": 0.79,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.01_symbols",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.09773799999999999,
+          "min": 0.097592,
+          "max": 0.097785,
+          "cv": 0.0007129489042133864,
+          "samples": [
+            0.097592,
+            0.097785,
+            0.09773799999999999
+          ],
+          "rss_kb": 12016.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.09773799999999999,
+          "limit": 0.15,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.02_facts_and_relations",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.207895,
+          "min": 0.207081,
+          "max": 0.20908,
+          "cv": 0.00580502849996399,
+          "samples": [
+            0.207895,
+            0.20908,
+            0.207081
+          ],
+          "rss_kb": 220176.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.207895,
+          "limit": 0.32,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.03_transitive_closure",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 1.420005,
+          "min": 1.417439,
+          "max": 1.420712,
+          "cv": 0.0007381651473058332,
+          "samples": [
+            1.420005,
+            1.420712,
+            1.417439
+          ],
+          "rss_kb": 37520.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 1.420005,
+          "limit": 2.2,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.04_cycles",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.731799,
+          "min": 0.729938,
+          "max": 0.734961,
+          "cv": 0.0037703229985282874,
+          "samples": [
+            0.731799,
+            0.729938,
+            0.734961
+          ],
+          "rss_kb": 55088.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.731799,
+          "limit": 1.1,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.05_rule_unions",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.37454499999999996,
+          "min": 0.37435999999999997,
+          "max": 0.37630299999999994,
+          "cv": 0.0007323045294957516,
+          "samples": [
+            0.37435999999999997,
+            0.37630299999999994,
+            0.37454499999999996
+          ],
+          "rss_kb": 23296.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.37454499999999996,
+          "limit": 0.57,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.06_stratified_negation",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 2.1677720000000003,
+          "min": 2.1614229999999997,
+          "max": 2.1733949999999997,
+          "cv": 0.0038457272259256234,
+          "samples": [
+            2.1733949999999997,
+            2.1614229999999997,
+            2.1677720000000003
+          ],
+          "rss_kb": 25536.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 2.1677720000000003,
+          "limit": 3.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.07_comparisons_and_guards",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.14874199999999999,
+          "min": 0.145568,
+          "max": 0.149049,
+          "cv": 0.0030600516330290205,
+          "samples": [
+            0.149049,
+            0.14874199999999999,
+            0.145568
+          ],
+          "rss_kb": 62592.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.14874199999999999,
+          "limit": 0.22,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.08_mutation_and_invalidation",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 1.083564,
+          "min": 1.083262,
+          "max": 1.095534,
+          "cv": 0.00041321527846997156,
+          "samples": [
+            1.095534,
+            1.083564,
+            1.083262
+          ],
+          "rss_kb": 23216.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 1.083564,
+          "limit": 1.7,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.09_query_semantics",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.9954709999999999,
+          "min": 0.988517,
+          "max": 1.009067,
+          "cv": 0.010356906831037628,
+          "samples": [
+            0.9954709999999999,
+            0.988517,
+            1.009067
+          ],
+          "rss_kb": 898272.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.9954709999999999,
+          "limit": 1.6,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.10_worlds",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.5866669999999999,
+          "min": 0.5845849999999999,
+          "max": 0.591699,
+          "cv": 0.005261542237760164,
+          "samples": [
+            0.591699,
+            0.5845849999999999,
+            0.5866669999999999
+          ],
+          "rss_kb": 12032.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.5866669999999999,
+          "limit": 0.87,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.11_local_relations",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.412871,
+          "min": 0.41258,
+          "max": 0.41484,
+          "cv": 0.0010449670720393991,
+          "samples": [
+            0.41484,
+            0.41258,
+            0.412871
+          ],
+          "rss_kb": 12144.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.412871,
+          "limit": 0.62,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.12_constants_and_capture",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.20132099999999997,
+          "min": 0.20080399999999998,
+          "max": 0.204212,
+          "cv": 0.0038073732993576664,
+          "samples": [
+            0.20080399999999998,
+            0.204212,
+            0.20132099999999997
+          ],
+          "rss_kb": 14656.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.20132099999999997,
+          "limit": 0.32,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.13_errors_and_atomicity",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.587043,
+          "min": 0.5814469999999999,
+          "max": 0.590082,
+          "cv": 0.007675113066674878,
+          "samples": [
+            0.590082,
+            0.587043,
+            0.5814469999999999
+          ],
+          "rss_kb": 16032.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.587043,
+          "limit": 0.95,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.14_conjunctive_queries",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.23268499999999998,
+          "min": 0.232158,
+          "max": 0.233841,
+          "cv": 0.0033578881320238023,
+          "samples": [
+            0.232158,
+            0.23268499999999998,
+            0.233841
+          ],
+          "rss_kb": 21200.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.23268499999999998,
+          "limit": 0.37,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.15_coroutines",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.44245399999999996,
+          "min": 0.441336,
+          "max": 0.4443,
+          "cv": 0.0037462579160769923,
+          "samples": [
+            0.44245399999999996,
+            0.4443,
+            0.441336
+          ],
+          "rss_kb": 265504.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.44245399999999996,
+          "limit": 0.72,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.16_contextual_syntax",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.181396,
+          "min": 0.181251,
+          "max": 0.18201499999999998,
+          "cv": 0.0011851253610884983,
+          "samples": [
+            0.18201499999999998,
+            0.181396,
+            0.181251
+          ],
+          "rss_kb": 142912.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.181396,
+          "limit": 0.3,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.17_same_generation",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.9266099999999999,
+          "min": 0.9262679999999999,
+          "max": 0.935005,
+          "cv": 0.0005472088580957421,
+          "samples": [
+            0.9266099999999999,
+            0.935005,
+            0.9262679999999999
+          ],
+          "rss_kb": 77616.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.9266099999999999,
+          "limit": 1.6,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.18_triangles",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 2.1193910000000002,
+          "min": 2.109992,
+          "max": 2.132571,
+          "cv": 0.00657498186979195,
+          "samples": [
+            2.1193910000000002,
+            2.132571,
+            2.109992
+          ],
+          "rss_kb": 77456.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 2.1193910000000002,
+          "limit": 3.4,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "scenarios.19_grid_reachability",
+      "group": "scenarios",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 1.141236,
+          "min": 1.1408209999999999,
+          "max": 1.149372,
+          "cv": 0.0005391338864179542,
+          "samples": [
+            1.1408209999999999,
+            1.141236,
+            1.149372
+          ],
+          "rss_kb": 24000.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 1.141236,
+          "limit": 1.9,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "datalog_comp.cycle_ring",
+      "group": "datalog_comp",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.014216,
+          "min": 0.014078999999999998,
+          "max": 0.014595999999999998,
+          "cv": 0.010741966797974184,
+          "samples": [
+            0.014595999999999998,
+            0.014078999999999998,
+            0.014217,
+            0.014216,
+            0.014112999999999999
+          ],
+          "rss_kb": 11968.0
+        },
+        "souffle": {
+          "median": 0.030493999999999997,
+          "min": 0.030239999999999996,
+          "max": 0.036097,
+          "cv": 0.01234932773660396,
+          "samples": [
+            0.036097,
+            0.030782999999999998,
+            0.03034,
+            0.030493999999999997,
+            0.030239999999999996
+          ],
+          "rss_kb": 20576.0
+        }
+      },
+      "ratios": {
+        "souffle": {
+          "median": 0.4661900701777399,
+          "min": 0.4043549325428706,
+          "max": 0.46858932102834544,
+          "rss": 0.5816485225505443
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "souffle",
+          "value": 0.4661900701777399,
+          "limit": 2.0,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "souffle",
+          "value": 0.4661900701777399,
+          "limit": 0.9,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.014216,
+          "limit": 0.025,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "datalog_comp.join_triangles",
+      "group": "datalog_comp",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.07686799999999999,
+          "min": 0.07643199999999999,
+          "max": 0.07798,
+          "cv": 0.0070592652339075785,
+          "samples": [
+            0.07643199999999999,
+            0.076553,
+            0.077234,
+            0.07686799999999999,
+            0.07798
+          ],
+          "rss_kb": 8784.0
+        },
+        "souffle": {
+          "median": 0.030251999999999998,
+          "min": 0.03006,
+          "max": 0.03051,
+          "cv": 0.005635957953193203,
+          "samples": [
+            0.03051,
+            0.030366999999999998,
+            0.030139,
+            0.03006,
+            0.030251999999999998
+          ],
+          "rss_kb": 20592.0
+        }
+      },
+      "ratios": {
+        "souffle": {
+          "median": 2.557152361942781,
+          "min": 2.5051458538184197,
+          "max": 2.577680814491604,
+          "rss": 0.42657342657342656
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "souffle",
+          "value": 2.557152361942781,
+          "limit": 2.0,
+          "ok": false
+        },
+        {
+          "kind": "gate",
+          "label": "souffle",
+          "value": 2.557152361942781,
+          "limit": 3.2,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.07686799999999999,
+          "limit": 0.13,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "datalog_comp.negation_strata",
+      "group": "datalog_comp",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.020668999999999996,
+          "min": 0.020569,
+          "max": 0.020848,
+          "cv": 0.005953640717983684,
+          "samples": [
+            0.020652,
+            0.020668999999999996,
+            0.020752,
+            0.020569,
+            0.020848
+          ],
+          "rss_kb": 11808.0
+        },
+        "souffle": {
+          "median": 0.030844999999999997,
+          "min": 0.030613999999999995,
+          "max": 0.031416,
+          "cv": 0.01110327767871626,
+          "samples": [
+            0.031416,
+            0.030844999999999997,
+            0.030844999999999997,
+            0.030613999999999995,
+            0.03111
+          ],
+          "rss_kb": 20544.0
+        }
+      },
+      "ratios": {
+        "souffle": {
+          "median": 0.670138219222115,
+          "min": 0.6573720397249809,
+          "max": 0.6727832711946832,
+          "rss": 0.5747663551401869
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "souffle",
+          "value": 0.670138219222115,
+          "limit": 2.0,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "souffle",
+          "value": 0.670138219222115,
+          "limit": 0.95,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.020668999999999996,
+          "limit": 0.035,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "datalog_comp.same_generation",
+      "group": "datalog_comp",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.010023,
+          "min": 0.009877,
+          "max": 0.010191,
+          "cv": 0.010650224483687647,
+          "samples": [
+            0.010191,
+            0.009877,
+            0.010046,
+            0.009951,
+            0.010023
+          ],
+          "rss_kb": 9568.0
+        },
+        "souffle": {
+          "median": 0.030414999999999998,
+          "min": 0.030257,
+          "max": 0.031848,
+          "cv": 0.007701818181818105,
+          "samples": [
+            0.031848,
+            0.030414999999999998,
+            0.030653,
+            0.030388,
+            0.030257
+          ],
+          "rss_kb": 20576.0
+        }
+      },
+      "ratios": {
+        "souffle": {
+          "median": 0.3274647887323944,
+          "min": 0.31998869630746046,
+          "max": 0.3312621872624517,
+          "rss": 0.46500777604976673
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "souffle",
+          "value": 0.3274647887323944,
+          "limit": 2.0,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "souffle",
+          "value": 0.3274647887323944,
+          "limit": 0.7,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.010023,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "datalog_comp.tc_chain",
+      "group": "datalog_comp",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.037268,
+          "min": 0.036931,
+          "max": 0.03747299999999999,
+          "cv": 0.005569496619083444,
+          "samples": [
+            0.037268,
+            0.036931,
+            0.03747299999999999,
+            0.037332000000000004,
+            0.037128
+          ],
+          "rss_kb": 12000.0
+        },
+        "souffle": {
+          "median": 0.030697999999999996,
+          "min": 0.030295,
+          "max": 0.031723,
+          "cv": 0.011929187569222784,
+          "samples": [
+            0.030633999999999998,
+            0.030697999999999996,
+            0.030295,
+            0.030944999999999997,
+            0.031723
+          ],
+          "rss_kb": 20544.0
+        }
+      },
+      "ratios": {
+        "souffle": {
+          "median": 1.2063984488608825,
+          "min": 1.1703811114963907,
+          "max": 1.2369367882488858,
+          "rss": 0.5841121495327103
+        }
+      },
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "goal",
+          "label": "souffle",
+          "value": 1.2063984488608825,
+          "limit": 2.0,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "souffle",
+          "value": 1.2063984488608825,
+          "limit": 1.6,
+          "ok": true
+        },
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.037268,
+          "limit": 0.06,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "narrative.explain_analyze",
+      "group": "narrative",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.06804,
+          "min": 0.067832,
+          "max": 0.069127667,
+          "cv": 0.004532345679012342,
+          "samples": [
+            0.067832,
+            0.068768,
+            0.068534667,
+            0.069127667,
+            0.067994,
+            0.067919,
+            0.06804
+          ],
+          "rss_kb": 120000.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.06804,
+          "limit": 0.11,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "narrative.save_load_replay",
+      "group": "narrative",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.016784667,
+          "min": 0.016653667,
+          "max": 0.016985,
+          "cv": 0.0032094046548554393,
+          "samples": [
+            0.016784667,
+            0.016653667,
+            0.016748333,
+            0.016756,
+            0.016841667,
+            0.016985,
+            0.016807
+          ],
+          "rss_kb": 25568.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.016784667,
+          "limit": 0.028,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "narrative.session_play",
+      "group": "narrative",
+      "kind": "inproc",
+      "runs": 7,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.002625333,
+          "min": 0.002605333,
+          "max": 0.002774667,
+          "cv": 0.005082555241563581,
+          "samples": [
+            0.002625333,
+            0.002616333,
+            0.002627,
+            0.002605333,
+            0.002774667,
+            0.002619333,
+            0.002679
+          ],
+          "rss_kb": 12704.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.002625333,
+          "limit": 0.02,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "narrative_e2e.sample_game_check",
+      "group": "narrative_e2e",
+      "kind": "process",
+      "runs": 5,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.302656,
+          "min": 0.298572,
+          "max": 0.30948699999999996,
+          "cv": 0.015254336276168078,
+          "samples": [
+            0.29954200000000003,
+            0.298572,
+            0.302921,
+            0.302656,
+            0.30948699999999996
+          ],
+          "rss_kb": 322544.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.302656,
+          "limit": 0.45,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "narrative_scale.reference_game",
+      "group": "narrative_scale",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 4.347985,
+          "min": 4.345912,
+          "max": 4.647235,
+          "cv": 0.000706863018156759,
+          "samples": [
+            4.345912,
+            4.347985,
+            4.647235
+          ],
+          "rss_kb": 229376.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 4.347985,
+          "limit": 6.5,
+          "ok": true
+        }
+      ]
+    },
+    {
+      "id": "narrative_scale.wide_game",
+      "group": "narrative_scale",
+      "kind": "process",
+      "runs": 3,
+      "errors": {},
+      "binaries": {
+        "candidate": {
+          "median": 0.772538,
+          "min": 0.7659889999999999,
+          "max": 0.8129249999999999,
+          "cv": 0.012568375147889216,
+          "samples": [
+            0.8129249999999999,
+            0.772538,
+            0.7659889999999999
+          ],
+          "rss_kb": 91632.0
+        }
+      },
+      "ratios": {},
+      "noisy": false,
+      "status": "measured",
+      "findings": [
+        {
+          "kind": "gate",
+          "label": "time",
+          "value": 0.772538,
+          "limit": 1.2,
+          "ok": true
+        }
+      ]
+    }
+  ]
+}

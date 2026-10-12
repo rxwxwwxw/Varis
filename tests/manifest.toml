@@ -130,6 +130,19 @@ cases = [
   { id = "differential", command = ["python3", "tests/official/differential.py"] },
 ]
 
+# The complete sample game (ROADMAP decision D12): its own scripted check, and a golden transcript
+# with the final save text compared byte for byte.
+[[suite]]
+id = "sample-game"
+kind = "script"
+tier = "fast"
+tags = ["narrative", "sample-game"]
+timeout = 120
+cases = [
+  { id = "check", command = ["{candidate}", "tools/check.lua"], cwd = "sample-game" },
+  { id = "golden", command = ["python3", "tests/sample_game/check_golden.py", "{candidate}"] },
+]
+
 [[suite]]
 id = "selftest"
 kind = "script"

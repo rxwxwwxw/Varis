@@ -1,0 +1,43 @@
+-- Golden transcript for Saltmarsh Light: a fixed, seeded playthrough that prints every
+-- presentation and the final save text. tests/sample_game/check_golden.py compares the output
+-- byte for byte with tests/sample_game/golden.expected, so a runtime change that alters
+-- behaviour, content fingerprints or the save format is caught (ROADMAP decision D12).
+--
+--   cd sample-game && varis tools/golden.lua
+
+package.path = "./?.lua;" .. package.path
+local G = require("game")
+local s = G.new_session(42)
+
+local function show(turn, p)
+    print("== turn " .. turn)
+    for _, st in ipairs(p.storylets) do
+        print("[" .. tostring(st.id) .. "] " .. tostring(st.title))
+        print("  text: [" .. tostring(st.text) .. "]")
+        for _, c in ipairs(st.choices) do
+            print("  > " .. tostring(c.id) .. ": " .. tostring(c.title))
+        end
+    end
+end
+
+-- Deterministic policy: rotate through the offered choices so the walk covers more than
+-- the first storylet, without depending on anything but the presentation itself.
+for turn = 1, 80 do
+    if G.is_over(s) then print("== over"); break end
+    local p = s:present()
+    show(turn, p)
+    local tokens = {}
+    for _, st in ipairs(p.storylets) do
+        for _, c in ipairs(st.choices) do tokens[#tokens + 1] = c.token end
+    end
+    if #tokens == 0 then print("== no choices"); break end
+    s:choose(tokens[(turn * 7) % #tokens + 1])
+    G.sync_periods(s)
+end
+
+local saved = s:save()
+print("== save")
+print(saved)
+local restored = G.load(saved)
+assert(restored:save() == saved, "round trip must be byte-identical")
+print("== replay records " .. #s:replay_log().inputs)
