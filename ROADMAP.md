@@ -169,7 +169,9 @@ second sample written in linear visual-novel style runs; a save taken mid-scene 
 Goal: a writer starts `varis serve` in a project, opens the workbench in a browser, writes a
 storylet, sees mistakes inline, playtests it and asks why a choice is missing, without reading D
 or engine scripts. A writer who prefers their own editor gets the same diagnostics through a
-language server. Design and rationale: [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md).
+language server. Design and rationale: [AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md) for
+milestones 30–33 (stages A0–A6, and the order combined with localization) and
+[WORKBENCH_PLAN.md](WORKBENCH_PLAN.md) for milestones 42–44.
 
 | Milestone | Deliverable |
 | --- | --- |
@@ -206,7 +208,7 @@ Exit: the reference game meets its budgets on the reference machine under the re
 | Milestone | Deliverable |
 | --- | --- |
 | 38 | Undo/rollback at turn and beat granularity (§2, §3.4); persistent cross-save data (§3.5); save slots and metadata (§4.8). |
-| 39 | Localization pipeline per [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): catalogs, the publisher handoff kit, loadable translation packs, per-language text features for Chinese, Japanese, Korean, French and Russian. Built on the line ids of milestone 29 and the decisions frozen in milestone 27. |
+| 39 | Localization pipeline per [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): catalogs, the publisher handoff kit, loadable translation packs, per-language text features for Chinese, Japanese, Korean, French and Russian. Built on the line ids of milestone 29 and the decisions frozen in milestone 27. Its stage T1 (extraction and the source catalog) needs neither and starts once the project index of milestone 30 exists. |
 | 40 | Twine-class conveniences: `var` sugar, `visited`/`last_chosen`, disabled choices with reasons, rich-text spans, text input, template fragments, pass-through content metadata (§2, §4.3–§4.6). |
 | 41 | Writer documentation: a tutorial and cookbook for content authors, separate from the reference manual. |
 

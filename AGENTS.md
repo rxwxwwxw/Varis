@@ -18,7 +18,8 @@ Varis Reference Manual linked below, not here.
 | What is the project trying to become, and who decided what? | [ROADMAP.md](ROADMAP.md): direction, decision record (D1–D14), order of work, milestones, open decisions. |
 | How do we make it fast, and in what order? | [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md): measurements, design rules, stages S0, S1, W, L, X, M. |
 | What is the web workbench and its debugger? | [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md). |
-| How will localization work? | [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md). |
+| How will the checker, the language services and the writer's playtest and test tools work? | [AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md): project manifest, project index, stages A0–A6. |
+| How will localization work? | [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): workflows by role, stages T0–T5. |
 | What do the tests prove, and what is skipped? | [tests/narrative/README.md](tests/narrative/README.md), [tests/official/README.md](tests/official/README.md), [docs/STATUS.md](docs/STATUS.md) (generated). |
 | How do the benchmarks and gates work? | [benchmarks/README.md](benchmarks/README.md). |
 | How did we get here? | [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md), [benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md), [CONSOLIDATION_PLAN.md](CONSOLIDATION_PLAN.md). History only. |

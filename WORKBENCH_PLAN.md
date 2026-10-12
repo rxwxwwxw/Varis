@@ -3,7 +3,10 @@
 Status: **proposal with a first version implemented**, October 11, 2026. Section 1a says what
 exists; everything else is still the plan. It details milestones 42,
 43 and 44 of [ROADMAP.md](ROADMAP.md) Phase 10 and implements decisions D10 and D11 of the ROADMAP
-decision record. Language behaviour is defined only by the [manual](docs/README.md).
+decision record. Language behaviour is defined only by the [manual](docs/README.md). The checker and the language
+services the editor calls (milestones 30–33) are planned in
+[AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md); the language selector and translation panel
+are in [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md) §7.7.
 
 ## 1. What it is and who it is for
 

@@ -9,6 +9,24 @@ English/Arabic slice, MessageFormat 2 and UUID annotations. Its right-to-left, b
 multi-script material is deferred, not rejected; read it there if a right-to-left language is
 ever committed.
 
+Revised October 12, 2026: added what exists today (§1a) and the workflows by role (§7); the
+stages (§9) are reordered so that extraction can start on today's syntax, and renamed from
+`L0`–`L4` to `T0`–`T5`, because `L1`–`L4` are the Lua-core stages of
+[benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md). The tools this plan relies on
+(project manifest, project index, checker) are in [AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md),
+which also gives the combined order of the two plans.
+
+## 1a. What exists today
+
+| Piece | Today | Consequence |
+| --- | --- | --- |
+| Display text | `title` and `text` of storylets and choices are templates (`{name}`, `{#if query …}`, weighted `{#variant N}`); quality `label`s and `narrative.name(symbol, label)` are plain strings. All are written inline, in English. | Every storylet, choice, quality and named symbol already has an authored name, so keys can be derived for all of them now. Only scene lines (milestone 29) lack one. |
+| Rendering | `session:present()` selects, draws variants and renders in one step; the presentation holds finished strings. | There is nothing to re-render in another language (stage T3). |
+| Variants in replay | The replay log records the drawn alternatives by **zero-based index** per storylet and field (`session.d`, `logVariants`). | Naming them (§3.4) changes the replay-log format. |
+| Fingerprint | `contentFingerprint` hashes every option of a definition, `title` and `text` included. | Fixing a typo invalidates saves today (§3.6). |
+| Extraction | None. Text assembled by code is accepted silently; *Saltmarsh Light* registers its names in a loop (`qualities.lua:21`). | Stage T1 finds these before any translator does. |
+| Language selection, catalogs, plural rules | None. | |
+
 ## 1. Targets and what they imply
 
 | Fact (owner, October 11, 2026) | Consequence |
@@ -164,7 +182,7 @@ translators usually have to ask for:
   byte-wise string operations on display text are reported to the writer, not discovered by
   the translator.
 
-These are opportunities to take once the catalog pipeline exists, not commitments of stage L2.
+These are opportunities to take once the catalog pipeline exists, not commitments of stage T3.
 
 ### 6.4 Handoff kit
 
@@ -203,7 +221,126 @@ Folded into the planned tools rather than a separate suite of commands:
 Machine translation or translation memory is the publisher's business; anything imported
 arrives as draft and is never marked reviewed automatically.
 
-## 7. Saves, replay and versions
+## 7. Workflows
+
+Who does what, with which command, and what is kept where. This is the target; §9 says which
+stage delivers each command. Commands are proposals. Every command
+reads the project manifest (`project.lua`, AUTHORING_TOOLS_PLAN §3.2) for the package id, the
+source language and the list of locales.
+
+### 7.1 Files
+
+| Path | Written by | In the repository | Holds |
+| --- | --- | --- | --- |
+| `l10n/source.json` | `varis l10n extract` | Yes | Every message of the package: key, source text, revision hash, arguments and their kinds, context. Never edited by hand. |
+| `l10n/<locale>.json` | `varis l10n import`, the workbench | Yes | Translations for one language: key, text, status, the source revision that was translated. |
+| `l10n/glossary.json` | The owner or lead writer | Yes | Names and recurring terms with grammatical attributes and notes. |
+| `kit/` | `varis l10n export` | No (sent out) | A handoff kit (§6.4) with a **kit id**: the hash of the source catalog it was made from. |
+| `packs/<locale>/` | `varis l10n build` | No (build output) | A compiled language pack (§6.5) and the list of characters it uses. |
+
+A translation's status is one of `untranslated`, `draft`, `reviewed`, `stale`. Only an explicit
+review step sets `reviewed`. Only a source change sets `stale`.
+
+### 7.2 The writer, every day
+
+Nothing new to type. The writer writes English text inline as now.
+
+- `varis check` (and the workbench problems list) reports text that cannot be translated: a title
+  or text built by code (`computed-text`), a placeholder that is not a parameter.
+- Optional: a `note "…"` field on a storylet, choice or line, shown to translators and never to
+  players. This is new content syntax, so it is a proposal for milestone 27.
+- Renaming a storylet or choice through the language services rewrites the keys in every catalog
+  in the same edit. Renaming by hand makes the old key "removed" and the new one "untranslated";
+  `extract` reports that pair as a probable rename and offers to carry the translations over.
+
+### 7.3 The owner, at each merge of content
+
+```sh
+varis l10n extract            # rewrite l10n/source.json from the source files
+varis l10n extract --check    # for CI: fail if source.json is out of date
+varis l10n status             # per locale: translated, draft, stale, missing; by storylet
+varis play --locale x-pseudo  # play with lengthened, accented text
+```
+
+`extract` prints what changed: added, removed and changed messages, and for each changed message
+whether the change is **cosmetic** (spacing, punctuation, capitalisation: translations keep their
+status and get a note) or **substantive** (words, placeholders, branches: translations become
+`stale`). The diff of `l10n/source.json` in the commit is the record of what the writer's change
+costs translators.
+
+### 7.4 Handoff to the publisher
+
+```sh
+varis l10n export --locale zh-Hans,zh-Hant,ja,ko --format xliff --out kit/
+```
+
+The kit is self-contained: messages with context, glossary, character-set and font requirements,
+and the argument metadata the checker needs. The publisher needs no source tree. With the kit
+they can run:
+
+```sh
+varis l10n check --kit kit/ their-file.xlf     # the same checks as `varis check --locale`
+```
+
+and they can drop a pack into a release build of the game to see it running (§6.5), with the key
+overlay (§6.6) for reporting a line by key.
+
+### 7.5 Translations coming back
+
+```sh
+varis l10n import their-file.xlf --locale ja   # proposed changes and diagnostics; writes nothing
+varis l10n import their-file.xlf --locale ja --apply
+varis check --locale ja
+varis l10n review --locale ja [keys…]          # mark as reviewed
+```
+
+- Import validates every entry (§6.6). Entries that pass are written as `draft`; entries that fail
+  are listed with key and reason and are not written.
+- An entry translated from an older source revision than the current one arrives as `stale`, not
+  `draft`: the translator saw different English.
+- Import never deletes. A key missing from the file keeps what the catalog has.
+
+### 7.6 The source changes after a handoff
+
+This is the usual case, not the exception: a writer fixes a line while translators are working.
+
+```sh
+varis l10n export --locale ja --changed-since <kit id> --out kit-delta/
+```
+
+The delta kit holds only new and stale messages. Each stale message carries the old English, the
+new English and the existing translation, so the translator edits rather than starts again.
+Cosmetic changes (§7.3) are not sent. The kit id makes the delta relative to what the publisher
+actually holds, not to the last commit.
+
+### 7.7 In-house testing in the workbench (French and Russian)
+
+- The story panel has a language selector. Changing it re-renders the current presentation; it
+  does not call `present()` again (§2, principle 2).
+- A translation panel lists the messages of the current presentation: key, source, translation,
+  status. Editing a translation saves it to `l10n/<locale>.json` as `draft` and re-renders.
+- For a message with plural or select branches, the panel shows every branch rendered with sample
+  values (§6.3).
+- Locale diagnostics appear in the problems list on the source line of the message.
+
+### 7.8 A fan translation or a mod in another language
+
+A player copies a pack directory next to the game. The game validates it at start-up and either
+loads it or rejects it whole, writing the reasons to a log by key. A mod with its own content
+declares its own source language (§3.8) and is extracted and translated with the same commands.
+
+### 7.9 A release build
+
+```sh
+varis check --locale all --require reviewed    # the release gate
+varis l10n build --out packs/                  # compiled packs and per-language character sets
+```
+
+The manifest may set a minimum coverage per locale; below it the gate fails. A message that is
+missing or stale at run time falls back to the source text as a whole (§2, principle 4), so an
+incomplete language is playable but never ships by accident.
+
+## 8. Saves, replay and versions
 
 - **Gameplay compatibility** covers definitions, schemas, effects, conditions (including those
   embedded in text) and variant structure. **Presentation revision** covers wording, catalogs and
@@ -215,21 +352,26 @@ arrives as draft and is never marked reviewed automatically.
 - The chosen language may be stored as a preference alongside a save. It is never an input to
   eligibility or compatibility. Gameplay replay is independent of language.
 
-## 8. Stages
+## 9. Stages
 
-| Stage | Deliverable | Exit evidence |
-| --- | --- | --- |
-| L0, with milestones 27 and 29 | The §3 decisions in the grammar and the manual; fingerprint split designed. This is all the English-first release needs | Keys derivable for every message in the sample games; a wording edit no longer changes the gameplay fingerprint; old save fixtures behave as before. |
-| L1 | Selection/render split and span output, delivered with beat-stream presentations | Re-rendering a presentation changes no token, draw, turn or replay log. |
-| L2 | Catalog model, extraction, CSV/JSON/XLIFF adapters with round-trip tests, `check --locale`, pseudo-locale, plural table, select and plural in templates, translatable names with attributes | French and Russian translations of *Saltmarsh Light* pass the checker and read correctly to the owner; every plural category and a case-inflected name are exercised. |
-| L3 | Handoff kit export and import, loadable packs, key overlay | A pack built only from the exported kit loads into a release build; a deliberately broken pack is rejected with useful diagnostics. |
-| L4, with milestone 36 | Line breaking, per-language fonts, ruby, Korean particle formatter, character-set output | A Chinese, a Japanese and a Korean sample render correctly in the SDL3 layer, reviewed by a reader of each language; fonts subset from the emitted character sets. |
+Stage letters are `T` (translation). Earlier revisions of this plan called them `L0`–`L4`; the
+old `L0` is now T0 and T2, `L1` is part of T3, `L2` is T1 and T3, `L3` is T4 and `L4` is T5.
 
-L0 and L1 belong to the syntax and presentation work and should not wait for milestone 39. The
-feature is announced after L3 and L4, with review by native readers, not when the first
-translated string renders.
+| Stage | Deliverable | Needs | Changes the runtime or saves | Exit evidence |
+| --- | --- | --- | --- | --- |
+| T0 | **Decisions.** The §3 decisions written into the grammar and the manual with milestone 27; the scene-line id scheme with milestone 29; the owner choices of §12. | Owner | No | Each §3 item is recorded as accepted, changed or rejected. |
+| T1 | **Extraction.** The message table of the project index; key derivation for storylets, choices, quality labels and named symbols; the catalog model and canonical JSON; the CSV adapter; `varis l10n extract`, `extract --check` and `status`; the `computed-text` diagnostic; cosmetic versus substantive change detection. | Stages A0 and A1 of the authoring tools plan | No | Every title, text and label of *Saltmarsh Light* has a key or a diagnostic. Extraction is deterministic (golden file). Editing one source string marks exactly its translations stale in a fixture catalog. CSV export and import round-trip. |
+| T2 | **Wording out of the gameplay fingerprint; named variants.** A new save-format revision behind a versioned reader (§8). | T0, and the owner's approval of the save-format change (AGENTS §8.1 item 5) | **Yes** | A wording edit no longer changes the gameplay fingerprint. Old save fixtures load as before. A replay log names its variants, and reordering alternatives replays identically. The sample game's golden file is regenerated once, in its own reviewed commit. |
+| T3 | **Translated rendering.** Selection separated from rendering; a session language that can be switched and re-rendered; catalog lookup with whole-message fallback; the pseudo-locale; `select` and plural in templates with the generated plural table; translatable names with grammatical attributes; `varis check --locale`; the workbench language selector and translation panel (§7.7). Span output arrives with beat-stream presentations (milestone 29) and is not required for this stage's exit. | T1, T2; stage A3 for the checker | Yes (additive: presentations gain what re-rendering needs) | Re-rendering changes no token, draw, turn or replay log. French and Russian translations of *Saltmarsh Light* pass the checker and read correctly to the owner; every plural category and a case-inflected name are exercised. A gameplay replay in two languages produces identical logs. |
+| T4 | **Handoff.** Kit export with context and glossary, kit ids and delta kits, the XLIFF adapter, import with review states, `varis l10n check --kit`, loadable packs with whole-pack rejection, the key overlay, the release gate. | T3 | No | A pack built only from an exported kit loads into a release build. A deliberately broken pack is rejected with diagnostics by key. A delta kit after a source edit contains exactly the stale and new messages. |
+| T5, with milestone 36 | **Presentation.** Line breaking, per-language fonts, ruby, the Korean particle formatter, character-set output for font subsetting. | T4; the SDL3 presentation layer | No | A Chinese, a Japanese and a Korean sample render correctly in the SDL3 layer, reviewed by a reader of each language; fonts are subset from the emitted character sets. |
 
-## 9. Deferred
+T1 needs no owner decision and no runtime change; start it as soon as the project index exists.
+T2 should land before content is written in volume, because it changes saves. The feature is
+announced after T4 and T5, with review by native readers, not when the first translated string
+renders.
+
+## 10. Deferred
 
 - Right-to-left languages and bidirectional text. The span stream carries a language per span
   from the start, which is the part that would be hard to add later.
@@ -239,7 +381,7 @@ translated string renders.
 - Exact presentation replay (reproducing the wording, not only the gameplay), hot reload of
   packs inside a running session, vertical text.
 
-## 10. Verification
+## 11. Verification
 
 - Unit and extension cases for: key derivation and duplicates, rename with catalog rewrite,
   select and plural totality, argument reordering and omission, stale marking, pack rejection,
@@ -250,3 +392,17 @@ translated string renders.
   presentation, inside the budgets of [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md).
 - Engine tests cannot establish that text reads well or displays correctly. Each shipped
   language needs a reader's review in the real front end.
+
+## 12. Open choices (owner)
+
+Use the default until decided, and say so in the change.
+
+| Choice | Default | Reason for the default |
+| --- | --- | --- |
+| Scene-line ids (§3.2) | A short tag written onto the line by a tool the first time the line is extracted | An id derived from text changes when a typo is fixed; an id derived from position changes when a line is inserted. |
+| Translator notes | A `note "…"` field, decided with milestone 27 | Context that structure cannot supply has to come from the writer. |
+| Where catalogs live | `l10n/` in the game's repository, one JSON file per locale | Diffs and history for free. |
+| Who may set `reviewed` | Only `varis l10n review` or the workbench, never an import | A returned file saying "final" has not been read by anyone on the project. |
+| Coverage required to ship a locale | 100% reviewed, set per locale in the manifest | A lower number is a deliberate choice, not an accident. |
+| Pack format | A directory holding the canonical JSON plus a small index | Readable by fan translators; a binary form can come later if load time needs it. |
+| Non-ASCII identifiers (§3.8) | Not allowed; display text may be any UTF-8 | Decided with milestone 27. |
