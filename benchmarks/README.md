@@ -21,6 +21,7 @@ Design and rationale: [CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md) §4.
 | `startup` | fresh process | `workloads/startup/*.lua` | C Lua |
 | `datalog` | in-process kernels, fresh world per run | `workloads/datalog/*.lua` | none (absolute budget only) |
 | `scenarios` | fresh process, `large` scale | `tests/datalog/NN_*.lua` | none (absolute budget only) |
+| `datalog_comp` | fresh process, paired `.lua`/`.dl` programs | `workloads/datalog_comp/*` | Soufflé (normalized output must match) |
 | `narrative` | in-process kernels on the sample game | `workloads/narrative/*.lua` | none (absolute budget only) |
 | `narrative_e2e` | fresh process | `sample-game/tools/check.lua` | none (absolute budget only) |
 
@@ -32,7 +33,8 @@ needlessly. A full `bench --check` takes about two minutes.
 
 ## Comparators
 
-Declared in [manifest.toml](manifest.toml): only `clua` (stock Lua 5.4.9, `-O2`). Older versions
+Declared in [manifest.toml](manifest.toml): `clua` (stock Lua 5.4.9, `-O2`) and, for the
+`datalog_comp` group only, `souffle` (the Soufflé interpreter, single-threaded, found on `PATH`). Older versions
 (`baseline/v0-snapshot`, `baseline/v1-perf-final`) were retired as comparators: they were 10–40×
 slower and cost more than 80 % of the run time. The mechanism for `ref = "<git ref>"` comparators
 (built on demand under `.cache/`) remains available for ad-hoc comparisons, e.g. a future

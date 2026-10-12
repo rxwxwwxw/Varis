@@ -1,0 +1,15 @@
+// Paired Datalog benchmark: same generation on binary tree of depth 5 (63 nodes)
+.decl node(x: number)
+.decl parent(p: number, c: number)
+.decl sg(x: number, y: number)
+.decl count_res(n: number)
+
+node(1).
+node(x + 1) :- node(x), x < 63.
+parent(x / 2, x) :- node(x), x > 1.
+
+sg(x, x) :- node(x).
+sg(x, y) :- parent(p, x), sg(p, q), parent(q, y).
+
+count_res(c) :- c = count : { sg(_, _) }.
+.output count_res(IO=stdout)

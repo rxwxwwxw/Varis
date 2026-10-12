@@ -1,0 +1,15 @@
+// Paired Datalog benchmark: transitive closure over a 50-node chain
+.decl node(x: number)
+.decl edge(x: number, y: number)
+.decl right(x: number, y: number)
+.decl count_res(n: number)
+
+node(1).
+node(x + 1) :- node(x), x < 50.
+edge(x, x + 1) :- node(x), x < 50.
+
+right(x, y) :- edge(x, y).
+right(x, y) :- edge(x, z), right(z, y).
+
+count_res(c) :- c = count : { right(_, _) }.
+.output count_res(IO=stdout)

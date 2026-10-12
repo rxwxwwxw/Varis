@@ -73,6 +73,7 @@ def workloads(manifest):
         for e in entries:
             out.append({"id": f"{g['id']}.{e['id']}", "group": g["id"], "kind": g["kind"], "path": e["path"],
                         "cwd": e["cwd"], "args": g.get("args", []), "comparable": g.get("comparable", False), "silent": g.get("silent", False),
+                        "comparator": g.get("comparator", "clua"),
                         "runs": g.get("runs", d.get("runs", 7)), "repeats": g.get("repeats", d.get("repeats", 5)),
                         "timeout": g.get("timeout", d.get("timeout", 180))})
     return out
@@ -122,7 +123,11 @@ def resolve_comparators(manifest, wanted, log=print):
             out[label] = None
             continue
         try:
-            if "path" in spec:
+            if "binary" in spec:
+                import shutil
+                p = shutil.which(spec["binary"])
+                out[label] = Path(p) if p else None
+            elif "path" in spec:
                 p = ROOT / spec["path"]
                 out[label] = p if p.is_file() else None
             else:
@@ -179,7 +184,19 @@ def spawn(cmd, cwd, timeout, env=None):
     return ru.ru_utime + ru.ru_stime, wall, _rss_kb(ru), out
 
 
-def measure(w, binary):
+def normalize_output(out_bytes):
+    """Normalize stdout lines between Varis and Souffle for exact content verification."""
+    lines = out_bytes.decode(errors="replace").splitlines()
+    data = []
+    for line in lines:
+        s = line.strip()
+        if not s or s.startswith("---") or s.startswith("===") or s.startswith("count_"):
+            continue
+        data.append(s)
+    return "\n".join(data).encode("utf-8")
+
+
+def measure(w, binary, label="candidate"):
     if w["kind"] == "inproc":
         with tempfile.NamedTemporaryFile("w", suffix=".lua", delete=False) as f:
             f.write(HARNESS)
@@ -194,9 +211,15 @@ def measure(w, binary):
         if exec_s <= 0:
             raise RuntimeError("nonpositive execution time")
         return {"time": exec_s, "compile": compile_s, "rss_kb": rss, "wall": wall}
-    cpu, wall, rss, out = spawn([binary, os.path.relpath(ROOT / w["path"], ROOT / w["cwd"]), *w["args"]],
-                                ROOT / w["cwd"], w["timeout"])
-    return {"time": cpu, "wall": wall, "rss_kb": rss, "out": hashlib.sha256(out).hexdigest()}
+    prog_path = ROOT / w["path"]
+    if label == "souffle":
+        dl_path = prog_path.with_suffix(".dl")
+        cmd = [binary, "-j", "1", os.path.relpath(dl_path, ROOT / w["cwd"])]
+    else:
+        cmd = [binary, os.path.relpath(prog_path, ROOT / w["cwd"]), *w["args"]]
+    cpu, wall, rss, out = spawn(cmd, ROOT / w["cwd"], w["timeout"])
+    norm_out = normalize_output(out)
+    return {"time": cpu, "wall": wall, "rss_kb": rss, "out": hashlib.sha256(norm_out).hexdigest()}
 
 
 def summarize(xs):
@@ -238,7 +261,7 @@ def run_workload(w, cand, comps, runs=None, log=lambda *_: None, caps=None):
             if l in failed or (caps and l in caps and i >= caps[l]):
                 continue
             try:
-                m = measure(w, bins[l])
+                m = measure(w, bins[l], label=l)
             except RuntimeError as e:
                 failed[l] = str(e)
                 continue
@@ -262,8 +285,10 @@ def run_workload(w, cand, comps, runs=None, log=lambda *_: None, caps=None):
         if paired:
             rec["ratios"][l] = {"median": statistics.median(paired), "min": min(paired), "max": max(paired),
                                 "rss": rec["binaries"]["candidate"]["rss_kb"] / max(rec["binaries"][l]["rss_kb"], 1)}
-    if w["kind"] == "process" and "clua" in outs and outs["clua"] and outs["candidate"] and outs["clua"] != outs["candidate"]:
-        rec["errors"]["output"] = "candidate output differs from C Lua"
+    if w["kind"] == "process":
+        for l in labels:
+            if l != "candidate" and l in outs and outs[l] and outs["candidate"] and outs[l] != outs["candidate"]:
+                rec["errors"]["output"] = f"candidate output differs from {l}"
     rec["noisy"] = rec["binaries"]["candidate"]["cv"] > 0.15
     rec["status"] = "measured"
     return rec
@@ -312,7 +337,7 @@ def needed_labels(w, target):
         labels |= set(target.get(kind, {}))
     labels.discard("time")
     if not labels and w["comparable"]:
-        labels.add("clua")
+        labels.add(w.get("comparator", "clua"))
     return labels
 
 
@@ -353,6 +378,9 @@ def derive(rec, history=None):
         if label == "clua":
             t["goal"]["clua"] = 2.0
             t["gate"]["clua"] = round(worst * head + GATE_SLACK, 2)
+        elif label == "souffle":
+            t["goal"]["souffle"] = 2.0
+            t["gate"]["souffle"] = round(worst * head + GATE_SLACK, 2)
         else:
             t["gate"][label] = round(max(worst, 1.0) * head + GATE_SLACK, 2)
     if cand:

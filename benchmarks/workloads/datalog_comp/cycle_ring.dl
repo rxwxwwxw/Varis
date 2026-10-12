@@ -1,0 +1,17 @@
+// Paired Datalog benchmark: cycle termination on a 30-node ring
+.decl node(x: number)
+.decl edge(x: number, y: number)
+.decl path(x: number, y: number)
+.decl count_res(n: number)
+
+node(1).
+node(x + 1) :- node(x), x < 30.
+
+edge(x, x + 1) :- node(x), x < 30.
+edge(30, 1).
+
+path(x, y) :- edge(x, y).
+path(x, y) :- edge(x, z), path(z, y).
+
+count_res(c) :- c = count : { path(_, _) }.
+.output count_res(IO=stdout)

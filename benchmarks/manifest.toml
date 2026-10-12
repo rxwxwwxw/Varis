@@ -14,6 +14,10 @@ timeout = 180
 path = "c-implementation/src/lua"
 note = "stock C Lua 5.4.9, built -O2 by c-implementation/src/Makefile"
 
+[comparator.souffle]
+binary = "souffle"
+note = "Soufflé single-threaded RAM interpreter (-j 1)"
+
 # kind = inproc : load once, warm once, `repeats` timed executions per sample, os.clock CPU seconds
 # kind = process: fresh process per sample, CPU seconds (user+sys) from rusage, peak RSS
 [[group]]
@@ -68,6 +72,16 @@ cwd_is_parent = true
 comparable = false
 runs = 3
 description = "declarative scenario programs end to end (no stock-Lua comparator)"
+
+# Paired declarative Datalog benchmarks compared directly against Souffle.
+[[group]]
+id = "datalog_comp"
+kind = "process"
+glob = "benchmarks/workloads/datalog_comp/*.lua"
+comparable = true
+comparator = "souffle"
+runs = 5
+description = "equivalent Datalog programs timed directly against Souffle"
 
 # In-process narrative kernels on the sample game (cwd = sample-game so its modules resolve).
 [[group]]

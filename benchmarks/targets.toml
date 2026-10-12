@@ -90,6 +90,31 @@ gate.time = 0.028
 [workload."datalog.transitive_closure"]
 gate.time = 0.79
 
+[workload."datalog_comp.cycle_ring"]
+goal.souffle = 2.0
+gate.souffle = 0.90
+gate.time = 0.025
+
+[workload."datalog_comp.join_triangles"]
+goal.souffle = 2.0
+gate.souffle = 3.20
+gate.time = 0.13
+
+[workload."datalog_comp.negation_strata"]
+goal.souffle = 2.0
+gate.souffle = 0.95
+gate.time = 0.035
+
+[workload."datalog_comp.same_generation"]
+goal.souffle = 2.0
+gate.souffle = 0.70
+gate.time = 0.02
+
+[workload."datalog_comp.tc_chain"]
+goal.souffle = 2.0
+gate.souffle = 1.60
+gate.time = 0.06
+
 [workload."narrative.explain_analyze"]
 gate.time = 0.11
 

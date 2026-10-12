@@ -1,0 +1,9 @@
+// Paired Datalog benchmark: triangle counting in deterministic pseudo-random graph
+.decl edge(x: number, y: number)
+.input edge(filename="benchmarks/workloads/datalog_comp/join_triangles_edge.facts")
+.decl triangle(x: number, y: number, z: number)
+.decl count_res(n: number)
+
+triangle(a, b, c) :- edge(a, b), edge(b, c), edge(a, c).
+count_res(c) :- c = count : { triangle(_, _, _) }.
+.output count_res(IO=stdout)

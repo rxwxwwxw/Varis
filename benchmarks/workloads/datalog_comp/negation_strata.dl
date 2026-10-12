@@ -1,0 +1,22 @@
+// Paired Datalog benchmark: stratified negation on layered graph
+.decl node(x: number)
+.decl edge(x: number, y: number)
+.decl root(x: number)
+.decl reach(x: number)
+.decl unreachable(x: number)
+.decl count_res(r: number, u: number)
+
+node(1).
+node(x + 1) :- node(x), x < 150.
+
+edge(x, x + 1) :- node(x), x <= 100.
+edge(x, x + 1) :- node(x), x >= 102, x < 150.
+
+root(1).
+reach(x) :- root(x).
+reach(y) :- reach(x), edge(x, y).
+
+unreachable(x) :- node(x), !reach(x).
+
+count_res(r, u) :- r = count : { reach(_) }, u = count : { unreachable(_) }.
+.output count_res(IO=stdout)
