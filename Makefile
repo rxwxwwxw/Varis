@@ -43,14 +43,14 @@ SRC_FILES = source/varis/package.d \
             source/varis/logic/naive.d \
             source/varis/logic/query.d \
             source/varis/narrative/codec.d \
-            source/varis/narrative/templates.d source/varis/narrative/translation.d source/varis/narrative/plural.d \
+            source/varis/narrative/templates.d source/varis/narrative/translation.d source/varis/narrative/plural.d source/varis/narrative/text.d \
             source/varis/narrative/fingerprint.d \
             source/varis/narrative/session.d source/varis/narrative/persistence.d source/varis/narrative/observe.d source/varis/narrative/diagnostics.d source/varis/narrative/analysis.d \
             source/varis/narrative/registry.d \
             source/varis/lib/narrative.d source/varis/lib/quality.d \
             source/varis/lib/logic.d \
             source/varis/narrative/vmops.d source/varis/workbench/page.d source/varis/workbench/server.d \
-            source/varis/services/check.d source/varis/services/diagnostic.d source/varis/services/manifest.d source/varis/services/index.d source/varis/services/checks.d source/varis/services/lang.d source/varis/services/lsp.d source/varis/services/play.d source/varis/services/loadpass.d source/varis/services/json.d source/varis/services/catalog.d source/varis/services/xliff.d source/varis/services/l10n.d
+            source/varis/services/check.d source/varis/services/diagnostic.d source/varis/services/manifest.d source/varis/services/index.d source/varis/services/checks.d source/varis/services/tier.d source/varis/services/lang.d source/varis/services/lsp.d source/varis/services/play.d source/varis/services/loadpass.d source/varis/services/json.d source/varis/services/catalog.d source/varis/services/xliff.d source/varis/services/l10n.d
 
 # Per-test timeout for a unit executable (seconds).
 TIMEOUT ?= 300

@@ -20,6 +20,7 @@ import varis.services.checks;
 import varis.services.diagnostic;
 import varis.services.index;
 import varis.services.manifest;
+import varis.services.tier;
 import varis.workbench.server : readFile, listFiles, sortStrings;
 
 struct Location {
@@ -155,6 +156,13 @@ final class Workspace {
         foreach (path; order) {
             auto f = indexes[path];
             result[path] = f.problems.dup;
+            if (f.parsed) {
+                bool isContent;
+                foreach (pattern; manifest.content)
+                    isContent = isContent || globMatch(pattern, path);
+                if (isContent)
+                    result[path] ~= checkTier(path, contents[path]);
+            }
             if (f.parsed)
                 whole.files ~= f;
         }

@@ -28,6 +28,7 @@ import varis.services.checks;
 import varis.services.index;
 import varis.services.loadpass;
 import varis.services.manifest;
+import varis.services.tier;
 import varis.workbench.server : readFile, listFiles, sortStrings, errorText;
 
 private size_t errorCount(const(Diagnostic)[] items) {
@@ -105,6 +106,13 @@ int checkProject(LuaState state, string[] files, CheckOptions options) {
             problems ~= diagnose(file, errorText(failure.errorObject));
         }
     }
+    // The content tier: files the manifest lists as `content` (default list, ROADMAP decision 1).
+    if (manifest.present && manifest.content.length)
+        foreach (file; expandPatterns(".", manifest.content)) {
+            string text;
+            if (readFile(file, text))
+                problems ~= checkTier(file, text);
+        }
     if (dumpIndex) {
         // The index shows every file, including those that only partly parsed.
         auto whole = index;

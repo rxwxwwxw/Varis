@@ -102,6 +102,12 @@ def main():
     assert code == 0 and unreached and all(p["severity"] == "warning" and p["line"] > 0 for p in unreached), out
     assert any(p["subject"] == "storylet lamp" for p in unreached)
 
+    # The content tier (default list of ROADMAP decision 1): only files listed as content.
+    code, out = run(binary, HERE / "fixtures" / "tier", "--json", "--no-load")
+    tier = [(p["file"], p["line"]) for p in json.loads(out)["problems"] if p["code"] == "tier"]
+    assert code == 1 and tier == [("content/story.lua", 9), ("content/story.lua", 9), ("content/story.lua", 11),
+                                  ("content/story.lua", 11), ("content/story.lua", 12), ("content/story.lua", 16)], tier
+
     # Parser recovery: four independent mistakes in one file are all reported, with no cascade.
     code, out = run(binary, HERE / "fixtures" / "recover", "--json")
     assert code == 1, out

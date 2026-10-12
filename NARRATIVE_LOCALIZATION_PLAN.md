@@ -383,7 +383,10 @@ manifest's per-locale coverage: kits with context, glossary, character sets and 
 the XLIFF and CSV adapters, import with stale/draft states, `l10n review`, `l10n check --kit`,
 `l10n build` packs and `narrative.load_pack` with whole-pack rejection, the key overlay and the
 release gate (`l10n check --locale all --require reviewed`). T5 (presentation: line breaking, fonts,
-ruby, the Korean particle formatter) needs the SDL3 layer and has not been started.
+ruby, the Korean particle formatter): the **rules** exist in the engine (`narrative.particle`,
+`graphemes`, `truncate`, `line_breaks`, `ruby`; `narrative/text.d`) and are tested; drawing them,
+per-language font chains and glyph caches belong to the SDL3 layer (milestone 36), which does not
+exist yet. The character sets for font subsetting are emitted by `l10n export --kit` and `l10n build`.
 
 T1 needs no owner decision and no runtime change; start it as soon as the project index exists.
 T2 should land before content is written in volume, because it changes saves. The feature is

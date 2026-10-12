@@ -96,6 +96,15 @@ with the declared columns), `unknown-relation` and `unknown-quality` (warnings: 
 relation read that nothing declares, asserts or derives; a quality no
 `quality.define` names). A finding that carries a near name has a `suggestion`.
 
+**The content tier.** Files matching `content` in the manifest are held to the content
+tier: error `tier` for the globals `coroutine`, `io`, `os`, `debug`, `package`, `load`,
+`loadstring`, `loadfile`, `dofile`, `setmetatable` and `getmetatable`; for a function
+value or declaration, except a callback passed directly to `narrative.defer`,
+`narrative.formatter` or `narrative.on`; and for a callback that uses a local of the
+code around it. Engine scripts (`scripts`, `tests`) are unrestricted. The restriction is
+static (`varis check`, the language server, CI): the runtime does not know which
+files are content. The list is the roadmap's default for open decision 1.
+
 When the manifest names an `entry` module and nothing else failed, `varis check`
 also runs that module in a fresh state, up to the seal of the content, and reports
 what the engine's validation says as `load` errors at the line of the storylet,

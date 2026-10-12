@@ -337,6 +337,10 @@ and consumes no RNG. This function returns one string.
 | `narrative.schedule(kind, args, after_turns)` | Queue a symbol event with immutable sequence args and nonnegative integer delay. |
 | `narrative.translate(tag, {key = text, ...})` | Register a language pack: message keys (`lamp.title`, `lamp.light.title`, `name.keeper`) to template text. The pack is rejected as a whole, with one line per bad key, if any text does not parse. Not content: not fingerprinted, not saved. |
 | `narrative.load_pack(directory)` | Load a language pack built by `varis l10n build` (the directory holds `pack.json`); returns its language tag. Accepted or rejected as a whole, as `narrative.translate`. |
+| `narrative.particle(word, "은/는")` | The Korean particle form that follows `word` (`은/는`, `이/가`, `을/를`, `과/와`, `으로/로`): the first after a final consonant, the second after a vowel; `으로/로` takes `로` after ㄹ; digits by how they are read. |
+| `narrative.graphemes(text)` · `narrative.truncate(text, n)` | The number of grapheme clusters, and the first `n` of them: a combining mark, variation selector, skin tone, joined emoji or flag stays with its base. |
+| `narrative.line_breaks(text)` | Immutable sequence of 1-based byte positions where a line may break: after spaces, between wide (Chinese, Japanese, Korean) characters, never before a closing mark, small kana or `ー`, never after an opening bracket, never inside a Latin word. |
+| `narrative.ruby(text)` | Immutable sequence of `{text, reading}` spans: `｜東京《とうきょう》` or ideographs directly before `《reading》`; `reading` is nil for plain text. |
 | `narrative.languages()` | Immutable sequence of registered language tags. |
 | `narrative.defer(callback)` | Request no-argument callback after commit; discarded on rollback. |
 

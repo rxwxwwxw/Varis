@@ -169,7 +169,7 @@ Each is a code, a fixture and a message. Add them one per change if convenient.
 | `unknown-quality` | `quality(_, :x, _)` where `x` is never defined. | warning |
 | `symbol-once` | Exists today. Gains the nearest known symbol as a suggestion. | warning |
 | `computed-text` | A `title`, `text` or label that is not a string literal (it cannot be extracted for translation). | warning now; error in content files once milestone 26 lands |
-| `tier` | A content file using something outside the content tier. | waits for milestone 26 |
+| `tier` | A content file using something outside the content tier (**done**, default list of ROADMAP decision 1; static only). | error |
 | `undeclared-symbol` | Replaces `symbol-once` when declared symbols exist. | waits for milestone 28 |
 
 Rule for all of them: when a check cannot be sure (a relation created by a computed name, a deck

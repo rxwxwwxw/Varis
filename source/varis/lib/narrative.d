@@ -313,6 +313,67 @@ void openNarrativeLib(LuaState state) {
         (cast(LuaState) pointer).narrativeRegistry.sourceLanguage = arguments[0].match!((string s) => s, _ => "en");
         return cast(LuaValue[])[];
     });
+    // Text rules a presentation layer needs and the engine can state (localization plan §4, §5).
+    // narrative.particle(word, "은/는") -> the particle form; narrative.graphemes(text) -> count;
+    // narrative.truncate(text, n) -> first n graphemes; narrative.line_breaks(text) -> sequence of
+    // 1-based byte positions where a line may break; narrative.ruby(text) -> sequence of
+    // {text=, reading=} spans (reading is nil for plain text).
+    add("particle", (void* pointer, LuaValue[] arguments) {
+        import varis.narrative.text : koreanParticle;
+
+        if (arguments.length != 2 || !isString(arguments[0]) || !isString(arguments[1]))
+            throw new LuaException("narrative.particle requires a word and a pair of forms such as \"은/는\"");
+        return [
+            LuaValue(koreanParticle(arguments[0].match!((string s) => s, _ => ""), arguments[1].match!((string s) => s,
+                _ => "")))
+        ];
+    });
+    add("graphemes", (void* pointer, LuaValue[] arguments) {
+        import varis.narrative.text : graphemeBoundaries;
+
+        if (arguments.length != 1 || !isString(arguments[0]))
+            throw new LuaException("narrative.graphemes requires a string");
+        return [
+            LuaValue(cast(long) graphemeBoundaries(arguments[0].match!((string s) => s, _ => "")).length - 1)
+        ];
+    });
+    add("truncate", (void* pointer, LuaValue[] arguments) {
+        import varis.narrative.text : graphemeBoundaries;
+
+        if (arguments.length != 2 || !isString(arguments[0]) || !isInteger(arguments[1]))
+            throw new LuaException("narrative.truncate requires a string and a count");
+        auto text = arguments[0].match!((string s) => s, _ => "");
+        long count = arguments[1].match!((long n) => n, _ => 0L);
+        auto bounds = graphemeBoundaries(text);
+        if (count < 0)
+            count = 0;
+        size_t last = cast(size_t) count < bounds.length ? bounds[cast(size_t) count] : text.length;
+        return [LuaValue(text[0 .. last])];
+    });
+    add("line_breaks", (void* pointer, LuaValue[] arguments) {
+        import varis.narrative.text : lineBreakOpportunities;
+
+        if (arguments.length != 1 || !isString(arguments[0]))
+            throw new LuaException("narrative.line_breaks requires a string");
+        LuaValue[] positions;
+        foreach (offset; lineBreakOpportunities(arguments[0].match!((string s) => s, _ => "")))
+            positions ~= LuaValue(cast(long) offset + 1);
+        return [immutableSequence(positions)];
+    });
+    add("ruby", (void* pointer, LuaValue[] arguments) {
+        import varis.narrative.text : rubySpans;
+
+        if (arguments.length != 1 || !isString(arguments[0]))
+            throw new LuaException("narrative.ruby requires a string");
+        LuaValue[] spans;
+        foreach (span; rubySpans(arguments[0].match!((string s) => s, _ => ""))) {
+            LuaValue[string] record = ["text": LuaValue(span.text)];
+            if (span.reading.length)
+                record["reading"] = LuaValue(span.reading);
+            spans ~= immutableRecord(record);
+        }
+        return [immutableSequence(spans)];
+    });
     add("languages", (void* pointer, LuaValue[] arguments) {
         LuaValue[] tags;
         foreach (tag; (cast(LuaState) pointer).narrativeRegistry.languages())
