@@ -277,7 +277,7 @@ slower, and `core.fib` measurably faster (the call path lost the world lookup).
 
 ### Track W — World model (milestone 35)
 
-**Status: W0–W4 done October 11, 2026; W5 not started.** Measured on the same machine, release
+**Status: W0–W4 and W5(a) done October 11, 2026.** Measured on the same machine, release
 build, median `present()`:
 
 | Game | Before | After |
@@ -361,7 +361,15 @@ transaction that has written to the closure, bypass the cache. Rule guards captu
 registration, so cached derivations stay valid; guard purity remains the author's obligation as
 today.
 
-**W5 — Do not look at storylets that cannot apply.** Two parts. (a) Index storylet definitions by
+**W5 — Do not look at storylets that cannot apply.** *Part (a) done October 11, 2026:*
+`Session.instances` finds, once per definition, a ground positive goal of an availability closure
+that only loads constants and builds one query (`requiredFact` in `narrative/session.d`). After
+the full query has completed once, a presentation skips the definition with a single hash probe
+when that fact is absent. This is exact: with the fact absent the positive join is empty, so no
+comparison, guard or negation would have run. It is off during bounded analysis and while debug
+hooks are active, so instruction budgets and hooks see the same code as before. Median
+`present()` with 1000 storylets: 3.1 ms → 0.3 ms (with or without the recursive rule). Part (b)
+is not implemented and is not needed for the budget. Two parts. (a) Index storylet definitions by
 the constant arguments of their conditions, so a presentation considers only storylets whose
 ground goals can match the current state (in the reference game almost every storylet starts with
 `at(:player, <room>)`). (b) Cache a definition's instance list keyed by the versions of the

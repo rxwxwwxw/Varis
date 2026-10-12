@@ -307,7 +307,7 @@ Use this table to avoid coding against a design that has not landed.
 | Debugging | Lua `debug` library; `narrative.explain`/`observe`/`analyze` from scripts | Workbench debugger at source and story level | Milestone 44 |
 | Tools | CLI and REPL (`cli.d`); `varis check` first version (compile errors only); `varis serve` first version (command window, workspace with relation tables, story panel, plain editor) | `varis check`, language services, debugger, full workbench | Milestones 30–33, 42–44 |
 | Core speed | 0.5–2.3× C Lua on core workloads (`fib` 2.28×, `string_ops` 2.13×, `closures` 1.95×, loops 1.2–1.5×); `pcall_error` 1.3× (was 37×), `deep_recursion` 2.7× (was 8×) | ≤ 1.0×, then below | L, X |
-| Turn latency (reference-scale game, M1) | 3.2 ms with or without a recursive rule (was 15 ms and 840 ms) | 5 ms on the stand-in; real hardware unmeasured | W, M |
+| Turn latency (reference-scale game, M1) | 0.3 ms with or without a recursive rule (was 15 ms and 840 ms); peak memory 53 MB | 5 ms and 64 MB on the stand-in; real hardware unmeasured | W, M |
 
 ---
 

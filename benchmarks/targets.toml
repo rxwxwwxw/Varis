@@ -133,7 +133,7 @@ gate.time = 0.41
 gate.time = 0.14
 
 [workload."narrative_scale.wide_game"]
-gate.time = 0.33
+gate.time = 0.14
 
 [workload."programs.bintrees"]
 goal.clua = 1.0

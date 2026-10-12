@@ -65,6 +65,87 @@ private void collectAtTurnBoundary() {
     }
 }
 
+/// A ground positive goal of a definition's availability query: if that fact is absent the
+/// query has no result, so the definition has no instance.
+private final class RequiredFact {
+    string relation;
+    LuaValue[] values;
+    /// Set after the full query has completed once without error. Skipping is then exact: with
+    /// the fact absent the positive join is empty, so no comparison, guard or negation would run
+    /// and nothing could be raised (relations are never removed and arities never change).
+    bool verified;
+}
+
+/// Finds the required fact of a definition whose availability closure does nothing but load
+/// constants and build one query on the world it is given (what `when { ... }` compiles to).
+/// Anything else (upvalues, parameters, calls, guards, aggregates, several queries) returns null.
+private RequiredFact requiredFact(LuaState state, ContentDefinition definition) {
+    import varis.opcode : OpCode;
+    import varis.relterms : GoalKind, TermKind;
+
+    if (definition.availabilityFilterBuilt)
+        return cast(RequiredFact) definition.availabilityFilter;
+    definition.availabilityFilterBuilt = true;
+    if (definition.incomingParameters.length || !isFunction(definition.availability))
+        return null;
+    auto closure = cast(LuaClosure) definition.availability.asFunction;
+    if (closure is null)
+        return null;
+    auto proto = closure.proto;
+    if (proto.upvalues.length || proto.numParams != 1 || proto.isVararg || proto.queryTemplates.length != 1)
+        return null;
+    // Abstract run of the constant-loading prefix.
+    auto known = new bool[proto.maxStackSize + 1];
+    auto values = new LuaValue[proto.maxStackSize + 1];
+    size_t pc;
+    for (; pc < proto.code.length; ++pc) {
+        auto instr = proto.code[pc];
+        if (instr.op == OpCode.MakeQuery)
+            break;
+        if (instr.a < 0 || instr.a >= values.length)
+            return null;
+        if (instr.op == OpCode.LoadInt)
+            values[instr.a] = LuaValue(cast(long) instr.sBx);
+        else if (instr.op == OpCode.LoadSymbol && instr.b >= 0 && instr.b < proto.constants.length && isString(
+                proto.constants[instr.b]))
+            values[instr.a] = state.getSymbol(proto.constants[instr.b].asString);
+        else if (instr.op == OpCode.LoadK && instr.b >= 0 && instr.b < proto.constants.length && (
+                isString(
+                proto.constants[instr.b]) || proto.constants[instr.b].isInteger))
+            values[instr.a] = proto.constants[instr.b];
+        else
+            return null;
+        known[instr.a] = true;
+    }
+    if (pc + 1 >= proto.code.length || proto.code[pc].b != 0 || proto.code[pc + 1].op != OpCode.Return)
+        return null;
+    foreach (rest; proto.code[pc + 1 .. $])
+        if (rest.op != OpCode.Return)
+            return null;
+    auto goals = proto.queryTemplates[0].goals;
+    foreach (goal; goals)
+        if (goal.kind == GoalKind.Guard || goal.kind == GoalKind.Aggregate)
+            return null;
+    foreach (goal; goals) {
+        if (goal.kind != GoalKind.PositiveAtom || goal.worldReg != 0 || goal.localRelReg >= 0 || goal.localRelUpval >= 0)
+            continue;
+        LuaValue[] fact;
+        foreach (term; goal.terms) {
+            if (term.kind != TermKind.Constant || term.reg < 0 || term.reg >= known.length || !known[term.reg])
+                break;
+            fact ~= values[term.reg];
+        }
+        if (fact.length != goal.terms.length || fact.length == 0)
+            continue;
+        auto filter = new RequiredFact;
+        filter.relation = goal.relName;
+        filter.values = fact;
+        definition.availabilityFilter = filter;
+        return filter;
+    }
+    return null;
+}
+
 class SessionData {
     ulong turn;
     ulong rng;
@@ -364,6 +445,14 @@ class Session : TransactionParticipant {
         scope (exit)
             endReadOnlyEvaluation();
         LuaValue[string][] rows;
+        // Stage W5: skip the query entirely when a fact it requires is absent.
+        auto filter = inputs is null ? requiredFact(state, definition) : null;
+        if (filter !is null && filter.verified && state.analysisBudget is null && !vmSlowMode) {
+            auto relation = snapshot.getRelation(filter.relation);
+            if (relation !is null && relation.rules.length == 0 && relation.arity == filter.values.length
+                    && !visibleRelation(relation).factTable().contains(filter.values))
+                return null;
+        }
         if (isFunction(definition.availability)) {
             LuaValue[] args = [wrapWorld(snapshot)];
             foreach (name; definition.incomingParameters)
@@ -379,6 +468,8 @@ class Session : TransactionParticipant {
                     break;
                 rows ~= unwrapBindingRecord(next[0]).fields;
             }
+            if (filter !is null)
+                filter.verified = true; // the unfiltered query ran to completion once
         } else
             rows ~= (LuaValue[string]).init;
         bool[string] seen;

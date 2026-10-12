@@ -36,6 +36,10 @@ class ContentDefinition {
     NarrativeTemplate titleTemplate;
     NarrativeTemplate textTemplate;
     string fingerprint;
+    /// Lazily built by Session.instances (stage W5): a fact that must hold for this definition
+    /// to have any instance, when its availability is a plain query. Not part of the content.
+    Object availabilityFilter;
+    bool availabilityFilterBuilt;
 
     LuaValue option(string key, LuaValue fallback = LuaValue.init) {
         return options.get(key, fallback);
