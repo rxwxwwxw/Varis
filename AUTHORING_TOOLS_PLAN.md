@@ -184,7 +184,7 @@ lands; the tables of §3.3 are meant to take new kinds without redesign.
 
 ## 5. Author tests (proposal for stage A6)
 
-`sample-game/tools/check.lua` is a scripted playthrough with assertions, written against session
+`sample-game/tools/check.lua` was a scripted playthrough with assertions, written against session
 internals. The general form is an engine-tier script using a small library, so that a writer can
 copy an example:
 

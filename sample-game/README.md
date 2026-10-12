@@ -7,7 +7,8 @@ The game is written against the current [Varis Reference Manual](../docs/README.
 ```sh
 cd sample-game
 ../bin/varis main.lua 7        # play with seed 7
-../bin/varis tools/check.lua   # scripted walkthrough + explain/analyze/save/replay checks
+../bin/varis tools/check.lua   # author tests (require "varis.test"): walkthrough + explain/analyze/save/replay
+../bin/varis test              # the author tests of tests/ as well
 ```
 
 ## Files

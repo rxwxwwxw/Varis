@@ -599,6 +599,11 @@ private int runMain(string[] argv, ref LuaState state) {
     if (args & hasEnvFlag)
         state.registry.rawset(LuaValue("LUA_NOENV"), LuaValue(true));
     openLibs(state);
+    {
+        import varis.services.play : installTestModule;
+
+        installTestModule(state);
+    }
     // lua.c switches the collector to generational mode at startup.
     {
         auto collect = state.globals.rawget(LuaValue("collectgarbage"));

@@ -500,6 +500,22 @@ end
 local cases = {}
 function test.case(name, fn) cases[#cases + 1] = { name = name, fn = fn } end
 
+-- For a script that is run with plain `varis script.lua` (`local test = require("varis.test")`):
+-- runs the cases, says which failed, and prints "checks passed" when none did.
+function test.run()
+    local failed = 0
+    for _, case in ipairs(cases) do
+        local ok, message = pcall(case.fn)
+        if not ok then
+            failed = failed + 1
+            print("FAILED " .. case.name .. ": " .. tostring(message))
+        end
+    end
+    cases = {}
+    if failed > 0 then error(failed .. " check(s) failed", 0) end
+    print("checks passed")
+end
+
 -- Runs one test file; returns a list of { name, ok, message }.
 function __varis_run_test(path)
     local results = {}
@@ -630,4 +646,24 @@ private string numberText(long value) {
     char[24] buffer;
     auto n = snprintf(buffer.ptr, buffer.length, "%lld", value);
     return buffer[0 .. n].idup;
+}
+
+/// Makes `require("varis.test")` available to scripts run with plain `varis script.lua` in a
+/// project directory: the same `test` library `varis test` provides, configured from `project.lua`.
+void installTestModule(LuaState state) {
+    auto package_ = state.globals.rawget(LuaValue("package"));
+    if (!package_.isTable)
+        return;
+    auto preload = package_.asTable.rawget(LuaValue("preload"));
+    if (!preload.isTable)
+        return;
+    preload.asTable.rawset(LuaValue("varis.test"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] arguments) {
+                auto self = cast(LuaState) pointer;
+                auto manifest = loadManifest(".");
+                if (!manifest.present)
+                    throw new LuaException("require(\"varis.test\") needs project.lua in the current directory");
+                installConfig(self, manifest, 1);
+                VM.callValue(self, LuaValue(self.loadString(testSource, "=varis test")), []);
+                return [self.getGlobal("test")];
+            }, "varis.test")));
 }

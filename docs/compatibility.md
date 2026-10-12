@@ -175,7 +175,7 @@ same seed, for bug reports.
 name, value)`, `t:save()`, `t:load(text)`, `t:why(storylet)`, `t:world()` and
 `t:session`. `test.case(name, function() ... end)` groups checks. A failure is a
 `test` diagnostic at the line of the failing call; a missing storylet's message
-includes `t:why`. Exit status is 1 when a test fails. `tools/project_ci.sh` runs
+includes `t:why`. Exit status is 1 when a test fails. A script run with plain `varis script.lua` in a project directory can `local test = require("varis.test")`, register cases and end with `test.run()`, which prints `checks passed` or fails; `sample-game/tools/check.lua` is written this way. `tools/project_ci.sh` runs
 `check`, `test` and `l10n extract --check` as a CI recipe.
 
 ### 8.7 — Translations at run time and in tools
