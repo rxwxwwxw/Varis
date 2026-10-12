@@ -160,6 +160,7 @@ final class Workspace {
         }
         Diagnostic[] found;
         projectChecks(whole, found);
+        pluralChecks(whole, manifest.language.length ? manifest.language : "en", found);
         foreach (ref d; found)
             if (auto list = d.file in result)
                 *list ~= d;

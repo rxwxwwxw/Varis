@@ -314,3 +314,51 @@ void projectChecks(ref const ProjectIndex index, ref Diagnostic[] problems) {
             problems ~= diagnostic;
     }
 }
+
+/// A source text's plurals use the categories of the project's language (`language` in the
+/// manifest, English by default): an English text has `one` and `other`, a Russian one four.
+void pluralChecks(ref const ProjectIndex index, string language, ref Diagnostic[] found) {
+    import varis.narrative.plural : pluralCategoryAllowed, requiredPluralCategories;
+    import varis.narrative.translation : parseTranslation, TranslationTemplate;
+
+    foreach (ref f; index.files)
+        foreach (ref m; f.messages) {
+            if (m.computed || m.text.indexOf("{#plural") < 0)
+                continue;
+            TranslationTemplate parsed;
+            string error;
+            if (!parseTranslation(m.text, parsed, error))
+                continue; // the load pass says so, with the engine's words
+            foreach (g, kind; parsed.choiceKinds) {
+                if (kind != "plural")
+                    continue;
+                auto labels = parsed.choiceLabels[g];
+                foreach (label; labels)
+                    if (!pluralCategoryAllowed(language, label))
+                        found ~= makeDiagnostic("error", "plural-category", m.file, m.range.line, m.range.column, m.range.endLine,
+                                m.range.endColumn, m.owner ~ ": {#" ~ label ~ "} is not a plural category of " ~ language
+                                ~ ", the language of the text", m.owner);
+                foreach (needed; requiredPluralCategories(language)) {
+                    if (needed == "other")
+                        continue;
+                    bool present;
+                    foreach (label; labels)
+                        if (label == needed)
+                            present = true;
+                    if (!present)
+                        found ~= makeDiagnostic("error", "plural-category", m.file, m.range.line, m.range.column,
+                                m.range.endLine, m.range.endColumn, m.owner ~ ": a plural in " ~ language ~ " needs {#"
+                                ~ needed ~ "} (and {#other})", m.owner);
+                }
+            }
+        }
+}
+
+private int indexOf(string text, string needle) {
+    if (needle.length > text.length)
+        return -1;
+    foreach (i; 0 .. text.length - needle.length + 1)
+        if (text[i .. i + needle.length] == needle)
+            return cast(int) i;
+    return -1;
+}

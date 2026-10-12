@@ -1172,8 +1172,12 @@ private string stringValueForTest(JSONValue value) {
     rejects({ badState.doString(`narrative.formatter(123)`); }, "narrative formatter must be a function");
     rejects({ badState.doString(`narrative.template("Weather: {#variant 0} sunny {/variant}", {})`); }, "variant weight must be positive and finite");
     rejects({
-        badState.doString(`narrative.template("Weather: {#variant abc} sunny {/variant}", {})`);
+        badState.doString(`narrative.template("Weather: {#variant weight=abc} sunny {/variant}", {})`);
     }, "variant weight must be numeric");
+    // A word is the option's name (the replay log and translations call it that).
+    assert(badState.doString(
+            `return narrative.template("{#variant 2 windy}Wind.{#variant 1 calm}Calm.{/variant}", {}, nil, 1)`)[0]
+            .match!((string s) => s, _ => "") == "Calm.");
     rejects({ badState.doString(`narrative.template("Weather: {#variant 2} sunny", {})`); }, "template variant requires {/variant}");
     rejects({ badState.doString(`
         narrative.formatter("nil", function() return "x" end)

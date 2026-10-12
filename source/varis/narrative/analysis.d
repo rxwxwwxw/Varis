@@ -232,6 +232,7 @@ private class AnalysisClone {
         copy.titleTemplate = original.titleTemplate;
         copy.textTemplate = original.textTemplate;
         copy.fingerprint = original.fingerprint;
+        copy.legacyFingerprint = original.legacyFingerprint;
         copy.availability = cloneValue(original.availability);
         copy.effect = cloneValue(original.effect);
         foreach (name, value; original.options)

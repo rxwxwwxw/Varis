@@ -13,7 +13,7 @@ snapshot does not duplicate the content registry.
 
 `narrative.seal([version])` validates references and options, freezes the registry,
 and returns its content version. Without an explicit authored string the runtime
-fingerprints the canonical content manifest. Creating a session seals an open
+fingerprints the canonical content manifest (without wording, see 6.9). Creating a session seals an open
 registry. Registration after sealing is an error. Identifiers are symbols and
 unique within their kind; choices are unique within their enclosing storylet.
 The same symbol can identify a storylet, deck, and action independently.
@@ -253,11 +253,34 @@ Weighted text alternatives are implemented:
 ```
 
 Weights are positive finite numbers; omitted weights default to one. `weight=3`
-is also accepted. A `{#else}` alternative in a variant has weight one. Groups may
+is also accepted. A `{#else}` alternative in a variant has weight one. An
+alternative may also carry a **name**, a word after the weight (`{#variant 3 wind}`,
+`{#variant gulls}`): the replay log records the drawn alternative's name beside its
+index (`names`), and a translation may reorder named alternatives, which are then
+found by name. Groups may
 nest. The session chooses variants before rendering, records choices in replay,
 and publishes RNG changes only on successful presentation. Rendering itself
 consumes no RNG. Explicit template calls use supplied zero-based choices, or a
 deterministic highest-weight default; they do not draw from session RNG.
+
+Two more tags choose between branches by a parameter's value:
+
+```text
+{#plural coins}{#one}A coin{#other}{coins} coins{/plural}
+{#select kind}{#case storm}A storm.{#case calm}Quiet.{#default}Weather.{/select}
+```
+
+`{#plural n}` takes an integer or float parameter and picks the branch named
+by its plural category in the language of the text: `zero`, `one`, `two`, `few`,
+`many` or `other`. English has `one` and `other`; French `one` (0 and 1) and
+`other`; Russian, Ukrainian and Polish `one`, `few`, `many` and `other`; Chinese,
+Japanese and Korean only `other`. `{#other}` is required, and is used when no
+branch has the category. `{#select v}` compares the parameter (a symbol, string,
+integer or Boolean) with each `{#case value}`; `{#default}` is required. Branches
+may hold placeholders, conditions and variants. A number with a fraction is
+`other`. The language of authored text is the manifest's `language`
+(`narrative.source_language(tag)`, English by default); a translation uses the
+rules of its own language.
 
 ### 6.7 — Events, schedules, and callbacks
 
@@ -326,8 +349,14 @@ Foreign-world mutations still fail the effect transaction's world check.
 
 Save only at an idle boundary, with no active transaction, effect, scheduler, or
 presentation. `session:save()` returns canonical tagged JSON text. The current
-wire format still has the legacy identifier `varis-session-1`; the language rename
-does not silently change persisted identities.
+wire format keeps the legacy identifiers `varis-session-2` (written) and
+`varis-session-1` (still read); the language rename does not silently change
+persisted identities. Format 2 differs from 1 only in the content identity: wording
+(titles, texts, names and labels) is not part of it, only the conditions, variant
+weights and names, and plural/select parameters a text contains, so correcting a
+typo does not invalidate saves. A `presentation` field records a digest of the
+wording; it is informational and never refuses a save. Format 1 saves are
+validated as they were written and are written back as format 2.
 
 Saves include base tuples, ordered schemas/keys and versions, persistent world
 identity, runtime/content/program fingerprints, turns, deck entries and draw

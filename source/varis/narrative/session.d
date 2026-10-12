@@ -608,7 +608,7 @@ class Session : TransactionParticipant {
                 if (auto translated = registry.translation(language, message.key)) {
                     string output;
                     if (renderTranslation(translated, message.bindings, (LuaValue v) => registry.displayIn(language, v),
-                            message.trace, output))
+                            message.trace, language, output))
                         return output;
                 }
             }
@@ -722,32 +722,47 @@ class Session : TransactionParticipant {
         });
         StoryRender[] storyRenders;
         LuaValue[] variantLog;
-        void logVariants(string key, string field, size_t[] vars) {
+        // The replay log names what was drawn: the option's index, and its name when it has one,
+        // so that reordering alternatives never makes an old log mean something else.
+        void logVariants(string key, string field, size_t[] vars, NarrativeTemplate template_) {
             if (!vars.length)
                 return;
             LuaValue[] indices;
-            foreach (idx; vars)
+            LuaValue[] names;
+            bool named;
+            foreach (i, idx; vars) {
                 indices ~= LuaValue(cast(long) idx);
-            variantLog ~= immutableRecord([
+                string optionName;
+                if (template_ !is null && i < template_.variantGroups.length && idx < template_
+                        .variantGroups[i].options.length)
+                    optionName = template_.variantGroups[i].options[idx].name;
+                named = named || optionName.length > 0;
+                names ~= LuaValue(optionName);
+            }
+            LuaValue[string] record = [
                 "key": LuaValue(key),
                 "field": LuaValue(field),
                 "indices": immutableSequence(indices)
-            ]);
+            ];
+            if (named)
+                record["names"] = immutableSequence(names);
+            variantLog ~= immutableRecord(record);
         }
 
         MessageRender message(string key, NarrativeTemplate template_, LuaValue[string] bindings, size_t[] vars) {
             auto rendered = new MessageRender();
             rendered.key = key;
             rendered.bindings = bindings;
-            rendered.source = template_.render(state, snapshot, bindings, &registry.display, vars, &rendered.trace);
+            rendered.source = template_.render(state, snapshot, bindings, &registry.display, vars, &rendered.trace,
+                    registry.sourceLanguage);
             return rendered;
         }
 
         foreach (story; selected) {
             auto storyTitleVars = selectVariants(story.definition.titleTemplate, tentative);
             auto storyTextVars = selectVariants(story.definition.textTemplate, tentative);
-            logVariants(story.key, "title", storyTitleVars);
-            logVariants(story.key, "text", storyTextVars);
+            logVariants(story.key, "title", storyTitleVars, story.definition.titleTemplate);
+            logVariants(story.key, "text", storyTextVars, story.definition.textTemplate);
             auto storyRender = new StoryRender();
             auto storyId = story.definition.id;
             storyRender.title = message(storyId ~ ".title", story.definition.titleTemplate, story.bindings, storyTitleVars);
@@ -756,8 +771,8 @@ class Session : TransactionParticipant {
                 foreach (choice; instances(definition, snapshot, story.bindings)) {
                     auto choiceTitleVars = selectVariants(definition.titleTemplate, tentative);
                     auto choiceTextVars = selectVariants(definition.textTemplate, tentative);
-                    logVariants(choice.key, "title", choiceTitleVars);
-                    logVariants(choice.key, "text", choiceTextVars);
+                    logVariants(choice.key, "title", choiceTitleVars, definition.titleTemplate);
+                    logVariants(choice.key, "text", choiceTextVars, definition.textTemplate);
                     auto token = new ChoiceToken();
                     token.session = this;
                     token.storylet = story;

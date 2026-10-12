@@ -305,6 +305,14 @@ void openNarrativeLib(LuaState state) {
         }
         return [LuaValue(locale)];
     });
+    // narrative.source_language(tag): the language the authored text is written in; its plural
+    // rules apply to `{#plural}` in source templates. Default "en".
+    add("source_language", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1 || !isString(arguments[0]))
+            throw new LuaException("narrative.source_language requires a language tag");
+        (cast(LuaState) pointer).narrativeRegistry.sourceLanguage = arguments[0].match!((string s) => s, _ => "en");
+        return cast(LuaValue[])[];
+    });
     add("languages", (void* pointer, LuaValue[] arguments) {
         LuaValue[] tags;
         foreach (tag; (cast(LuaState) pointer).narrativeRegistry.languages())
@@ -350,7 +358,8 @@ void openNarrativeLib(LuaState state) {
         auto snapshot = world.cloneSnapshot();
         auto template_ = new NarrativeTemplate(arguments[0].match!((string text) => text, _ => ""), bindings.keys);
         return [
-            LuaValue(template_.render(state, snapshot, bindings, &state.narrativeRegistry.display, selections))
+            LuaValue(template_.render(state, snapshot, bindings, &state.narrativeRegistry.display, selections, null,
+                state.narrativeRegistry.sourceLanguage))
         ];
     });
     state.setGlobal("narrative", LuaValue(library));

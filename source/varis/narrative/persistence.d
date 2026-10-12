@@ -24,6 +24,12 @@ import std.json;
 import std.conv : to;
 import std.algorithm : sort;
 
+/// Save formats. Format 1 recorded the content identity with wording in it; format 2 does not
+/// (a typo fix no longer invalidates saves) and adds the presentation revision, which is
+/// informational. Format 1 saves are read with their own validation and are written back as 2.
+enum saveFormat1 = "varis-session-1";
+enum saveFormat2 = "varis-session-2";
+
 /// Changing code/sampling semantics requires a new runtime identity.
 enum narrativeRuntimeVersion = "varis-narrative-1/xorshift64star-tier-1";
 
@@ -235,10 +241,11 @@ string saveSession(Session session) {
         foreach (record; data.replayInputs)
             inputs ~= encodeValue(record, "replay input");
         auto encoded = JSONValue([
-            "format": JSONValue("varis-session-1"),
+            "format": JSONValue(saveFormat2),
             "runtime": JSONValue(narrativeRuntimeVersion),
             "content": JSONValue(session.registry.contentVersion),
             "content_fingerprint": JSONValue(portableRegistryFingerprint(session.registry)),
+            "presentation": JSONValue(presentationRevision(session.registry)),
             "program_version": JSONValue(session.world.narrativeProgramVersion),
             "program_fingerprint": JSONValue(checkedProgram(session.world)),
             "world_identity": JSONValue(session.world.persistentIdentity.length ? session.world.persistentIdentity
@@ -289,13 +296,19 @@ Session loadSession(LuaState state, string saved, LuaValue factory) {
         throw new LuaException("cannot load session during an active operation");
     try {
         auto input = parseJSON(saved);
-        if (input["format"].str != "varis-session-1")
+        auto format = input["format"].str;
+        bool firstFormat = format == saveFormat1;
+        if (!firstFormat && format != saveFormat2)
             throw new LuaException("incompatible save format version");
         if (input["runtime"].str != narrativeRuntimeVersion)
             throw new LuaException("incompatible narrative runtime version");
         state.narrativeRegistry.seal();
-        if (input["content"].str != state.narrativeRegistry.contentVersion || input["content_fingerprint"].str != portableRegistryFingerprint(
-                state.narrativeRegistry))
+        // A first-format save is validated as it was written: with wording in the identity. A
+        // mismatch is never silently accepted in either format.
+        auto expectedContent = firstFormat ? state.narrativeRegistry.legacyContentVersion
+            : state.narrativeRegistry.contentVersion;
+        if (input["content"].str != expectedContent || input["content_fingerprint"].str != portableRegistryFingerprint(
+                state.narrativeRegistry, firstFormat))
             throw new LuaException("incompatible narrative content version or fingerprint");
         auto data = new SessionData();
         data.turn = unsignedValue(input["turn"], "turn");

@@ -21,6 +21,8 @@ import varis.services.index;
 import varis.services.manifest;
 import varis.services.xliff;
 import varis.narrative.translation : parseTranslation, TranslationTemplate;
+import varis.narrative.plural : pluralCategoryAllowed, requiredPluralCategories;
+import std.algorithm : sort;
 import varis.workbench.server : jsonQuote, readFile, writeFile;
 
 private enum catalogDirectory = "l10n";
@@ -1008,13 +1010,47 @@ Diagnostic[] checkEntries(ref const SourceCatalog source, string locale, string 
         }
         bool sameVariants = translated.variantOptionCounts.length == original.variantOptionCounts.length;
         if (sameVariants)
-            foreach (i, n; translated.variantOptionCounts)
+            foreach (i, n; translated.variantOptionCounts) {
                 if (n != original.variantOptionCounts[i])
                     sameVariants = false;
+                // Named alternatives may be reordered, not renamed.
+                string[] a = original.variantNames[i].dup, b = translated.variantNames[i].dup;
+                bool anyNamed;
+                foreach (name; a)
+                    anyNamed = anyNamed || name.length > 0;
+                if (anyNamed && sameVariants) {
+                    a.sort;
+                    b.sort;
+                    if (a != b)
+                        sameVariants = false;
+                }
+            }
         if (!sameVariants && (translated.variantOptionCounts.length || original.variantOptionCounts.length))
             found ~= makeDiagnostic("error", "translation-variants", file, 0, 0, 0, 0,
                     locale ~ ": " ~ e.key ~ ": the variants do not match the source's (the same groups, with the same "
                     ~ "number of options); the message will fall back to the source text", e.key);
+        // Plural branches: exactly the categories the language has.
+        foreach (g, kind; translated.choiceKinds) {
+            if (kind != "plural")
+                continue;
+            auto labels = translated.choiceLabels[g];
+            foreach (label; labels)
+                if (!pluralCategoryAllowed(locale, label))
+                    found ~= makeDiagnostic("error", "translation-plural", file, 0, 0, 0, 0,
+                            locale ~ ": " ~ e.key ~ ": {#" ~ label ~ "} is not a plural category of " ~ locale, e.key);
+            foreach (needed; requiredPluralCategories(locale)) {
+                if (needed == "other")
+                    continue;
+                bool present;
+                foreach (label; labels)
+                    if (label == needed)
+                        present = true;
+                if (!present)
+                    found ~= makeDiagnostic("error", "translation-plural", file, 0, 0, 0, 0,
+                            locale ~ ": " ~ e.key ~ ": a plural in " ~ locale ~ " needs {#" ~ needed ~ "} (and {#other})", e
+                            .key);
+            }
+        }
         auto status = effectiveStatus(e, message);
         if (status == "stale")
             found ~= makeDiagnostic("warning", "stale", file, 0, 0, 0, 0,

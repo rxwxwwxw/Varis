@@ -114,6 +114,7 @@ int checkProject(LuaState state, string[] files, CheckOptions options) {
         return problems.length ? 1 : 0;
     }
     projectChecks(index, problems);
+    pluralChecks(index, manifest.language.length ? manifest.language : "en", problems);
     // The load pass runs the project's entry module (never a session); the analysis pass, on
     // request, explores the manifest's session. Neither runs when files were named, or when
     // a file did not compile: the project is not in a state to load.

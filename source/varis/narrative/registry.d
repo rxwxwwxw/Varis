@@ -37,6 +37,8 @@ class ContentDefinition {
     NarrativeTemplate titleTemplate;
     NarrativeTemplate textTemplate;
     string fingerprint;
+    /// The identity first-format saves recorded: wording included. Only to read those saves.
+    string legacyFingerprint;
     /// Lazily built by Session.instances (stage W5): a fact that must hold for this definition
     /// to have any instance, when its availability is a plain query. Not part of the content.
     Object availabilityFilter;
@@ -97,6 +99,10 @@ class ContentRegistry {
     private LuaValue[string] formatters_;
     private bool sealed_;
     string contentVersion;
+    /// What `contentVersion` was before wording left it (first-format saves); equal when explicit.
+    string legacyContentVersion;
+    /// The language the authored text is written in (its plural rules apply to source templates).
+    string sourceLanguage = "en";
     bool explicitContentVersion;
     // Last result of portableRegistryFingerprint and the entries it was computed from.
     string[] fingerprintEntries;
@@ -442,6 +448,7 @@ class ContentRegistry {
     void copyForAnalysis(ContentRegistry destination, LuaValue delegate(LuaValue) cloneValue,
             ContentDefinition delegate(ContentDefinition) cloneDefinition) {
         destination.contentVersion = contentVersion;
+        destination.legacyContentVersion = legacyContentVersion;
         destination.explicitContentVersion = explicitContentVersion;
         destination.decks_ = decks_.dup;
         destination.explicitDecks = explicitDecks.dup;
@@ -484,26 +491,44 @@ class ContentRegistry {
                 throw failure;
             }
         }
-        string[] manifests;
-        foreach (definition; storylets_.values ~ actions_.values)
+        // The identity of the content, twice: as it is now (wording excluded), and as saves of the
+        // first format recorded it (wording included), so that those can still be read.
+        string[] manifests, legacyManifests;
+        foreach (definition; storylets_.values ~ actions_.values) {
             manifests ~= definition.kind ~ ":" ~ definition.id ~ ":" ~ definition.fingerprint;
-        foreach (name, definition; decks_)
-            manifests ~= "deck:" ~ name ~ ":" ~ definition.draw.to!string ~ ":" ~ definition.replacement.to!string;
-        foreach (name, definition; qualities_) {
-            manifests ~= "quality:" ~ name ~ ":" ~ canonicalScalar(definition.initial) ~ ":" ~ canonicalScalar(
-                    definition.minimum) ~ ":" ~ canonicalScalar(
-                    definition.maximum) ~ ":" ~ definition.visible.to!string ~ ":" ~ definition.label;
+            legacyManifests ~= definition.kind ~ ":" ~ definition.id ~ ":" ~ definition.legacyFingerprint;
         }
-        foreach (name, label; names_)
-            manifests ~= "name:" ~ name ~ ":" ~ label;
-        foreach (name; handlers_.keys)
+        foreach (name, definition; decks_) {
+            auto entry = "deck:" ~ name ~ ":" ~ definition.draw.to!string ~ ":" ~ definition.replacement.to!string;
+            manifests ~= entry;
+            legacyManifests ~= entry;
+        }
+        foreach (name, definition; qualities_) {
+            auto entry = "quality:" ~ name ~ ":" ~ canonicalScalar(definition.initial) ~ ":" ~ canonicalScalar(
+                    definition.minimum) ~ ":" ~ canonicalScalar(definition.maximum) ~ ":" ~ definition
+                .visible.to!string;
+            manifests ~= entry;
+            legacyManifests ~= entry ~ ":" ~ definition.label;
+        }
+        foreach (name, label; names_) {
+            manifests ~= "name:" ~ name;
+            legacyManifests ~= "name:" ~ name ~ ":" ~ label;
+        }
+        foreach (name; handlers_.keys) {
             manifests ~= "handler:" ~ name;
-        manifests.sort;
-        string manifest;
-        foreach (entry; manifests)
-            manifest ~= entry.length.to!string ~ ":" ~ entry;
+            legacyManifests ~= "handler:" ~ name;
+        }
+        string digest(string[] entries) {
+            entries.sort;
+            string text;
+            foreach (entry; entries)
+                text ~= entry.length.to!string ~ ":" ~ entry;
+            return text.sha256Of.toHexString.idup;
+        }
+
         explicitContentVersion = authoredVersion.length != 0;
-        contentVersion = authoredVersion.length ? authoredVersion : manifest.sha256Of.toHexString.idup;
+        contentVersion = authoredVersion.length ? authoredVersion : digest(manifests);
+        legacyContentVersion = authoredVersion.length ? authoredVersion : digest(legacyManifests);
         sealed_ = true;
     }
 }

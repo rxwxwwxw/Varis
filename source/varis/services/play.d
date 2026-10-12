@@ -103,6 +103,7 @@ local function resolve(path)
 end
 
 require(cfg.entry)
+if cfg.language then narrative.source_language(cfg.language) end
 local language = cfg.locale
 local pack_path
 for i = 1, #(arg or {}) do
@@ -351,6 +352,7 @@ local function boot()
     if booted then return end
     booted = true
     require(cfg.entry)
+    if cfg.language then narrative.source_language(cfg.language) end
     if cfg.locale then
         assert(not cfg.locale_error, "language " .. cfg.locale .. ": " .. tostring(cfg.locale_error))
         narrative.translate(cfg.locale, __varis_translations)

@@ -17,15 +17,68 @@ import varis.parser;
 import varis.compiler;
 import varis.vm;
 import varis.logic.world;
-import varis.narrative.translation : RenderTrace, normalizeCondition;
+import varis.narrative.translation : RenderTrace, normalizeCondition, variantArguments;
+import varis.narrative.plural : pluralCategory, isPluralCategory;
 import varis.exception : LuaException;
-import std.string : strip, startsWith;
+import std.string : strip, startsWith, split;
 import std.algorithm : canFind;
 import std.conv : to;
 import std.math : isFinite;
 
 class VariantOption {
     double weight = 1.0;
+    string name; // optional, from `{#variant 3 name}`: what a translation and the replay log call it
+    TemplateNode[] nodes;
+}
+
+private bool isChoiceTag(string token) {
+    switch (token) {
+    case "#zero":
+    case "#one":
+    case "#two":
+    case "#few":
+    case "#many":
+    case "#other":
+    case "#default":
+    case "/plural":
+    case "/select":
+        return true;
+    default:
+        return token.length > 6 && token[0 .. 6] == "#case ";
+    }
+}
+
+/// The weight and name of a `{#variant ...}` tag's arguments; raises a language error otherwise.
+private void variantWeightAndName(string arguments, out double weight, out string name) {
+    string weightText;
+    foreach (word; arguments.strip.split) {
+        if (word.length > 7 && word[0 .. 7] == "weight=") {
+            auto rest = word[7 .. $];
+            bool numeric = rest.length > 0;
+            foreach (char c; rest)
+                if (!((c >= '0' && c <= '9') || c == '.'))
+                    numeric = false;
+            if (!numeric)
+                throw new LuaException("variant weight must be numeric");
+        }
+    }
+    if (!variantArguments(arguments, weightText, name))
+        throw new LuaException("variant takes a positive weight and a name");
+    weight = 1.0;
+    if (weightText.length) {
+        try {
+            weight = weightText.to!double;
+        } catch (Exception) {
+            throw new LuaException("variant weight must be numeric");
+        }
+    }
+    if (weight <= 0.0 || !isFinite(weight))
+        throw new LuaException("variant weight must be positive and finite");
+}
+
+/// A `{#plural n}` or `{#select v}` branch.
+private class ChoiceBranch {
+    string label;
     TemplateNode[] nodes;
 }
 
@@ -41,6 +94,13 @@ private class TemplateNode {
     TemplateNode[] yes;
     TemplateNode[] no;
     VariantGroup variantGroup;
+    // `{#plural n}` and `{#select v}`: the parameter, the labelled branches and the required
+    // `{#other}` or `{#default}` branch.
+    string choiceParameter;
+    bool choiceIsPlural;
+    ChoiceBranch[] choiceBranches;
+    TemplateNode[] choiceDefault;
+    bool isChoice;
 }
 
 /// Parsed content-only interpolation; ordinary Lua strings are unchanged.
@@ -58,7 +118,8 @@ class NarrativeTemplate {
             throw new LuaException("unexpected template conditional terminator");
     }
 
-    private TemplateNode[] parseNodes(string text, ref size_t cursor, out string terminator, bool insideVariant = false) {
+    private TemplateNode[] parseNodes(string text, ref size_t cursor, out string terminator, bool insideVariant = false,
+            bool insideChoice = false) {
         TemplateNode[] result;
         string literal;
         void flush() {
@@ -154,6 +215,10 @@ class NarrativeTemplate {
                 terminator = token;
                 return result;
             }
+            if (insideChoice && isChoiceTag(token)) {
+                terminator = token;
+                return result;
+            }
             auto node = new TemplateNode();
             if (token.length > 4 && token[0 .. 4] == "#if ") {
                 string condition = token[4 .. $].strip;
@@ -169,6 +234,64 @@ class NarrativeTemplate {
                     node.no = parseNodes(text, cursor, ending, insideVariant);
                 if (ending != "/if")
                     throw new LuaException("template conditional requires {/if}");
+            } else if (token.length > 8 && (token[0 .. 8] == "#plural " || token[0 .. 8] == "#select ")) {
+                bool plural = token[1] == 'p';
+                string parameter = token[8 .. $].strip;
+                if (!parameters.canFind(parameter))
+                    throw new LuaException("unknown narrative template placeholder '" ~ parameter ~ "'");
+                node.isChoice = true;
+                node.choiceIsPlural = plural;
+                node.choiceParameter = parameter;
+                string closing = plural ? "/plural" : "/select";
+                string tag;
+                auto before = parseNodes(text, cursor, tag, insideVariant, true);
+                foreach (b; before)
+                    if (b.literal.strip.length || b.parameter.length || isFunction(b.condition) || b
+                            .variantGroup !is null
+                            || b.isChoice)
+                        throw new LuaException("template {" ~ token[0 .. 7] ~ "} may contain only branches");
+                bool haveDefault;
+                while (tag != closing) {
+                    if (tag.length == 0)
+                        throw new LuaException("template {" ~ token[0 .. 7] ~ "} requires {" ~ closing ~ "}");
+                    string label;
+                    bool isDefault;
+                    if (plural) {
+                        if (tag == "#other")
+                            isDefault = true;
+                        else if (tag.length > 1 && tag[0] == '#' && isPluralCategory(tag[1 .. $]))
+                            label = tag[1 .. $];
+                        else
+                            throw new LuaException("unexpected {" ~ tag ~ "} in {#plural}");
+                    } else {
+                        if (tag == "#default")
+                            isDefault = true;
+                        else if (tag.length > 6 && tag[0 .. 6] == "#case ")
+                            label = tag[6 .. $].strip;
+                        else
+                            throw new LuaException("unexpected {" ~ tag ~ "} in {#select}");
+                    }
+                    string next;
+                    auto branchNodes = parseNodes(text, cursor, next, insideVariant, true);
+                    if (isDefault) {
+                        if (haveDefault)
+                            throw new LuaException("{" ~ tag ~ "} appears twice");
+                        haveDefault = true;
+                        node.choiceDefault = branchNodes;
+                    } else {
+                        foreach (existing; node.choiceBranches)
+                            if (existing.label == label)
+                                throw new LuaException("{" ~ tag ~ "} appears twice");
+                        auto branch = new ChoiceBranch();
+                        branch.label = label;
+                        branch.nodes = branchNodes;
+                        node.choiceBranches ~= branch;
+                    }
+                    tag = next;
+                }
+                if (!haveDefault)
+                    throw new LuaException(plural ? "template {#plural} requires {#other}"
+                            : "template {#select} requires {#default}");
             } else if (token == "#variants") {
                 auto group = new VariantGroup();
                 string nextTag;
@@ -177,23 +300,14 @@ class NarrativeTemplate {
                     if (nextTag == "/variants")
                         break;
                     if (nextTag.length >= 8 && nextTag[0 .. 8] == "#variant") {
-                        string arg = nextTag[8 .. $].strip;
-                        double w = 1.0;
-                        if (arg.length) {
-                            if (arg.startsWith("weight="))
-                                arg = arg[7 .. $].strip;
-                            try {
-                                w = arg.to!double;
-                            } catch (Exception) {
-                                throw new LuaException("variant weight must be numeric");
-                            }
-                        }
-                        if (w <= 0.0 || !isFinite(w))
-                            throw new LuaException("variant weight must be positive and finite");
+                        double w;
+                        string optionName;
+                        variantWeightAndName(nextTag[8 .. $], w, optionName);
                         string optEnding;
                         auto optNodes = parseNodes(text, cursor, optEnding, true);
                         auto opt = new VariantOption();
                         opt.weight = w;
+                        opt.name = optionName;
                         opt.nodes = optNodes;
                         group.options ~= opt;
                         if (optEnding == "/variants")
@@ -203,22 +317,13 @@ class NarrativeTemplate {
                         if (optEnding.length >= 8 && optEnding[0 .. 8] == "#variant") {
                             nextTag = optEnding;
                             // continue with this tag directly
-                            string innerArg = nextTag[8 .. $].strip;
-                            double innerW = 1.0;
-                            if (innerArg.length) {
-                                if (innerArg.startsWith("weight="))
-                                    innerArg = innerArg[7 .. $].strip;
-                                try {
-                                    innerW = innerArg.to!double;
-                                } catch (Exception) {
-                                    throw new LuaException("variant weight must be numeric");
-                                }
-                            }
-                            if (innerW <= 0.0 || !isFinite(innerW))
-                                throw new LuaException("variant weight must be positive and finite");
+                            double innerW;
+                            string innerName;
+                            variantWeightAndName(nextTag[8 .. $], innerW, innerName);
                             auto innerOptNodes = parseNodes(text, cursor, optEnding, true);
                             auto innerOpt = new VariantOption();
                             innerOpt.weight = innerW;
+                            innerOpt.name = innerName;
                             innerOpt.nodes = innerOptNodes;
                             group.options ~= innerOpt;
                             if (optEnding == "/variants")
@@ -236,23 +341,14 @@ class NarrativeTemplate {
                 auto group = new VariantGroup();
                 string currentTag = token;
                 while (currentTag.length >= 8 && currentTag[0 .. 8] == "#variant") {
-                    string arg = currentTag[8 .. $].strip;
-                    double w = 1.0;
-                    if (arg.length) {
-                        if (arg.startsWith("weight="))
-                            arg = arg[7 .. $].strip;
-                        try {
-                            w = arg.to!double;
-                        } catch (Exception) {
-                            throw new LuaException("variant weight must be numeric");
-                        }
-                    }
-                    if (w <= 0.0 || !isFinite(w))
-                        throw new LuaException("variant weight must be positive and finite");
+                    double w;
+                    string optionName;
+                    variantWeightAndName(currentTag[8 .. $], w, optionName);
                     string ending;
                     auto optNodes = parseNodes(text, cursor, ending, true);
                     auto opt = new VariantOption();
                     opt.weight = w;
+                    opt.name = optionName;
                     opt.nodes = optNodes;
                     group.options ~= opt;
                     if (ending == "#else") {
@@ -295,7 +391,7 @@ class NarrativeTemplate {
     /// each condition and the option drawn for each variant group, in the order encountered, so
     /// that a translation of this message can be rendered without evaluating anything again.
     string render(LuaState state, World snapshot, LuaValue[string] bindings, string delegate(LuaValue) display, const(
-            size_t)[] variantSelections = null, RenderTrace* trace = null) {
+            size_t)[] variantSelections = null, RenderTrace* trace = null, string locale = "en") {
         beginReadOnlyEvaluation();
         scope (exit)
             endReadOnlyEvaluation();
@@ -320,6 +416,31 @@ class NarrativeTemplate {
                         trace.conditions[node.conditionSource] = exists;
                     output ~= renderNodes(exists ? node.yes : node.no);
                 }
+                if (node.isChoice) {
+                    auto value = bindings.get(node.choiceParameter, luaNil());
+                    TemplateNode[] chosen = node.choiceDefault;
+                    string key;
+                    if (node.choiceIsPlural) {
+                        key = "other";
+                        if (isInteger(value))
+                            key = pluralCategory(locale, value.match!((long n) => cast(double) n, _ => 0.0));
+                        else if (isFloat(value))
+                            key = pluralCategory(locale, value.match!((double d) => d, _ => 0.0));
+                    } else if (isSymbol(value))
+                        key = value.match!((Symbol symbol) => symbol.name, _ => "");
+                    else if (isString(value))
+                        key = value.match!((string t) => t, _ => "");
+                    else if (isInteger(value))
+                        key = value.match!((long n) => n.to!string, _ => "");
+                    else if (isBoolean(value))
+                        key = value.match!((bool b) => b ? "true" : "false", _ => "");
+                    foreach (branch; node.choiceBranches)
+                        if (branch.label == key) {
+                            chosen = branch.nodes;
+                            break;
+                        }
+                    output ~= renderNodes(chosen);
+                }
                 if (node.variantGroup !is null) {
                     size_t optIdx = 0;
                     if (groupIndex < variantSelections.length) {
@@ -336,8 +457,10 @@ class NarrativeTemplate {
                         }
                     }
                     groupIndex++;
-                    if (trace !is null)
+                    if (trace !is null) {
                         trace.variants ~= optIdx;
+                        trace.variantNames ~= node.variantGroup.options[optIdx].name;
+                    }
                     output ~= renderNodes(node.variantGroup.options[optIdx].nodes);
                 }
             }

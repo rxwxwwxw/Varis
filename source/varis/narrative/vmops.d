@@ -140,9 +140,10 @@ private void declarativeOp(LuaState state, LuaClosure closure, Prototype proto, 
                 content.effect = registers[template_.effectRegister];
             foreach (choice; template_.choices)
                 content.choices ~= instantiateContent(choice);
-            import varis.narrative.fingerprint : contentFingerprint;
+            import varis.narrative.fingerprint : contentFingerprint, legacyContentFingerprint;
 
             content.fingerprint = contentFingerprint(content);
+            content.legacyFingerprint = legacyContentFingerprint(content);
             return content;
         }
 

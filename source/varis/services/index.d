@@ -297,6 +297,25 @@ private TemplateScan scanTemplate(string raw, int line, int column, string file,
                 }
             } else if (text == "#variants") {
                 // The group's options are counted at their `#variant` tags.
+            } else if (text.length > 8 && (text[0 .. 8] == "#plural " || text[0 .. 8] == "#select ")) {
+                // The parameter a plural or select chooses on is an argument of the message.
+                auto name = stripText(text[8 .. $]);
+                bool plain = name.length > 0;
+                foreach (char c; name)
+                    if (!isNameChar(c))
+                        plain = false;
+                if (plain) {
+                    result.placeholders ~= name;
+                    size_t nameOffset = offset + 8;
+                    auto at = map.at(nameOffset);
+                    Reference reference;
+                    reference.kind = "placeholder";
+                    reference.name = name;
+                    reference.file = file;
+                    reference.inside = inside;
+                    reference.range = Range(at.line, at.column, at.line, cast(int)(at.column + name.length));
+                    result.references ~= reference;
+                }
             } else if (text.length >= 8 && text[0 .. 8] == "#variant")
                 ++result.variantOptions;
             continue;

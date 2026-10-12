@@ -84,13 +84,41 @@ private string computePrototypeFingerprint(Prototype prototype) {
     return result;
 }
 
+/// The identity of a definition as saves of the first format knew it: every option, wording
+/// included. Kept to read those saves; new saves use `contentFingerprint`.
+string legacyContentFingerprint(ContentDefinition definition) {
+    return definitionFingerprint(definition, true);
+}
+
+/// The gameplay identity of a definition (save format 2): its parameters and options, effects
+/// and conditions, and the **structure** of its `title` and `text` (the conditions they embed and
+/// the weights, names and parameters of their variants, plurals and selects), but not their
+/// wording. A typo fix does not change it.
 string contentFingerprint(ContentDefinition definition) {
+    return definitionFingerprint(definition, false);
+}
+
+private string definitionFingerprint(ContentDefinition definition, bool legacy) {
+    import varis.narrative.translation : parseTranslation, TranslationTemplate;
+
     string result = definition.kind ~ ":" ~ definition.id;
     foreach (parameter; definition.incomingParameters ~ definition.parameters)
         result ~= ":parameter:" ~ parameter;
     auto names = definition.options.keys;
     names.sort;
     foreach (name; names) {
+        // Wording is not gameplay: a template contributes what it asks the engine to evaluate.
+        if (!legacy && (name == "title" || name == "text")) {
+            auto value = definition.options[name];
+            if (isString(value)) {
+                TranslationTemplate parsed;
+                string error;
+                if (parseTranslation(value.match!((string s) => s, _ => ""), parsed, error)) {
+                    result ~= ":template:" ~ name ~ ":" ~ parsed.structure();
+                    continue;
+                }
+            }
+        }
         string encoded;
         try {
             encoded = canonicalScalar(definition.options[name]);
@@ -105,8 +133,36 @@ string contentFingerprint(ContentDefinition definition) {
             result ~= ":closure:" ~ prototypeFingerprint(closure.proto);
     }
     foreach (choice; definition.choices)
-        result ~= ":choice:" ~ contentFingerprint(choice);
+        result ~= ":choice:" ~ definitionFingerprint(choice, legacy);
     return result;
+}
+
+/// A digest of everything a player reads that is wording: titles, texts, names and labels. It
+/// does not decide compatibility; it says that the presentation changed.
+string presentationRevision(ContentRegistry registry) {
+    import std.digest.sha : sha256Of;
+    import std.digest : toHexString;
+
+    string[] parts;
+    void collect(ContentDefinition definition, string prefix) {
+        foreach (field; ["title", "text"]) {
+            auto value = definition.option(field, LuaValue(""));
+            if (isString(value))
+                parts ~= prefix ~ definition.id ~ "." ~ field ~ "=" ~ value.match!((string s) => s, _ => "");
+        }
+        foreach (choice; definition.choices)
+            collect(choice, prefix ~ definition.id ~ ".");
+    }
+
+    foreach (definition; registry.storylets() ~ registry.actions())
+        collect(definition, "");
+    foreach (id; registry.nameIds())
+        parts ~= "name." ~ id ~ "=" ~ registry.name(id);
+    parts.sort;
+    string joined;
+    foreach (part; parts)
+        joined ~= part.length.to!string ~ ":" ~ part;
+    return joined.sha256Of.toHexString.idup;
 }
 
 /// Portable code identity includes supported captures; authored versions opt into
@@ -151,15 +207,16 @@ string portableFunctionFingerprint(LuaValue value, varis.logic.world.World world
     return result;
 }
 
-string portableRegistryFingerprint(ContentRegistry registry) {
+string portableRegistryFingerprint(ContentRegistry registry, bool legacy = false) {
     import std.digest.sha : sha256Of;
     import std.digest : toHexString;
 
     string[] entries;
     void content(ContentDefinition definition) {
         // Registration stores the fingerprint of a top-level definition; its fields are frozen then.
-        entries ~= registry.sealed && definition.fingerprint.length ? definition.fingerprint
-            : contentFingerprint(definition);
+        auto stored = legacy ? definition.legacyFingerprint : definition.fingerprint;
+        entries ~= registry.sealed && stored.length ? stored : (legacy ? legacyContentFingerprint(definition)
+                : contentFingerprint(definition));
         foreach (value; [definition.availability, definition.effect])
             entries ~= portableFunctionFingerprint(value, null, registry.explicitContentVersion, definition.kind ~ "." ~ definition
                     .id);
@@ -175,10 +232,17 @@ string portableRegistryFingerprint(ContentRegistry registry) {
         entries ~= "formatter." ~ key ~ portableFunctionFingerprint(registry.formatter(key), null, registry
                 .explicitContentVersion, "formatter." ~ key);
     foreach (id; registry.nameIds())
-        entries ~= "name." ~ id ~ ":" ~ registry.name(id);
+        entries ~= legacy ? "name." ~ id ~ ":" ~ registry.name(id) : "name." ~ id;
     entries.sort;
     // Hashing the concatenated text dominates a save. The entries are mostly cached strings, so
     // when they equal the previous call's (usually by pointer) the previous digest is reused.
+    // The cache serves the current identity; reading a first-format save is rare and uncached.
+    if (legacy) {
+        string legacyResult;
+        foreach (entry; entries)
+            legacyResult ~= entry.length.to!string ~ ":" ~ entry;
+        return legacyResult.sha256Of.toHexString.idup;
+    }
     bool unchanged = registry.fingerprintDigest.length != 0 && registry.fingerprintEntries.length == entries.length;
     for (size_t i = 0; unchanged && i < entries.length; ++i) {
         auto previous = registry.fingerprintEntries[i];
