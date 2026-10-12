@@ -108,6 +108,13 @@ def main():
     assert code == 1 and tier == [("content/story.lua", 9), ("content/story.lua", 9), ("content/story.lua", 11),
                                   ("content/story.lua", 11), ("content/story.lua", 12), ("content/story.lua", 16)], tier
 
+    # Declared symbols (opt-in `symbols` in the manifest): an undeclared one is an error with a suggestion.
+    code, out = run(binary, HERE / "fixtures" / "symbols", "--json", "--no-load")
+    found = [(p["line"], p["code"], p.get("suggestion", "")) for p in json.loads(out)["problems"]]
+    assert code == 1 and found == [(3, "undeclared-symbol", "tower"), (4, "undeclared-symbol", "")], found
+    code, out = run(binary, HERE / "fixtures" / "symbols", "--symbols")
+    assert '"visitor"' in out and '"keeper"' in out and out.startswith("symbols = {"), out
+
     # Parser recovery: four independent mistakes in one file are all reported, with no cascade.
     code, out = run(binary, HERE / "fixtures" / "recover", "--json")
     assert code == 1, out

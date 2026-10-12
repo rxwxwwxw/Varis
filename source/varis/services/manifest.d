@@ -35,6 +35,8 @@ struct Manifest {
     string[] scripts; // file patterns of engine scripts
     string[] locales; // translations kept in this repository
     string[] tests; // file patterns of author tests
+    string[] symbols; // declared symbols (entities, flags, event kinds); opt-in strictness
+    bool declaresSymbols; // the manifest has a `symbols` list
     Diagnostic[] problems;
 }
 
@@ -152,6 +154,10 @@ Manifest loadManifest(string directory) {
             break;
         case "tests":
             manifest.tests = list.items;
+            break;
+        case "symbols":
+            manifest.symbols = list.items;
+            manifest.declaresSymbols = true;
             break;
         default:
             manifest.record("warning", "manifest-key", field.value, "unknown manifest field `" ~ key.value ~ "`");

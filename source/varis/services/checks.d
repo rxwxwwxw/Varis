@@ -247,7 +247,8 @@ private string numberText(long value) {
 
 /// Everything a project-wide check finds in the files that parsed: the static checks, text built
 /// by code, and symbols written once (the likely typos).
-void projectChecks(ref const ProjectIndex index, ref Diagnostic[] problems) {
+void projectChecks(ref const ProjectIndex index, ref Diagnostic[] problems, const(string)[] declared = null,
+        bool strictSymbols = false) {
     staticChecks(index, problems);
     // Display text built by code cannot be extracted for translation.
     foreach (ref f; index.files)
@@ -255,6 +256,10 @@ void projectChecks(ref const ProjectIndex index, ref Diagnostic[] problems) {
             if (m.computed)
                 problems ~= makeDiagnostic("warning", "computed-text", m.file, m.range.line, m.range.column, m.range.endLine,
                         m.range.endColumn, "display text built by code cannot be extracted for translation", m.owner);
+    if (strictSymbols) {
+        declaredSymbolChecks(index, declared, problems);
+        return;
+    }
     // A symbol that appears once cannot connect two things: nothing else mentions it.
     struct SymbolUse {
         string file;
@@ -361,4 +366,32 @@ private int indexOf(string text, string needle) {
         if (text[i .. i + needle.length] == needle)
             return cast(int) i;
     return -1;
+}
+
+/// With a `symbols` list in the manifest, a symbol is an error unless it is listed or named by a
+/// declaration (storylet, action, deck, relation, quality, name, choice): a mistyped `:keepr` is
+/// then an error at its place, not a storylet that silently never appears. Opt-in, no new syntax
+/// (ROADMAP milestone 28's "declared entities/symbols", in its smallest reversible form).
+void declaredSymbolChecks(ref const ProjectIndex index, const(string)[] declared, ref Diagnostic[] problems) {
+    bool[string] known;
+    foreach (name; declared)
+        known[name] = true;
+    string[] candidates = declared.dup;
+    foreach (ref f; index.files)
+        foreach (ref d; f.declarations)
+            if (d.name.length && d.kind != "function" && d.kind != "local-function" && d.kind != "label") {
+                known[d.name] = true;
+                candidates ~= d.name;
+            }
+    bool[string] reported;
+    foreach (ref f; index.files)
+        foreach (ref r; f.references) {
+            if (r.kind != "symbol" || r.role == "engine" || r.name in known)
+                continue;
+            auto diagnostic = makeDiagnostic("error", "undeclared-symbol", r.file, r.range.line, r.range.column, r.range.endLine,
+                    r.range.endColumn, "symbol :" ~ r.name ~ " is not declared: list it in `symbols` of project.lua, or "
+                    ~ "declare the storylet, relation, quality or deck it names", "symbol :" ~ r.name);
+            diagnostic.suggestion = nearestName(r.name, candidates);
+            problems ~= diagnostic;
+        }
 }

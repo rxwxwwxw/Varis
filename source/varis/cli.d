@@ -532,6 +532,8 @@ private int runCheck(string[] argv, ref LuaState state) {
             options.noLoad = true;
         else if (argument == "--analyze")
             options.analyze = true;
+        else if (argument == "--symbols")
+            options.listSymbols = true;
         else if (argument == "--locale" && i + 1 < argv.length)
             options.locale = argv[++i];
         else if ((argument == "--depth" || argument == "--nodes") && i + 1 < argv.length) {

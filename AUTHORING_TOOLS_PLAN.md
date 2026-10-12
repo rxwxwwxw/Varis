@@ -170,7 +170,7 @@ Each is a code, a fixture and a message. Add them one per change if convenient.
 | `symbol-once` | Exists today. Gains the nearest known symbol as a suggestion. | warning |
 | `computed-text` | A `title`, `text` or label that is not a string literal (it cannot be extracted for translation). | warning now; error in content files once milestone 26 lands |
 | `tier` | A content file using something outside the content tier (**done**, default list of ROADMAP decision 1; static only). | error |
-| `undeclared-symbol` | Replaces `symbol-once` when declared symbols exist. | waits for milestone 28 |
+| `undeclared-symbol` | Replaces `symbol-once` when the manifest declares `symbols` (**done** in its smallest reversible form: a manifest list, no new syntax). | error |
 
 Rule for all of them: when a check cannot be sure (a relation created by a computed name, a deck
 pushed from a script), it stays silent or reports a warning. A false error teaches writers to

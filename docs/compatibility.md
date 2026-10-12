@@ -70,6 +70,7 @@ The **project manifest** is the file `project.lua` at the project root: one
 | `content` | list of patterns | Files that hold content. |
 | `scripts` | list of patterns | Engine scripts. |
 | `tests` | list of patterns | Author tests. |
+| `symbols` | list of strings | Opt-in strictness: symbols (entities, flags, event kinds) that no declaration names. With it, any symbol neither listed nor named by a storylet, action, deck, relation, quality or choice is an `undeclared-symbol` error, and `symbol-once` is not reported. `varis check --symbols` prints the symbols that need listing. |
 | `locales` | list of strings | Translations kept in the repository. |
 
 In a pattern `*` matches within one path segment, `**` across segments and `?` one

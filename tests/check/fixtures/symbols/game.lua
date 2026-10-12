@@ -1,0 +1,6 @@
+relation at(entity, room)
+fact at(:keeper, :tower)
+fact at(:player, :towr)
+fact at(:visitor, :tower)
+quality.define(:oil, {initial = 1})
+fact at(:oil, :tower)

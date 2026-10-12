@@ -68,6 +68,7 @@ struct CheckOptions {
     bool noLoad;
     bool analyze;
     string locale; // `--locale L` or `all`: also check the translations
+    bool listSymbols; // `--symbols`: print the symbols no declaration names, as a `symbols` list
     int depth = 3;
     int nodes = 100;
 }
@@ -113,6 +114,28 @@ int checkProject(LuaState state, string[] files, CheckOptions options) {
             if (readFile(file, text))
                 problems ~= checkTier(file, text);
         }
+    if (options.listSymbols) {
+        bool[string] named;
+        foreach (ref f; index.files)
+            foreach (ref d; f.declarations)
+                if (d.name.length)
+                    named[d.name] = true;
+        string[] free;
+        bool[string] seen;
+        foreach (ref f; index.files)
+            foreach (ref r; f.references)
+                if (r.kind == "symbol" && r.role != "engine" && r.name !in named && r.name !in seen) {
+                    seen[r.name] = true;
+                    free ~= r.name;
+                }
+        sortStrings(free);
+        string text = "symbols = {\n";
+        foreach (name; free)
+            text ~= "    \"" ~ name ~ "\",\n";
+        text ~= "},\n";
+        fwrite(text.ptr, 1, text.length, stdout);
+        return 0;
+    }
     if (dumpIndex) {
         // The index shows every file, including those that only partly parsed.
         auto whole = index;
@@ -121,7 +144,7 @@ int checkProject(LuaState state, string[] files, CheckOptions options) {
         fwrite(text.ptr, 1, text.length, stdout);
         return problems.length ? 1 : 0;
     }
-    projectChecks(index, problems);
+    projectChecks(index, problems, manifest.symbols, manifest.declaresSymbols);
     pluralChecks(index, manifest.language.length ? manifest.language : "en", problems);
     // The load pass runs the project's entry module (never a session); the analysis pass, on
     // request, explores the manifest's session. Neither runs when files were named, or when
