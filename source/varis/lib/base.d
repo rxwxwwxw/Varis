@@ -335,6 +335,22 @@ void openBaseLib(LuaState state) {
             if (thread !is null)
                 thread.popBoundary();
         try {
+            // `pcall(error, value [, level])`: the result is known without raising anything. The
+            // error function's frame is pushed while the position prefix is computed, so the level
+            // counts frames exactly as in a real call. Unusual arguments take the general path.
+            if (a[0].isFunction && a[0].asFunction is s.errorFunction && (thread is null || thread.hookFunction is null)
+                && (a.length <= 2 || a[2].isNil || a[2].isInteger)) {
+                LuaValue errObj = a.length > 1 ? a[1] : luaNil();
+                long level = a.length > 2 && a[2].isInteger ? a[2].asInteger : 1;
+                if (isString(errObj) && level > 0) {
+                    s.pushCall(s.errorFunction, "[C]", -1, false, "error", "global");
+                    auto prefix = s.locationPrefix(cast(int) level);
+                    s.popCall();
+                    if (prefix.length)
+                        errObj = LuaValue(prefix ~ toLuaString(errObj));
+                }
+                return [LuaValue(false), errObj];
+            }
             LuaException protectedFailure;
             auto results = VM.callProtected(s, a[0], a.length > 1 ? a[1 .. $] : [], protectedFailure);
             if (protectedFailure !is null)

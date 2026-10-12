@@ -713,10 +713,15 @@ struct VM {
         World worldToRestore;
         bool worldDirty;
 
+        // A Lua error that reached this frame. Errors raised by `error` in this frame, and errors
+        // returned by a Lua callee, arrive here without a throw; errors thrown by natives and by
+        // the out-of-line helpers arrive through the catch below. Either way the frame's handler
+        // after the try block runs once.
+        LuaException raisedError;
         try {
             if (frameThread.hookFunction !is null)
                 state.debugHook(transferred ? "tail call" : "call", -1, registers[0 .. proto.numParams], true);
-            for (;;) {
+            interpret: for (;;) {
                 // One test covers every rare per-instruction duty (instruction budget, open frame
                 // transactions, pending collection, interrupt, hooks). `attention` is read once.
                 bool attention = vmAttention;
@@ -1071,7 +1076,8 @@ struct VM {
                             raised.originKind = site.kind;
                             state.dispatchError(raised);
                             state.popCall();
-                            throw raised;
+                            raisedError = raised;
+                            break interpret;
                         }
                         if (calleeFunction.fastCall !is null && frameThread.hookFunction is null) {
                             // Hot built-ins run straight on the registers (see varis.lib.fastcall).
@@ -1117,6 +1123,7 @@ struct VM {
                             scrubDeadStack();
                         TailRequest childTail;
                         childTail.placeInDest = true;
+                        childTail.returnErrors = true; // a failing callee returns its error (no rethrow per frame)
                         childTail.wanted = numWantedResults;
                         childTail.dest = numWantedResults >= 0 ? registers[instr.a .. instr.a + numWantedResults]
                             : registers[instr.a .. $];
@@ -1129,6 +1136,10 @@ struct VM {
                         size_t childCount = childTail.placedCount;
                         if (childTail.pending)
                             childResults = runTailCalls(state, childTail, childPlaced, childCount);
+                        if (childTail.error !is null) {
+                            raisedError = childTail.error;
+                            break interpret;
+                        }
                         if (swapped) {
                             state.callWorld = previousWorld;
                             worldDirty = false;
@@ -1347,6 +1358,30 @@ struct VM {
             }
             throw signal;
         } catch (LuaException e) {
+            raisedError = e;
+        } catch (ExitRequest request) {
+            if (worldDirty) {
+                state.callWorld = worldToRestore;
+                worldDirty = false;
+            }
+            if (callVisible) {
+                state.popCall();
+                callVisible = false;
+            }
+            closeValuesFrom(0);
+            throw request;
+        } catch (Exception e) {
+            if (worldDirty) {
+                state.callWorld = worldToRestore;
+                worldDirty = false;
+            }
+            transactionError = true;
+            closeValuesFrom(0, LuaValue(e.msg));
+            throw e;
+        }
+
+        if (raisedError !is null) {
+            auto e = raisedError;
             if (worldDirty) {
                 state.callWorld = worldToRestore;
                 worldDirty = false;
@@ -1396,25 +1431,6 @@ struct VM {
                 tail.error = e;
                 return null;
             }
-            throw e;
-        } catch (ExitRequest request) {
-            if (worldDirty) {
-                state.callWorld = worldToRestore;
-                worldDirty = false;
-            }
-            if (callVisible) {
-                state.popCall();
-                callVisible = false;
-            }
-            closeValuesFrom(0);
-            throw request;
-        } catch (Exception e) {
-            if (worldDirty) {
-                state.callWorld = worldToRestore;
-                worldDirty = false;
-            }
-            transactionError = true;
-            closeValuesFrom(0, LuaValue(e.msg));
             throw e;
         }
 

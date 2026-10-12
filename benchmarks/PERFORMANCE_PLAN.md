@@ -370,6 +370,15 @@ Not planned until measured: demand-driven evaluation for queries with bound argu
 
 **L1 — Errors as values (D7).**
 
+*First step done October 11, 2026:* inside `executeFrame`, an error raised by `error` or
+returned by a Lua callee now reaches the frame's handler without a throw (the handler code moved
+out of the `catch` block and runs once per frame as before; Lua-to-Lua calls set
+`TailRequest.returnErrors`), and `pcall(error, …)` produces its result directly. Errors thrown
+by natives and by out-of-line helpers still use one D throw to reach the nearest Lua frame.
+`core.pcall_error` 37× → 1.36× C Lua; an error raised three Lua frames below a `pcall` costs
+0.5 µs (C Lua 0.37 µs). The rest of this stage (natives returning statuses, no exceptions in the
+core) is still to do.
+
 - The executor and every native return a status; the error object lives in a slot on the thread.
   `pcall`/`xpcall` become a status check. `error`, runtime errors, `CoroutineClose` and
   `ExitRequest` become status codes.

@@ -52,8 +52,8 @@ gate.time = 0.086
 
 [workload."core.pcall_error"]
 goal.clua = 1.0
-gate.clua = 41.27
-gate.time = 1.1
+gate.clua = 1.6
+gate.time = 0.04
 
 [workload."core.sieve"]
 goal.clua = 1.0
