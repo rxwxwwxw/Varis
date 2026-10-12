@@ -162,12 +162,13 @@ SourceCatalog buildSourceCatalog(ref const ProjectIndex index, ref const Manifes
     SourceCatalog catalog;
     catalog.package_ = manifest.id;
     catalog.language = manifest.language.length ? manifest.language : "en";
+    SourceMessage[string] firstSeen;
     foreach (ref f; index.files)
         foreach (ref m; f.messages) {
             // An empty text has nothing to translate.
             if (m.computed || m.key.length == 0 || m.text.length == 0)
                 continue;
-            if (auto previous = catalog.find(m.key)) {
+            if (auto previous = m.key in firstSeen) {
                 auto d = makeDiagnostic("error", "duplicate-key", m.file, m.range.line, m.range.column, m.range.endLine,
                         m.range.endColumn, "message key `" ~ m.key ~ "` is already used at " ~ previous.file ~ ":" ~ lineText(
                         previous.line), m.owner);
@@ -186,9 +187,13 @@ SourceCatalog buildSourceCatalog(ref const ProjectIndex index, ref const Manifes
             s.arguments = m.placeholders.dup;
             s.conditions = m.conditionRelations.dup;
             s.when = m.when;
+            s.line = m.range.line;
+            firstSeen[m.key] = s;
             catalog.messages ~= s;
         }
-    sortMessages(catalog.messages);
+    // Source order (files in path order, definitions as written), not key order: a rename edits
+    // keys in place and must leave the catalog as a fresh extraction would write it, and the
+    // diff of the file then reads like the diff of the source.
     return catalog;
 }
 
@@ -198,18 +203,6 @@ private string lineText(int line) {
     char[16] buffer;
     auto n = snprintf(buffer.ptr, buffer.length, "%d", line);
     return buffer[0 .. n].idup;
-}
-
-private void sortMessages(SourceMessage[] items) {
-    foreach (i; 1 .. items.length) {
-        auto item = items[i];
-        size_t j = i;
-        while (j > 0 && items[j - 1].key > item.key) {
-            items[j] = items[j - 1];
-            --j;
-        }
-        items[j] = item;
-    }
 }
 
 // -----------------------------------------------------------------------------
@@ -227,7 +220,8 @@ private string numberText(long value) {
     return lineText(cast(int) value);
 }
 
-/// One message per line, sorted by key, so a change shows as a changed line.
+/// One message per line, in source order, so a change shows as a changed line. Line numbers are
+/// not stored: they would change with every edit above a message.
 string sourceJson(ref const SourceCatalog catalog) {
     string text = `{"format":` ~ numberText(catalogFormat) ~ `,"package":` ~ jsonQuote(
             catalog.package_) ~ `,"language":` ~ jsonQuote(
@@ -237,8 +231,7 @@ string sourceJson(ref const SourceCatalog catalog) {
                 m.text) ~ `,"revision":` ~ jsonQuote(m.revision)
             ~ `,"owner":` ~ jsonQuote(
                     m.owner) ~ `,"field":` ~ jsonQuote(m.field) ~ `,"file":` ~ jsonQuote(
-                    m.file)
-            ~ `,"line":` ~ numberText(m.line);
+                    m.file);
         if (m.arguments.length)
             text ~= `,"arguments":` ~ quoteList(m.arguments);
         if (m.conditions.length)
@@ -273,7 +266,6 @@ bool readSourceCatalog(string text, out SourceCatalog catalog, out string error)
         m.owner = item.stringOr("owner");
         m.field = item.stringOr("field");
         m.file = item.stringOr("file");
-        m.line = cast(int) item.integerOr("line");
         m.when = item.stringOr("when");
         if (auto a = item.get("arguments"))
             foreach (ref v; a.items)
@@ -353,8 +345,15 @@ SourceChange[] diffSource(ref const SourceCatalog before, ref const SourceCatalo
     SourceChange[] changes;
     string[] removed;
     string[] added;
+    const(SourceMessage)*[string] afterByKey;
+    const(SourceMessage)*[string] beforeByKey;
+    foreach (ref a; after.messages)
+        afterByKey[a.key] = &a;
+    foreach (ref b; before.messages)
+        beforeByKey[b.key] = &b;
     foreach (ref b; before.messages) {
-        auto a = after.find(b.key);
+        auto found = b.key in afterByKey;
+        const(SourceMessage)* a = found is null ? null : *found;
         if (a is null) {
             removed ~= b.key;
             continue;
@@ -364,18 +363,18 @@ SourceChange[] diffSource(ref const SourceCatalog before, ref const SourceCatalo
         changes ~= SourceChange(revisionOf(a.text) == revisionOf(b.text) ? "cosmetic" : "substantive", b.key, null);
     }
     foreach (ref a; after.messages)
-        if (before.find(a.key) is null)
+        if (a.key !in beforeByKey)
             added ~= a.key;
     // Pair removed and added keys that carry the same words.
     bool[string] pairedAdded;
     string[] stillRemoved;
     foreach (oldKey; removed) {
-        auto b = before.find(oldKey);
+        auto b = beforeByKey[oldKey];
         string match;
         foreach (newKey; added) {
             if (newKey in pairedAdded)
                 continue;
-            auto a = after.find(newKey);
+            auto a = afterByKey[newKey];
             if (a.revision == b.revision && a.field == b.field) {
                 match = newKey;
                 break;

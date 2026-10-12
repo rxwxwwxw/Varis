@@ -1,0 +1,82 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Varis",
+  "scopeName": "source.varis",
+  "fileTypes": ["lua"],
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#string" },
+    { "include": "#declaration" },
+    { "include": "#symbol" },
+    { "include": "#logic-variable" },
+    { "include": "#number" },
+    { "include": "#keyword" },
+    { "include": "#content-word" },
+    { "include": "#constant" },
+    { "include": "#rule-operator" }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        { "name": "comment.block.varis", "begin": "--\\[(=*)\\[", "end": "\\]\\1\\]" },
+        { "name": "comment.line.double-dash.varis", "match": "--.*$" }
+      ]
+    },
+    "string": {
+      "patterns": [
+        {
+          "name": "string.quoted.double.varis",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [{ "include": "#escape" }, { "include": "#template-tag" }]
+        },
+        {
+          "name": "string.quoted.single.varis",
+          "begin": "'",
+          "end": "'",
+          "patterns": [{ "include": "#escape" }, { "include": "#template-tag" }]
+        },
+        {
+          "name": "string.quoted.other.varis",
+          "begin": "\\[(=*)\\[",
+          "end": "\\]\\1\\]",
+          "patterns": [{ "include": "#template-tag" }]
+        }
+      ]
+    },
+    "escape": { "name": "constant.character.escape.varis", "match": "\\\\(?:[abfnrtv\\\\\"'\\n]|x[0-9A-Fa-f]{2}|\\d{1,3}|u\\{[0-9A-Fa-f]+\\}|z)" },
+    "template-tag": {
+      "patterns": [
+        { "name": "constant.character.escape.varis", "match": "\\{\\{|\\}\\}" },
+        { "name": "keyword.control.template.varis", "match": "\\{(?:#else|/if|#variants|/variants|#variant(?:\\s+(?:weight=)?[0-9.]+)?|/variant)\\}" },
+        { "name": "meta.template.condition.varis", "match": "\\{#if\\s+query\\b[^}]*\\}" },
+        { "name": "variable.parameter.template.varis", "match": "\\{[A-Za-z_][A-Za-z0-9_]*\\}" }
+      ]
+    },
+    "declaration": {
+      "patterns": [
+        {
+          "match": "\\b(storylet|action|choice|relation|rule|deck)\\s+(:?)([A-Za-z_][A-Za-z0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.varis" },
+            "2": { "name": "punctuation.definition.symbol.varis" },
+            "3": { "name": "entity.name.type.varis" }
+          }
+        }
+      ]
+    },
+    "symbol": { "name": "constant.other.symbol.varis", "match": "(?<![A-Za-z0-9_\\)\\]\\}\"']):[A-Za-z_][A-Za-z0-9_]*" },
+    "logic-variable": { "name": "variable.other.logic.varis", "match": "\\?[A-Za-z_][A-Za-z0-9_]*" },
+    "number": { "name": "constant.numeric.varis", "match": "\\b(?:0[xX][0-9A-Fa-f]+|\\d+(?:\\.\\d*)?(?:[eE][+-]?\\d+)?)\\b" },
+    "keyword": {
+      "name": "keyword.control.varis",
+      "match": "\\b(and|break|do|else|elseif|end|for|function|goto|if|in|local|not|or|repeat|return|then|until|while)\\b"
+    },
+    "content-word": {
+      "name": "keyword.other.content.varis",
+      "match": "\\b(when|title|text|effect|priority|weight|cooldown|repeatable|sticky|order|phase|once_per|fact|retract|set|delete|adjust|by|query|transaction|rollback|key)\\b"
+    },
+    "constant": { "name": "constant.language.varis", "match": "\\b(true|false|nil)\\b" },
+    "rule-operator": { "name": "keyword.operator.rule.varis", "match": ":-" }
+  }
+}

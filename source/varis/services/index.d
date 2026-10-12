@@ -53,6 +53,7 @@ struct Declaration {
     string[] parameters; // storylets, choices and actions
     string deck; // a storylet's deck
     bool computed; // written as a call with arguments that are not literals
+    string detail; // a short description for hover, built from what was written
 
     /// What the writer calls it: `storylet lamp`, `choice lamp.light`.
     string subject() const {
@@ -416,6 +417,19 @@ private final class Builder {
             d.keys = n.keys;
             d.range = rangeOf(n.nameLoc, n.nameEnd);
             d.extent = rangeOf(n.loc, n.end);
+            d.detail = "relation " ~ n.name ~ "(";
+            if (n.columns.length) {
+                foreach (i, column; n.columns)
+                    d.detail ~= (i ? ", " : "") ~ column;
+                d.detail ~= ")";
+                if (n.keys.length) {
+                    d.detail ~= " key(";
+                    foreach (i, key; n.keys)
+                        d.detail ~= (i ? ", " : "") ~ key;
+                    d.detail ~= ")";
+                }
+            } else
+                d.detail ~= numberText(n.arity) ~ ")";
             declare(d);
             mention(n.name);
             return;
@@ -469,6 +483,10 @@ private final class Builder {
             d.range = rangeOf(n.nameLoc, n.nameEnd);
             d.extent = rangeOf(n.loc, n.end);
             d.parameters = n.def.params;
+            d.detail = "function " ~ d.name ~ "(";
+            foreach (i, p; n.def.params)
+                d.detail ~= (i ? ", " : "") ~ p;
+            d.detail ~= ")";
             declare(d);
             mention(d.name);
             if (!n.isLocal)
@@ -597,6 +615,21 @@ private final class Builder {
             if (field == "deck")
                 if (auto symbol = as!SymbolLiteralExpr(n.fieldValues[i]))
                     d.deck = symbol.name;
+        d.detail = n.kind ~ " " ~ n.name ~ "(";
+        foreach (i, p; n.parameters)
+            d.detail ~= (i ? ", ?" : "?") ~ p;
+        d.detail ~= ")";
+        if (n.goals.length) {
+            auto whenSource = slice(n.goals[0].loc, n.goals[$ - 1].end);
+            if (whenSource !is null)
+                d.detail ~= "\nwhen { " ~ whenSource ~ " }";
+        }
+        if (d.deck.length)
+            d.detail ~= "\ndeck :" ~ d.deck;
+        foreach (i, field; n.fieldNames)
+            if (field == "title")
+                if (auto literal = as!LiteralStringExpr(n.fieldValues[i]))
+                    d.detail ~= "\ntitle \"" ~ literal.value ~ "\"";
         declare(d);
         mention(n.name);
         foreach (p; n.parameters)
@@ -743,6 +776,26 @@ private final class Builder {
         }
         d.name = symbol.name;
         d.range = rangeOf(symbol.loc, symbol.end);
+        d.detail = "quality :" ~ symbol.name;
+        if (n.args.length >= 2)
+            if (auto described = as!TableConstructorExpr(n.args[1]))
+                foreach (field; described.fields) {
+                    auto key = as!LiteralStringExpr(field.key);
+                    if (key is null)
+                        continue;
+                    string shown;
+                    if (auto v = as!LiteralIntExpr(field.value))
+                        shown = numberText(v.value);
+                    else if (auto u = as!UnaryExpr(field.value)) {
+                        if (auto v = as!LiteralIntExpr(u.expr))
+                            shown = "-" ~ numberText(v.value);
+                    } else if (auto b = as!LiteralBoolExpr(field.value))
+                        shown = b.value ? "true" : "false";
+                    else if (auto text = as!LiteralStringExpr(field.value))
+                        shown = "\"" ~ text.value ~ "\"";
+                    if (shown.length)
+                        d.detail ~= "\n" ~ key.value ~ " = " ~ shown;
+                }
         declare(d);
         if (n.args.length < 2)
             return;
@@ -869,6 +922,14 @@ const(Declaration)[] findDeclarations(ref const ProjectIndex index, string name)
 // -----------------------------------------------------------------------------
 // Dump
 // -----------------------------------------------------------------------------
+
+private string numberText(long v) {
+    import core.stdc.stdio : snprintf;
+
+    char[24] buffer;
+    auto n = snprintf(buffer.ptr, buffer.length, "%lld", v);
+    return buffer[0 .. n].idup;
+}
 
 private string num(long v) {
     import core.stdc.stdio : snprintf;

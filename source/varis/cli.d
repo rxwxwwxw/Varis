@@ -558,6 +558,11 @@ private int runMain(string[] argv, ref LuaState state) {
         return runServe(argv, state);
     if (argv.length > 1 && argv[1] == "check")
         return runCheck(argv, state);
+    if (argv.length > 1 && argv[1] == "lsp") {
+        import varis.services.lsp : lspMain;
+
+        return lspMain();
+    }
     if (argv.length > 1 && argv[1] == "l10n") {
         import varis.services.l10n : l10nMain;
 

@@ -244,3 +244,73 @@ private string numberText(long value) {
     auto n = snprintf(buffer.ptr, buffer.length, "%lld", value);
     return buffer[0 .. n].idup;
 }
+
+/// Everything a project-wide check finds in the files that parsed: the static checks, text built
+/// by code, and symbols written once (the likely typos).
+void projectChecks(ref const ProjectIndex index, ref Diagnostic[] problems) {
+    staticChecks(index, problems);
+    // Display text built by code cannot be extracted for translation.
+    foreach (ref f; index.files)
+        foreach (ref m; f.messages)
+            if (m.computed)
+                problems ~= makeDiagnostic("warning", "computed-text", m.file, m.range.line, m.range.column, m.range.endLine,
+                        m.range.endColumn, "display text built by code cannot be extracted for translation", m.owner);
+    // A symbol that appears once cannot connect two things: nothing else mentions it.
+    struct SymbolUse {
+        string file;
+        Range range;
+        size_t count;
+    }
+
+    SymbolUse[string] symbolUses;
+    bool[string] identifiers;
+    foreach (ref f; index.files) {
+        foreach (name, _; f.identifiers)
+            identifiers[name] = true;
+        foreach (ref r; f.references) {
+            if (r.kind != "symbol" || r.role == "engine")
+                continue;
+            if (auto known = r.name in symbolUses)
+                known.count++;
+            else
+                symbolUses[r.name] = SymbolUse(r.file, r.range, 1);
+        }
+    }
+    // Names a typo is likely to have meant: symbols used more than once, and declared names.
+    string[] familiar;
+    foreach (name, use; symbolUses)
+        if (use.count > 1)
+            familiar ~= name;
+    foreach (ref f; index.files)
+        foreach (ref d; f.declarations)
+            if (d.kind != "choice" && d.name.length)
+                familiar ~= d.name;
+    string[] once;
+    foreach (name, use; symbolUses)
+        if (use.count == 1 && name !in identifiers)
+            once ~= name;
+    // Sorted, so that output does not depend on hash order.
+    foreach (i; 1 .. once.length) {
+        auto item = once[i];
+        size_t j = i;
+        while (j > 0 && once[j - 1] > item) {
+            once[j] = once[j - 1];
+            --j;
+        }
+        once[j] = item;
+    }
+    foreach (name; once) {
+        auto use = symbolUses[name];
+        auto diagnostic = makeDiagnostic("warning", "symbol-once", use.file, use.range.line, use.range.column,
+                use.range.endLine, use.range.endColumn, "symbol :" ~ name ~ " appears only here; is it misspelled?",
+                "symbol :" ~ name);
+        diagnostic.suggestion = nearestName(name, familiar);
+        // A symbol another check already names (an unknown quality) is not reported twice.
+        bool covered;
+        foreach (ref other; problems)
+            if (other.file == diagnostic.file && other.line == diagnostic.line && other.column == diagnostic.column)
+                covered = true;
+        if (!covered)
+            problems ~= diagnostic;
+    }
+}

@@ -112,28 +112,7 @@ int checkProject(LuaState state, string[] files, CheckOptions options) {
         fwrite(text.ptr, 1, text.length, stdout);
         return problems.length ? 1 : 0;
     }
-    // A symbol that appears once cannot connect two things: nothing else mentions it.
-    struct SymbolUse {
-        string file;
-        Range range;
-        size_t count;
-    }
-
-    SymbolUse[string] symbolUses;
-    bool[string] identifiers;
-    foreach (ref f; index.files) {
-        foreach (name, _; f.identifiers)
-            identifiers[name] = true;
-        foreach (ref r; f.references) {
-            if (r.kind != "symbol" || r.role == "engine")
-                continue;
-            if (auto known = r.name in symbolUses)
-                known.count++;
-            else
-                symbolUses[r.name] = SymbolUse(r.file, r.range, 1);
-        }
-    }
-    staticChecks(index, problems);
+    projectChecks(index, problems);
     // The load pass runs the project's entry module (never a session); the analysis pass, on
     // request, explores the manifest's session. Neither runs when files were named, or when
     // a file did not compile: the project is not in a state to load.
@@ -144,40 +123,6 @@ int checkProject(LuaState state, string[] files, CheckOptions options) {
         problems ~= loadPass(state, manifest, index, loaded);
         if (loaded && options.analyze)
             problems ~= analysisPass(state, manifest, index, options.depth, options.nodes);
-    }
-    // Display text built by code cannot be extracted for translation.
-    foreach (ref f; index.files)
-        foreach (ref m; f.messages)
-            if (m.computed)
-                problems ~= makeDiagnostic("warning", "computed-text", m.file, m.range.line, m.range.column, m.range.endLine,
-                        m.range.endColumn, "display text built by code cannot be extracted for translation", m.owner);
-    // Names a typo is likely to have meant: symbols used more than once, and declared names.
-    string[] familiar;
-    foreach (name, use; symbolUses)
-        if (use.count > 1)
-            familiar ~= name;
-    foreach (ref f; index.files)
-        foreach (ref d; f.declarations)
-            if (d.kind != "choice" && d.name.length)
-                familiar ~= d.name;
-    string[] once;
-    foreach (name, use; symbolUses)
-        if (use.count == 1 && name !in identifiers)
-            once ~= name;
-    sortStrings(once);
-    foreach (name; once) {
-        auto use = symbolUses[name];
-        auto diagnostic = makeDiagnostic("warning", "symbol-once", use.file, use.range.line, use.range.column,
-                use.range.endLine, use.range.endColumn, "symbol :" ~ name ~ " appears only here; is it misspelled?",
-                "symbol :" ~ name);
-        diagnostic.suggestion = nearestName(name, familiar);
-        // A symbol another check already names (an unknown quality) is not reported twice.
-        bool covered;
-        foreach (ref other; problems)
-            if (other.file == diagnostic.file && other.line == diagnostic.line && other.column == diagnostic.column)
-                covered = true;
-        if (!covered)
-            problems ~= diagnostic;
     }
     sortDiagnostics(problems);
     size_t errors;

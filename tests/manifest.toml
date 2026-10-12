@@ -191,6 +191,17 @@ cases = [
   { id = "extract-status-csv", command = ["python3", "tests/l10n/l10n_test.py", "{candidate}"] },
 ]
 
+# The language server (`varis lsp`) driven with scripted requests, no editor (authoring plan stage A5).
+[[suite]]
+id = "lsp"
+kind = "script"
+tier = "fast"
+tags = ["tools", "lsp"]
+timeout = 180
+cases = [
+  { id = "protocol", command = ["python3", "tests/lsp/lsp_test.py", "{candidate}"] },
+]
+
 [[suite]]
 id = "selftest"
 kind = "script"

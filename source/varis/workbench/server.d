@@ -921,6 +921,12 @@ private string localsJson(LuaState state, long frameIndex) {
     return json ~ "]}";
 }
 
+private string numberJson(long value) {
+    char[24] buffer;
+    auto n = snprintf(buffer.ptr, buffer.length, "%lld", value);
+    return buffer[0 .. n].idup;
+}
+
 /// Go to definition: the declarations of the project named `name`, read from the project index
 /// (services/index.d), which parses the source files. It finds declarations that have not been
 /// loaded, and files that do not parse are skipped.
@@ -1129,20 +1135,49 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
             });
         }
     case "/api/check": {
-            // Syntax check only (the full `varis check` of milestone 30 does not exist yet).
+            // The language services over the project (services/lang.d): every syntax error of
+            // the file, and the project-wide checks, with the editor's unsaved text in place of
+            // the file's. Compile-time errors the parser does not find come from the compiler.
+            import varis.services.lang : Workspace;
+            import varis.services.diagnostic : diagnosticJson, Diagnostic;
+
             auto path = parameter("path");
             string content = request.body_;
             if (request.method != "POST" && (!safePath(path) || !readFile(path, content))) {
                 respond(socket, 404, "application/json", `{"problems":[]}`);
                 return Disposition.done;
             }
-            try {
-                state.loadString(content, "@" ~ path);
-                respond(socket, 200, "application/json", `{"problems":[]}`);
-            } catch (LuaException failure) {
-                respond(socket, 200, "application/json", `{"problems":[` ~ jsonQuote(
-                        errorText(failure.errorObject)) ~ `]}`);
+            auto workspace = new Workspace();
+            workspace.load();
+            workspace.setContent(path, content);
+            auto all = workspace.diagnostics();
+            Diagnostic[] mine;
+            if (auto list = path in all)
+                mine = *list;
+            bool hasSyntax;
+            foreach (ref d; mine)
+                if (d.code == "syntax")
+                    hasSyntax = true;
+            if (!hasSyntax) {
+                try {
+                    state.loadString(content, "@" ~ path);
+                } catch (LuaException failure) {
+                    mine ~= Diagnostic("compile", "error", path, 0, 0, 0, 0, "", errorText(failure.errorObject));
+                }
             }
+            string problems = "[", objects = "[";
+            foreach (i, ref d; mine) {
+                string text;
+                if (d.line > 0)
+                    text = numberJson(d.line) ~ (d.column > 0 ? ":" ~ numberJson(d.column) : "") ~ " ";
+                text ~= d.severity ~ ": " ~ d.message;
+                if (d.suggestion.length)
+                    text ~= " (did you mean " ~ d.suggestion ~ "?)";
+                text ~= " [" ~ d.code ~ "]";
+                problems ~= (i ? "," : "") ~ jsonQuote(text);
+                objects ~= (i ? "," : "") ~ diagnosticJson(d);
+            }
+            respond(socket, 200, "application/json", `{"problems":` ~ problems ~ `],"diagnostics":` ~ objects ~ `]}`);
             return Disposition.done;
         }
     case "/api/project": {

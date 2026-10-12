@@ -132,6 +132,21 @@ marks translations of that message `stale` (their text is kept). A removed key
 and an added key with the same words are reported as a probable rename;
 `--carry-renames` moves the translation to the new key.
 
+### 8.5 — Language server: `varis lsp`
+
+`bin/varis lsp` speaks the Language Server Protocol on standard input and output
+for the project in the workspace root. It is built on the same project index as
+`varis check` and never runs project code. It provides diagnostics (every syntax
+error and the checks of 8.3, pushed as documents change), completion (symbols,
+decks after `deck`, qualities inside `quality(...)`, relations in goals, declared
+names and content words), definition, references, hover (a relation's columns and
+keys, a quality's bounds, a storylet's parameters, `when` and title), document
+symbols, and rename. Rename covers relations, symbols, qualities, decks, storylets,
+actions and choices; it refuses a name that is taken or reserved, and when it renames
+a storylet, choice or quality it also edits the message keys in `l10n/` catalogs. The
+load and analysis passes of 8.3 run project code and are only in `varis check`.
+`editors/` holds a TextMate grammar and setup notes.
+
 ## 9 — Compatibility and implementation limits
 
 ### 9.1 — Relationship to Lua
