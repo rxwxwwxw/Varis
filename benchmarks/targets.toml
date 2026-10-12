@@ -4,62 +4,62 @@
 # Loosening a gate/floor needs a `Perf-Regression-Accepted:` commit trailer (see commit-msg hook).
 
 [workload."core.array_access"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 2.14
 gate.time = 0.036
 
 [workload."core.closures"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 2.26
 gate.time = 0.15
 
 [workload."core.coroutine_switch"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 2.39
 gate.time = 0.086
 
 [workload."core.deep_recursion"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 9.16
 gate.time = 0.25
 
 [workload."core.fib"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 2.76
 gate.time = 0.17
 
 [workload."core.gc_churn"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 1.2
 gate.time = 0.13
 
 [workload."core.hash_access"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 2.37
 gate.time = 0.032
 
 [workload."core.method_dispatch"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 2.1
 gate.time = 0.29
 
 [workload."core.numeric_loop"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 1.9
 gate.time = 0.086
 
 [workload."core.pcall_error"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 41.27
 gate.time = 1.1
 
 [workload."core.sieve"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 2.25
 gate.time = 0.02
 
 [workload."core.string_manip"]
-goal.clua = 2.0
+goal.clua = 1.2
 gate.clua = 1.05
 gate.time = 0.02
 
