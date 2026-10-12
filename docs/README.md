@@ -1,18 +1,20 @@
 # Varis Reference Manual
 
-**Current interpreter edition · October 10, 2026**
+**Current interpreter edition · October 11, 2026**
 
-Varis is a dynamically typed language combining procedural programming, finite
-relational inference, transactional state, and a deterministic narrative runtime.
-Its procedural foundation comes from Lua 5.4. This manual defines the language
-implemented in this repository, including the facilities previously described as
-Lua extensions.
+Varis is a language for authoring visual novels and story games. It is dynamically
+typed and combines procedural programming, finite relational inference,
+transactional state, and a deterministic narrative runtime. Its procedural
+foundation comes from Lua 5.4. This manual defines the language implemented in
+this repository, including the facilities previously described as Lua extensions.
 
-The language name is **Varis**. The implementation is still built as `bin/varis`,
-uses `.lua` source files and `varis` D modules, and reports a Lua compatibility
-version. Those implementation names have not yet been migrated. This manual does
-not introduce a `varis` command, a new extension for source files, or new syntax
-for existing features.
+The implementation is built as `bin/varis`, uses `.lua` source files, and reports a
+Lua compatibility version. This manual describes **only what is implemented**. The
+project's goals and planned changes, including a restricted tier for content
+files, a distinct source extension, scenes, a project checker and a language
+server, are in the [roadmap](../ROADMAP.md) and are not part of the language until
+they appear here. Lua 5.4 conformance is not a goal of Varis; section 9 states the
+relationship.
 
 ## Contents
 
@@ -37,8 +39,9 @@ Grammar notation is explained in section 10.
 
 This directory is the single source of truth for current Varis language
 semantics. It supersedes `LANGUAGE_EXTENSIONS.md` and `LANGUAGE_EXTENSIONS2.md`.
-`LANGUAGE_EXTENSIONS_PLAN.md` remains an engineering history and roadmap, not a
-second language definition. Unimplemented proposals in `sample-game/needed_extensions.md` and
+`LANGUAGE_EXTENSIONS_PLAN.md` remains an engineering history, and `ROADMAP.md`
+states direction and planned work; neither is a second language definition.
+Unimplemented proposals in `ROADMAP.md`, `sample-game/needed_extensions.md` and
 `sample-game/extensions/proposed.lua` are not part of Varis. Implemented additions
 such as `sticky` and `order` are included in this manual.
 
@@ -54,7 +57,8 @@ Conformance evidence remains separate from the reference:
 - [Requirement-to-test index](../tests/TRACEABILITY.md), with stable historical
   `V1` and `C2` requirement identifiers.
 - [Stateful and narrative audit](../tests/narrative/README.md).
-- [Lua compatibility audit](../tests/official/README.md).
+- [Lua compatibility audit](../tests/official/README.md), kept as a regression
+  record for the procedural core rather than as a conformance target.
 - [Coverage migration map](coverage.md), connecting former specification sections
   and requirement identifiers to this manual.
 

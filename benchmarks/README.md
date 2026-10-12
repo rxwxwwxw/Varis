@@ -1,6 +1,12 @@
 # Benchmarks
 
 One suite, one driver: `python3 tools/suite bench` (Make: `make bench`, `make bench-check`).
+
+**Role since October 11, 2026:** matching C Lua is no longer a project goal. The C Lua ratios
+below are kept as regression gates for the procedural core. The performance targets that matter
+for the product (turn latency, content load time and memory on a reference game running on
+low-end hardware) are planned in [ROADMAP.md](../ROADMAP.md), Phase 11, and are **not yet in this
+suite**; the `datalog`, `narrative` and `narrative_e2e` groups are the closest existing measures.
 Design and rationale: [CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md) §4.
 
 ## What is measured
@@ -32,7 +38,8 @@ slower and cost more than 80 % of the run time. The mechanism for `ref = "<git r
 
 [targets.toml](targets.toml): per workload,
 
-* `goal.<comparator>` – project target (≤ 2.0× C Lua). Reported as "behind goal", never fatal.
+* `goal.<comparator>` – the former project target (≤ 2.0× C Lua), kept as an informational
+  reference. Reported as "behind goal", never fatal; closing these gaps is not planned work.
 * `gate.<comparator>` – regression ratchet; exceeding it fails `make bench-check`
   (confirmed by two re-runs before failing).
 * `gate.time` – absolute budget in candidate CPU seconds (per repetition for in-process kernels).

@@ -4,6 +4,9 @@ Status: proposed, October 11, 2026. No functionality in this document is impleme
 by this change. The [Varis Reference Manual](docs/README.md) remains authoritative
 for current semantics. API names, annotations, and commands below are proposals.
 
+Sequencing: this is milestone 39 of the [roadmap](ROADMAP.md) (Phase 12). It follows the
+syntax freeze and the stable line ids of milestone 29, which its content labels should reuse.
+
 ## 1. Recommended design
 
 Build localization as a versioned presentation layer over narrative content. Give

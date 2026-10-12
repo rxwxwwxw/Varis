@@ -1,5 +1,9 @@
 # Needed extensions
 
+> **Status (October 11, 2026):** this inventory is the main input to Phase 9 of the
+> [roadmap](../ROADMAP.md) (settling the authoring syntax). Milestone 27 triages every entry
+> below as accepted, deferred or rejected; until then these remain proposals.
+
 This file lists the language and runtime changes that *Saltmarsh Light* (this folder) and Twine- or Ren'Py-style games need, beyond the current [Varis Reference Manual](../docs/README.md). This is a proposal/workaround inventory, not a language specification; entries marked implemented (such as `sticky` and `order`) are defined in the manual. Historical section citations map through [docs/coverage.md](../docs/coverage.md).
 
 The game itself uses only current-spec features. Where it has to work around a gap, the code points here, and [`extensions/proposed.lua`](extensions/proposed.lua) sketches the proposed syntax. Section numbers below (§1.1 and so on) are the ones the code comments cite.

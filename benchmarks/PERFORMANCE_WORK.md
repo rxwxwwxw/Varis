@@ -2,6 +2,11 @@
 > referenced below were replaced by `tools/suite bench`; see [README.md](README.md). Raw results
 > are in `history/2026-10-09-perf/`.
 
+> **Direction note (2026-10-11):** the ≤2× C Lua goal this document works toward is closed and
+> no longer pursued; see [ROADMAP.md](../ROADMAP.md). The measurements and the list of remaining
+> costs are still accurate as a record. Future performance work targets narrative turn latency
+> and memory on low-end hardware, starting with the inference engine.
+
 # Performance work — October 9, 2026
 
 ## Stage 2 (target ≈ 2× C Lua)

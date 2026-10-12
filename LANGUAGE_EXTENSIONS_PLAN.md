@@ -6,6 +6,12 @@
 > Completed-phase wording and historical baselines below are not independent
 > language requirements. See [the migration map](docs/coverage.md) for former
 > section numbers and decisions incorporated into the manual.
+>
+> **Direction change (October 11, 2026):** Lua 5.4 conformance and the ≤2× C Lua
+> target are no longer project goals. Phase 8 below is **closed**: milestones 19 and
+> 20 are done and milestones 21–25 are retired, not completed. Current goals and
+> planned phases 9–12 (authoring syntax, authoring tools, low-end runtime,
+> ergonomics) are in [ROADMAP.md](ROADMAP.md). This file is engineering history.
 
 
 This plan records implementation of the relational and narrative facilities now defined in the [Varis reference](docs/README.md). Milestones 0–8 describe the existing Phase 6 implementation sequence; milestones 9–18 below track Phase 7. Milestones 9–18 are fully implemented, including aggregates, sessions/scheduling, portable persistence/replay, explanations, subscriptions, bounded analysis, custom display formatters, and deterministic weighted text variants in templates. The final requirement/error matrix and support limits are in [tests/narrative/README.md](tests/narrative/README.md).
@@ -394,7 +400,13 @@ The transaction coordinator lives in `logic/world.d`; deck/scheduler behavior li
 
 ## Phase 8 — Performance and remaining Lua conformance
 
-**Status: conformance work in progress; performance optimization deferred.**
+**Status: closed October 11, 2026 by owner decision.** Milestones 19 and 20 are done.
+Milestones 21–25 are retired: the text below is the plan as it stood and is kept as a
+record, not as pending work. The benchmark gates stay in force as regression floors,
+and the Lua suites stay in `make test` as a regression net; see
+[ROADMAP.md](ROADMAP.md#closed-phase-8--core-lua-performance-and-conformance).
+
+**Status before closure: conformance work in progress; performance optimization deferred.**
 The differential regression programs in `tests/regression` (15 programs, byte-identical output and checksum against C Lua, run by `make test-regression` and timed by `make benchmark`) are part of the milestone 20 gate; the one known difference and the slow stack-overflow unwind are listed in `tests/official/README.md`. Conformance scope for milestone 20 (owner decision): the official suite as a stock Lua 5.4 binary runs it (`T == nil`) with `gc.lua` excluded; an ltests-style `T` for `api.lua`/`code.lua` is out of scope. Milestone 20 has strict official-suite reporting, runner regression tests, core
 differential coverage and compiler/runtime fixes; every executable official file
 now passes (31 pass, 1 partial, 1 skipped, 0 fail). The compatibility backlog and

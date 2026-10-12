@@ -1,18 +1,24 @@
 # AGENTS.md — Contributor & AI Agent Guide for Varis
 
-Welcome to **Varis**! This document serves as the architectural guide and contributor operating manual for AI agents and human contributors implementing and maintaining the codebase. Language semantics are defined by the Varis Reference Manual linked below.
+Welcome to **Varis**! Varis is a language and runtime for authoring visual novels and story games: quality-based narrative over a relational world model, with deterministic saves and replay. This document serves as the architectural guide and contributor operating manual for AI agents and human contributors implementing and maintaining the codebase. Language semantics are defined by the Varis Reference Manual linked below.
 
-The [Varis Reference Manual](docs/README.md) is the single source of truth for current language semantics, including procedural behavior, relations, state and narrative facilities. It replaces `LANGUAGE_EXTENSIONS.md` and `LANGUAGE_EXTENSIONS2.md`, which are now redirects. Phase 6 milestones 0–8 and Phase 7 milestones 9–18 are implemented; [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md) records engineering history and future work, not a competing language specification. [The reference migration map](docs/coverage.md) preserves historical section and requirement identifiers. [The companion conformance audit](tests/narrative/README.md) maps requirements and errors to executable evidence and reports support limits. Preserve separate coverage for core stateful behavior, aggregates, narrative behavior and optional authoring tools. The official Lua harness remains a separate Phase 5 gate. Phase 8 milestone 20's conformance gate is met (31 pass / 1 partial / 1 skipped / 0 fail on the official suite; see [tests/official/README.md](tests/official/README.md) for the remaining issues). Performance work is targeted and measured: the core-Lua benchmark workloads run at roughly 0.6–2.3× C Lua (see [benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md)); documented known costs remain (slow `error` unwinding through D exceptions, `errors.lua` ~25 s; recursion deeper than 150 Lua frames runs in `executeDeepFrame`, which must stay behaviourally identical to `executeFrame`).
+**Direction (October 11, 2026, owner decision):** Lua 5.4 conformance is no longer a project goal. Lua supplied a working procedural core; the product is the authoring language. [ROADMAP.md](ROADMAP.md) defines the current goals, the Lua compatibility policy and planned phases 9–12 (settle the authoring syntax, then authoring tools including a language server, then performance on low-end hardware and ergonomics). Nothing in phases 9–12 is implemented yet. The Lua suites stay in `make test` as a regression net, not as a goal.
+
+The [Varis Reference Manual](docs/README.md) is the single source of truth for current language semantics, including procedural behavior, relations, state and narrative facilities. It replaces `LANGUAGE_EXTENSIONS.md` and `LANGUAGE_EXTENSIONS2.md`, which are now redirects. Phase 6 milestones 0–8 and Phase 7 milestones 9–18 are implemented; [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md) records engineering history and future work, not a competing language specification. [The reference migration map](docs/coverage.md) preserves historical section and requirement identifiers. [The companion conformance audit](tests/narrative/README.md) maps requirements and errors to executable evidence and reports support limits. Preserve separate coverage for core stateful behavior, aggregates, narrative behavior and optional authoring tools. The official Lua harness remains a separate Phase 5 gate. Phase 8 is closed: milestone 20's conformance gate is met (31 pass / 1 partial / 1 skipped / 0 fail on the official suite; see [tests/official/README.md](tests/official/README.md) for the remaining issues, on which no work is planned), and core-Lua performance work stopped with most benchmark workloads at roughly 0.6–2.4× C Lua (see [benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md)). Future performance work targets turn latency, load time and memory on a reference game (ROADMAP Phase 11). Documented known costs remain (slow `error` unwinding through D exceptions, `errors.lua` ~25 s; recursion deeper than 150 Lua frames runs in `executeDeepFrame`, which must stay behaviourally identical to `executeFrame`).
 
 ---
 
 ## 1. Project Mission & North Star
 
-1. **Idiomatic D Translation**: Translate the Lua 5.4 codebase from C (`c-implementation/src/`) into idiomatic, modern Dlang (D 2.100+ / LDC 1.43+), leveraging D's type safety, ranges, slices, and Phobos.
-2. **Observable Behavior Fidelity**: Preserve observable Lua 5.4 semantics and pass language tests from `c-implementation/lua-5.4.9-tests/`.
-3. **Declarative Programming Extensibility**: Extend the typed AST and VM with a separate finite Datalog engine implementing set semantics, least-fixed-point recursion, stratified negation, lexical local relations, independent worlds, and snapshot queries as defined in [the Varis relational reference](docs/relations.md).
-4. **Stateful and Narrative Extensibility**: Maintain the stateful and narrative semantics in [the Varis reference](docs/README.md) through separate stateful and narrative conformance gates, preserving pure Datalog evaluation and transactional narrative effects.
-5. **License Integrity**: Every source file derived from or porting Lua must include Lua's original MIT License header (PUC-Rio).
+1. **Authoring First**: Varis exists so that writers, including contracted writers who are not programmers, can author visual novels and story games. Judge syntax, diagnostics and defaults by whether such a writer can use them from examples.
+2. **Saveable and Replayable by Construction**: Preserve transactional effects, deterministic sessions and portable saves. Where a language feature cannot be saved or replayed (coroutines, closures over mutable state, unrestricted I/O), the direction is to restrict it in content files rather than to document it as an author obligation.
+3. **Relational World Model**: Maintain the separate finite Datalog engine implementing set semantics, least-fixed-point recursion, stratified negation, lexical local relations, independent worlds, and snapshot queries as defined in [the Varis relational reference](docs/relations.md).
+4. **Stateful and Narrative Semantics**: Maintain the stateful and narrative semantics in [the Varis reference](docs/README.md) through separate stateful and narrative conformance gates, preserving pure Datalog evaluation and transactional narrative effects.
+5. **Tooling Is Part of the Language**: A project checker, source-ranged diagnostics, editor support and a language server built on the Varis frontend are planned deliverables (ROADMAP Phase 10). Keep the frontend usable for them: accurate source locations, validation separable from execution.
+6. **Low-End Hardware Under a Graphical Host**: Performance is measured as turn latency, content load time and memory on a reference game (ROADMAP Phase 11), not as a ratio against C Lua.
+7. **Lua Heritage, Not Lua Conformance**: Keep Lua 5.4's procedural syntax and core semantics where they are free; they carry existing knowledge. Do not invest in further Lua fidelity. Deliberate divergences are allowed and recorded (guideline 12).
+8. **Idiomatic D**: The implementation is modern Dlang (D 2.100+ / LDC 1.43+), leveraging D's type safety, ranges, slices, and Phobos, with Varis objects directly accessible from D host code through the D garbage collector.
+9. **License Integrity**: Every source file derived from or porting Lua must include Lua's original MIT License header (PUC-Rio).
 
 ---
 
@@ -117,7 +123,8 @@ The [Varis Reference Manual](docs/README.md) is the single source of truth for c
 | `docs/` | Current reference | Single Varis language definition, libraries, grammar, compatibility and runnable examples |
 | `LANGUAGE_EXTENSIONS.md` | Redirect | Links to the Varis reference; historical section map in docs/coverage.md |
 | `LANGUAGE_EXTENSIONS2.md` | Redirect | Links to the unified Varis reference and conformance evidence |
-| `LANGUAGE_EXTENSIONS_PLAN.md` | Plan | Base milestones 0–8 and companion milestones 9–18 (core and narrative runtime/persistence, formatters/variants, authoring implemented; conformance evidence in tests/narrative/README.md; runner baseline established) |
+| `ROADMAP.md` | Current direction | Goals, Lua compatibility policy, planned phases 9–12 (authoring syntax, tools, low-end runtime, ergonomics), open owner decisions |
+| `LANGUAGE_EXTENSIONS_PLAN.md` | History | Base milestones 0–8 and companion milestones 9–18 (core and narrative runtime/persistence, formatters/variants, authoring implemented; conformance evidence in tests/narrative/README.md; runner baseline established) |
 | [`source/varis/logic/model.d`](source/varis/logic/model.d) | ✅ Phase 6 | Tuple/term/goal/rule IR, identities, immutable snapshots |
 | [`source/varis/logic/world.d`](source/varis/logic/world.d) | ✅ Phase 6 | Worlds, local relations, versions, atomic mutation, inheritance |
 | [`source/varis/logic/validate.d`](source/varis/logic/validate.d) | ✅ Phase 6 | Safety, ownership, arity, signed dependencies, SCCs/strata |
@@ -175,28 +182,22 @@ Companion milestones 9–18 in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS
 
 Custom display formatter registration and deterministic weighted text variants are implemented and verified. Existing compiler `goto` execution and the official Lua harness are outside the companion gate; do not conceal skips or imply complete Lua 5.4 conformance.
 
-### Phase 8: Performance and Remaining Lua Conformance (Conformance gate met; performance planned)
+### Phase 8: Core-Lua Performance and Conformance (Closed)
 
-Follow milestones 19–25 in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md#phase-8--performance-and-remaining-lua-conformance):
+Closed October 11, 2026 by owner decision; see [ROADMAP.md](ROADMAP.md#closed-phase-8--core-lua-performance-and-conformance). Milestones 19 (benchmark suite with enforced gates) and 20 (official-suite conformance gate: 31 pass / 1 partial / 1 skipped / 0 fail) are done. Milestones 21–25 in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md#phase-8--performance-and-remaining-lua-conformance) are retired, not completed: the ≤2× C Lua target is no longer pursued.
 
-| Milestone | Planned deliverable |
-| --- | --- |
-| 19 | Reproducible core-Lua benchmarks, result assertions, metadata and regression enforcement |
-| 20 | Conformance gate met: strict official runner, 31 pass / 1 partial / 1 skipped / 0 fail baseline, differential core fixture; skips and partials are documented, not hidden |
-| 21 | CPU/allocation/GC profiles and measured optimization priorities |
-| 22 | Reusable per-coroutine call frames and direct argument/result transfer |
-| 23 | Lower VM/context overhead with debug, transaction and analysis semantics preserved |
-| 24 | Profile-driven table iteration/access and bytecode improvements |
-| 25 | Release performance gates, build tuning and documented final conformance evidence |
+State at closure: core workloads at about 0.6–2.4× C Lua, with `core.pcall_error` (~38×) and `core.deep_recursion` (~8×) as known outliers; see `docs/STATUS.md`, README and `benchmarks/PERFORMANCE_WORK.md` for methodology limits. The CLI uses `-O3 -release`; D unit tests default to `-g`, and C Lua defaults to `-O2`. The `gate.*` ratchets in `benchmarks/targets.toml` remain in force as regression floors; `goal.clua` values are informational. Datalog/narrative performance remains separately measured against calibrated baselines; do not reset baselines to conceal regressions.
 
-The goal is ≤2× C Lua time on each agreed representative core-Lua workload;
-a geometric mean cannot hide a failing workload. Current ratios on the six
-`bench.py` workloads are about 0.6–2.3× (recursive Fibonacci is the highest; see
-README and `benchmarks/PERFORMANCE_WORK.md` for methodology limits). The CLI uses
-`-O3 -release`; D unit tests default to `-g`, and C Lua defaults to `-O2`.
-Record actual build settings rather than assuming optimization parity.
-Datalog/narrative performance remains separately measured against calibrated
-baselines; do not reset baselines to conceal regressions.
+### Phases 9–12: Authoring Language, Tools, Low-End Runtime, Ergonomics (Planned)
+
+Defined in [ROADMAP.md](ROADMAP.md); none of this exists yet, and proposals there are not language semantics.
+
+| Phase | Milestones | Planned deliverable |
+| --- | --- | --- |
+| 9 | 26–29 | Authoring language v1: content/engine tiers and a distinct file identity, syntax triage and freeze, the core authoring gaps from `sample-game/needed_extensions.md`, declared entities/symbols, scenes and beats |
+| 10 | 30–33 | Authoring tools: `varis check` with source-ranged diagnostics, parser error recovery, syntax highlighting and a language server on the Varis frontend, writer playtest/test/CI workflow |
+| 11 | 34–37 | Low-end runtime: reference game and enforced latency/memory budgets, semi-naive indexed cached inference, documented D host interface and reference graphical host, portability and footprint |
+| 12 | 38–41 | Ergonomics: undo and persistent data, localization, Twine-class conveniences, writer documentation |
 
 ---
 
@@ -224,8 +225,11 @@ baselines; do not reset baselines to conceal regressions.
 
 9. **Companion coverage**: Map [Varis rejection requirements](docs/compatibility.md#95--error-categories) (historical companion §16; see docs/coverage.md) to tests for key conflicts, transaction/savepoint/control-flow rollback, tentative snapshots, yields, stale choices, parameter binding, deterministic draws, action/event budgets, quality constraints, and save/version failures. Compare unordered relational sets and canonical narrative sequences. Keep optional aggregates/subscriptions/analysis separately identified; proposed tests and targets are not existing support.
 
-10. **Performance changes**: Resolve the Lua conformance backlog before targeting optimizations. Profile before choosing optimizations. Land small changes with targeted semantic tests, full `make test`, optimized assertion-enabled validation, actual release CLI fixtures, and before/after timing and memory evidence. `python3 tools/suite test --suite official` and `python3 tools/suite test --suite core` exist; broader differential/release gates remain planned. Never trade correctness for benchmark scores or silently weaken failure/skip accounting. A file passing with protected errors or internally disabled tests is not proof of feature completeness.
-11. **Runtime optimization boundaries**: Retain SumType, typed instructions and D GC initially. Frame reuse must preserve upvalue locations/lifetimes, GC roots, native reentry, suspended coroutines and exception cleanup. Context fast paths must preserve lexical worlds, aliases and Fiber isolation; combined instructions must preserve analysis budgets, debug attribution and transaction exit boundaries. Larger representation changes require measured justification and explicit architectural review.
+10. **Performance changes**: Product performance targets are the turn-latency, load-time and memory budgets of ROADMAP Phase 11, not C Lua ratios; do not start optimizations aimed only at a C Lua ratio. Profile before choosing optimizations. Land small changes with targeted semantic tests, full `make test`, optimized assertion-enabled validation, actual release CLI fixtures, and before/after timing and memory evidence. The existing `gate.*` ratchets still apply. Never trade correctness for benchmark scores or silently weaken failure/skip accounting. A file passing with protected errors or internally disabled tests is not proof of feature completeness.
+11. **Runtime optimization boundaries**: Retain SumType, typed instructions and D GC unless profiles against the Phase 11 budgets justify a change. Frame reuse must preserve upvalue locations/lifetimes, GC roots, native reentry, suspended coroutines and exception cleanup. Context fast paths must preserve lexical worlds, aliases and Fiber isolation; combined instructions must preserve analysis budgets, debug attribution and transaction exit boundaries. Larger representation changes require measured justification and explicit architectural review; changing the instruction encoding also touches narrative fingerprints and saves.
+12. **Lua compatibility policy**: The official suite, the core differential fixture and the regression programs are a regression net. A new failure there is still a failure, and is never fixed by weakening a test. Do not spend effort closing the remaining Lua-fidelity gaps. A deliberate divergence (for authoring, saves/replay, portability or the low-end budgets) is allowed with a `[[ledger]]` entry, a `Skip-Accepted:` trailer and a line in `docs/compatibility.md` §9. The frozen features listed in ROADMAP (C API subset and `dlopen` modules, binary chunks, weak-table/finalizer emulation, debug-hook fidelity, exact PUC-Rio error text) get no new work; removing one is the owner's decision, so ask first.
+13. **Planned is not implemented**: The content/engine tier split, scenes, declared symbols, `varis check` and the language server are plans. The manual in `docs/` describes only implemented behaviour; proposals live in `ROADMAP.md` and `sample-game/needed_extensions.md`. Move a construct into the manual in the same change that implements and tests it.
+14. **Writer-facing quality**: New content syntax must not require understanding closures, coroutines, iterators or metatables. Diagnostics for content name the storylet, choice or field and carry a source location; prefer rejecting a likely mistake (an unknown symbol, a storylet that can never appear) over accepting it silently.
 
 ---
 

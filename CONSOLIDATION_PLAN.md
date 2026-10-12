@@ -4,6 +4,8 @@ Status: **implemented** (October 10, 2026). The body below is the plan as origin
 written, before the language was renamed from `dlua` to **Varis**; read `dlua` as the
 previous name (`source/dlua` is now `source/varis`, `bin/dlua` is `bin/varis`).
 The rename was done immediately after Phase 3 rather than as a later stage.
+The "≤2× C Lua" target the benchmark sections refer to was closed on October 11, 2026;
+current goals are in [ROADMAP.md](ROADMAP.md).
 
 ## Implementation record
 

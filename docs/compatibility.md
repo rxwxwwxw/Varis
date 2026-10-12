@@ -56,7 +56,11 @@ or public programmatic Lua rule/query builder is defined by this manual.
 
 ### 9.1 — Relationship to Lua
 
-Varis retains the implemented procedural syntax, values, libraries, lexical
+Varis is derived from Lua 5.4 and is not a Lua implementation: conformance to
+Lua 5.4 is not a goal. Lua supplied the procedural core, and that core is kept
+where it costs nothing, because existing knowledge and examples carry over.
+
+Varis currently retains the implemented procedural syntax, values, libraries, lexical
 closures, multivalue behavior, and coroutine model inherited from Lua 5.4, while
 adding symbols, relations, transactions, and narrative facilities. New construct
 words are contextual, preserving ordinary identifier uses. Opening libraries adds
@@ -64,7 +68,25 @@ words are contextual, preserving ordinary identifier uses. Opening libraries add
 those names can replace the library values. Dedicated language operations do not
 work by calling these replaceable globals.
 
-Future divergence will be documented here as language changes. This edition does
+No deliberate divergence from Lua 5.4 has been made in this edition. The policy
+for future ones (owner decision, October 11, 2026; see the [roadmap](../ROADMAP.md)):
+
+- The official Lua suite, the core differential fixture, and the regression
+  programs remain executable regression evidence for the procedural core. No work
+  is planned on the differences they still record.
+- A Lua behavior may be changed or removed when that serves authoring, saves and
+  replay, portability, or performance on low-end hardware. Each such change is
+  listed in this section and in the test ledger when it is made.
+- These inherited facilities are frozen and are candidates for removal: the C API
+  subset and native module loading (8.2), binary chunks, weak-table and finalizer
+  emulation with collector tuning modes, debug-hook and line-attribution
+  fidelity (9.3), and exact upstream error text.
+- A restricted tier for content files is planned, excluding coroutines, function
+  values that capture mutable state, and the `io`, `os`, `debug`, `package`, and
+  `load` facilities and metatables from authored content. It is not implemented;
+  every file is currently compiled as the full language.
+
+This edition does
 not rename syntax or claim support for proposed story/game features absent from
 the current runtime. Compound logical terms, procedural backtracking, cuts,
 non-stratified negation, cross-world rule dependencies, individual rule deletion,
@@ -72,6 +94,9 @@ and statement-based guards are not defined. Aggregates, weighted text variants,
 and custom display formatters **are** implemented.
 
 ### 9.2 — Current compatibility evidence
+
+This evidence describes how much inherited Lua behavior currently works. It is a
+regression record, not progress toward a conformance target.
 
 The recorded October 9, 2026 Lua 5.4.9 release-CLI baseline is **31 pass, 1 partial,
 1 skipped, 0 fail, 0 timeout** across 33 files. The official runner targets the

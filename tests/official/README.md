@@ -1,5 +1,10 @@
 # Lua 5.4.9 conformance audit
 
+**Role (October 11, 2026):** Lua 5.4 conformance is no longer a project goal (see
+[ROADMAP.md](../../ROADMAP.md)). This suite stays in `make test` as a regression net for the
+procedural core: a new failure is still a failure, but no work is planned on the remaining
+issues listed here, and a deliberate divergence may turn a file into a ledgered skip.
+
 **Scope (decided by the project owner):** conformance means the official suite as a normal
 Lua 5.4 binary runs it (`T == nil`), with only `gc.lua` excluded. Running `api.lua`/`code.lua` with
 an ltests-style `T` library is explicitly out of scope.
