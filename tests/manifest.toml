@@ -177,6 +177,7 @@ tags = ["tools", "check"]
 timeout = 120
 cases = [
   { id = "diagnostics", command = ["python3", "tests/check/check_test.py", "{candidate}"] },
+  { id = "recovery-fuzz", command = ["python3", "tests/check/fuzz_recovery.py", "{candidate}"] },
 ]
 
 # `varis l10n`: extraction, change detection, status and the CSV adapter (localization plan stage T1).

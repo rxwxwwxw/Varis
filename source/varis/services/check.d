@@ -57,6 +57,7 @@ int checkProject(LuaState state, string[] files, bool json, bool dumpIndex = fal
         files = projectFiles(".", manifest);
     Diagnostic[] problems = manifest.problems.dup;
     ProjectIndex index;
+    FileIndex[] partial;
     foreach (file; files) {
         string content;
         if (!readFile(file, content)) {
@@ -65,7 +66,10 @@ int checkProject(LuaState state, string[] files, bool json, bool dumpIndex = fal
         }
         auto indexed = indexFile(file, content);
         if (!indexed.parsed) {
+            // Every syntax error of the file, not only the first. The partial index stays in
+            // the project for the services; the symbol lint skips it, being incomplete.
             problems ~= indexed.problems;
+            partial ~= indexed;
             continue;
         }
         // The compiler finds errors the parser does not (labels, attributes, limits).
@@ -79,7 +83,10 @@ int checkProject(LuaState state, string[] files, bool json, bool dumpIndex = fal
         }
     }
     if (dumpIndex) {
-        auto text = indexJson(index);
+        // The index shows every file, including those that only partly parsed.
+        auto whole = index;
+        whole.files ~= partial;
+        auto text = indexJson(whole);
         fwrite(text.ptr, 1, text.length, stdout);
         return problems.length ? 1 : 0;
     }

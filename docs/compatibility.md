@@ -76,6 +76,10 @@ In a pattern `*` matches within one path segment, `**` across segments and `?` o
 character. An unknown field is a warning (`manifest-key`); a manifest that does not
 have this shape is an error (`manifest`).
 
+`varis check` reports every syntax error of a file, not only the first: the
+parser skips to the next statement or definition and goes on. Loading code
+(`load`, `require`, running a script) is unchanged and stops at the first error.
+
 Every diagnostic has a stable `code`, a `severity` (`error`, `warning`, `note`), a
 `file`, a start `line` and `column` and an end `endLine` and `endColumn` (1-based
 byte columns; the end is just past the last byte; 0 when unknown), and a `message`.

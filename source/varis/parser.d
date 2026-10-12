@@ -27,13 +27,37 @@ class Parser {
     Token[] lookahead;
     bool inDeclarative = false;
 
-    this(string source, string sourceName = "=stdin") {
+    /// A syntax error found in recovery mode (tools): its message as the normal mode would
+    /// raise it, and where it was found (line 0 when the error carried no token).
+    static struct Problem {
+        string message;
+        int line;
+        int column;
+        int endLine;
+        int endColumn;
+    }
+
+    /// Recovery mode is for tools (`varis check`, the language services): a syntax error is
+    /// recorded in `problems`, the parser skips to the next statement or definition boundary
+    /// and goes on, and `parse` returns a partial tree. The default mode raises the first
+    /// error exactly as before; `load`, `require` and their error text never use recovery.
+    bool recover;
+    Problem[] problems;
+    private bool abandoned; // too many errors: stop
+    private enum maxProblems = 100;
+
+    this(string source, string sourceName = "=stdin", bool recover = false) {
         varargContext = [true];
         activeLocals = [0];
         functionStartLines = [0];
         this.sourceName = sourceName;
+        this.recover = recover;
         this.lexer = new Lexer(source, sourceName);
-        advance();
+        if (!recover)
+            advance();
+        else
+            while (!tryAdvance() && lexer.cursor < source.length) {
+            }
     }
 
     Token peekToken(size_t k = 0) {
@@ -141,8 +165,174 @@ class Parser {
         return current;
     }
 
+    // -------------------------------------------------------------------------
+    // Error recovery (tool mode only)
+    // -------------------------------------------------------------------------
+
+    private void note(LuaException failure) {
+        Problem problem;
+        if (failure.errorObject.isString)
+            problem.message = failure.errorObject.asString;
+        else
+            problem.message = "syntax error";
+        if (hasErrorToken) {
+            problem.line = errorToken.loc.line;
+            problem.column = errorToken.loc.column;
+            problem.endLine = errorToken.endLine;
+            problem.endColumn = errorToken.endColumn;
+            hasErrorToken = false;
+        } else {
+            // A lexical error: the message begins "chunk:LINE:".
+            auto text = problem.message;
+            foreach (i; 0 .. text.length)
+                if (text[i] == ':') {
+                    int line;
+                    size_t j = i + 1;
+                    while (j < text.length && text[j] >= '0' && text[j] <= '9')
+                        line = line * 10 + (text[j++] - '0');
+                    if (j > i + 1 && j < text.length && text[j] == ':')
+                        problem.line = line;
+                    break;
+                }
+        }
+        // Several enclosing definitions fail at the same token (`end` expected at the end of the
+        // file): the first message stands.
+        if (problems.length && problems[$ - 1].line == problem.line && problems[$ - 1].column == problem.column
+                && problem.line > 0)
+            return;
+        problems ~= problem;
+        if (problems.length >= maxProblems)
+            abandoned = true;
+    }
+
+    /// `advance` that records a lexical error instead of raising it, and always makes progress.
+    private bool tryAdvance() {
+        auto before = lexer.cursor;
+        try {
+            advance();
+            return true;
+        } catch (LuaException failure) {
+            note(failure);
+            if (lexer.cursor <= before)
+                lexer.cursor = before + 1;
+            return false;
+        }
+    }
+
+    /// Is the current token the first of its line, and does it start a statement or definition?
+    private bool atBoundary() {
+        if (check(TokenType.EOF))
+            return true;
+        if (previous.endLine >= current.loc.line && previous.type != TokenType.EOF)
+            return false;
+        switch (current.type) {
+        case TokenType.KwLocal:
+        case TokenType.KwFunction:
+        case TokenType.KwIf:
+        case TokenType.KwFor:
+        case TokenType.KwWhile:
+        case TokenType.KwRepeat:
+        case TokenType.KwDo:
+        case TokenType.KwReturn:
+        case TokenType.KwBreak:
+        case TokenType.KwGoto:
+            return true;
+        case TokenType.Identifier:
+            switch (current.text) {
+            case "storylet":
+            case "action":
+            case "deck":
+            case "relation":
+            case "rule":
+            case "fact":
+            case "retract":
+            case "transaction":
+            case "rollback":
+            case "set":
+            case "delete":
+            case "adjust":
+                return true;
+            default:
+                break;
+            }
+            try {
+                auto next = peekToken(0).type;
+                return next == TokenType.LParen || next == TokenType.Dot || next == TokenType.Colon || next == TokenType
+                    .Equal
+                    || next == TokenType.Comma;
+            } catch (LuaException) {
+                return false;
+            }
+        default:
+            return false;
+        }
+    }
+
+    /// After an error: move to the next token that can start a statement.
+    private void synchronize(SourceLoc statementStart) {
+        if (current.loc.line == statementStart.line && current.loc.column == statementStart.column && !check(
+                TokenType.EOF))
+            tryAdvance(); // nothing was consumed: make progress
+        while (!abandoned && !check(TokenType.EOF) && !atBoundary())
+            tryAdvance();
+    }
+
+    /// Runs one statement parse; on an error records it and resynchronizes. Returns null then.
+    private Stmt guardedStatement(bool isReturn) {
+        auto start = current.loc;
+        auto savedVararg = varargContext.length;
+        auto savedLocals = activeLocals.length;
+        auto savedStarts = functionStartLines.length;
+        auto savedNesting = nestingLevel;
+        auto savedDeclarative = inDeclarative;
+        try {
+            return isReturn ? parseReturnStmt() : parseStatement();
+        } catch (LuaException failure) {
+            note(failure);
+            varargContext.length = savedVararg;
+            activeLocals.length = savedLocals;
+            functionStartLines.length = savedStarts;
+            nestingLevel = savedNesting;
+            inDeclarative = savedDeclarative;
+            synchronize(start);
+            return null;
+        }
+    }
+
+    private BlockStmt parseChunkRecovering() {
+        auto loc = current.loc;
+        Stmt[] all;
+        while (true) {
+            all ~= parseBlock().statements;
+            if (isAtEnd() || abandoned)
+                break;
+            // A stray `end`, or statements after `return`: skip it and go on. After an earlier
+            // error it is nearly always that error's consequence, so only a first one is reported.
+            if (problems.length > 0) {
+                tryAdvance();
+                continue;
+            }
+            Problem problem;
+            problem.message = format("%s:%d: %s near %s", formatSourceName(), current.loc.line, "<eof> expected",
+                    formatNear(current));
+            problem.line = current.loc.line;
+            problem.column = current.loc.column;
+            problem.endLine = current.endLine;
+            problem.endColumn = current.endColumn;
+            problems ~= problem;
+            if (problems.length >= maxProblems)
+                break;
+            tryAdvance();
+        }
+        auto block = new BlockStmt(all, loc);
+        block.endLine = previous.loc.line > 0 ? previous.loc.line : 1;
+        return block;
+    }
+
     /// Parse top-level chunk into BlockStmt
     BlockStmt parse() {
+        if (recover)
+            return parseChunkRecovering();
         auto loc = current.loc;
         auto block = parseBlock();
         if (!check(TokenType.EOF)) {
@@ -163,7 +353,16 @@ class Parser {
         scope (exit)
             activeLocals[$ - 1] = savedLocals;
 
-        while (!isAtEnd() && !isBlockEnd()) {
+        while (!isAtEnd() && !isBlockEnd() && !abandoned) {
+            if (recover) {
+                auto guarded = guardedStatement(check(TokenType.KwReturn));
+                if (guarded !is null) {
+                    stmts ~= guarded;
+                    if (as!ReturnStmt(guarded) !is null)
+                        break;
+                }
+                continue;
+            }
             if (check(TokenType.KwReturn)) {
                 stmts ~= parseReturnStmt();
                 break; // In Lua, return is the last statement in a block
@@ -1056,9 +1255,10 @@ class Parser {
                 definition.fieldValues ~= parseExpr();
         }
         if (kind == "storylet") {
-            while (check(TokenType.Identifier) && current.text == "choice")
+            while (check(TokenType.Identifier) && current.text == "choice") {
                 definition.choices ~= parseNarrativeDefinition("choice", current.loc);
-            definition.choices[$ - 1].end = SourceLoc(previous.endLine, previous.endColumn);
+                definition.choices[$ - 1].end = SourceLoc(previous.endLine, previous.endColumn);
+            }
             if (!definition.choices.length)
                 syntaxError("storylet requires at least one choice", current);
         } else {

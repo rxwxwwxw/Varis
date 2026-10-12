@@ -812,8 +812,24 @@ private final class Builder {
     }
 }
 
-/// Indexes one file. A file that does not parse yields an empty index and its error as a
-/// problem; the other files are not affected.
+/// Strips "chunk:LINE: " from a parser message.
+private string messageText(string path, string text) {
+    auto prefix = "@" ~ path;
+    // The parser names the chunk without its "@"; keep only what follows the line number.
+    size_t at;
+    int colons;
+    while (at < text.length && colons < 2) {
+        if (text[at] == ':')
+            ++colons;
+        ++at;
+    }
+    while (at < text.length && text[at] == ' ')
+        ++at;
+    return colons == 2 ? text[at .. $] : text;
+}
+
+/// Indexes one file. A file with syntax errors yields the index of what did parse (the parser
+/// recovers at statement and definition boundaries), `parsed` false, and one problem per error.
 FileIndex indexFile(string path, string content) {
     FileIndex result;
     result.path = path;
@@ -822,27 +838,21 @@ FileIndex indexFile(string path, string content) {
     string source = content;
     if (source.length > 1 && source[0] == '#')
         source = "--" ~ source[2 .. $];
-    auto parser = new Parser(source, "@" ~ path);
+    auto parser = new Parser(source, "@" ~ path, true);
     BlockStmt block;
     try {
         block = parser.parse();
     } catch (LuaException failure) {
-        string message = "syntax error";
-        if (failure.errorObject.isString)
-            message = failure.errorObject.asString;
-        auto d = makeDiagnostic("error", "syntax", path, 0, 0, 0, 0, message);
-        if (parser.hasErrorToken) {
-            d.line = parser.errorToken.loc.line;
-            d.column = parser.errorToken.loc.column;
-            d.endLine = parser.errorToken.endLine;
-            d.endColumn = parser.errorToken.endColumn;
-        }
-        result.problems ~= d;
-        return result;
+        parser.problems ~= Parser.Problem("syntax error", 0, 0, 0, 0);
     }
-    result.parsed = true;
-    auto builder = new Builder(&result, source);
-    builder.block(block);
+    foreach (ref problem; parser.problems)
+        result.problems ~= makeDiagnostic("error", "syntax", path, problem.line, problem.column, problem.endLine,
+                problem.endColumn, messageText(path, problem.message));
+    result.parsed = parser.problems.length == 0;
+    if (block !is null) {
+        auto builder = new Builder(&result, source);
+        builder.block(block);
+    }
     return result;
 }
 

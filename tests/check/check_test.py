@@ -68,6 +68,18 @@ def main():
     assert (syntax["column"], syntax["endLine"], syntax["endColumn"]) == (11, 2, 12), syntax
     assert ("fine.lua", "symbol-once") not in found  # :alpha appears twice
 
+    # Parser recovery: four independent mistakes in one file are all reported, with no cascade.
+    code, out = run(binary, HERE / "fixtures" / "recover", "--json")
+    assert code == 1, out
+    errors = [(p["line"], p["column"]) for p in json.loads(out)["problems"] if p["code"] == "syntax"]
+    assert errors == [(2, 11), (11, 13), (17, 5), (22, 1)], errors
+
+    # A storylet without a choice is an ordinary error, not a crash (it once was one).
+
+    code, out = run(binary, HERE / "fixtures" / "nochoice", "--json")
+    assert code == 1, out
+    assert "requires at least one choice" in json.loads(out)["problems"][0]["message"], out
+
     # Human output keeps `file:line:column: severity: message [code]`.
     code, out = run(binary, HERE / "fixtures" / "broken")
     assert "bad_syntax.lua:2:11: error:" in out and "[syntax]" in out, out
