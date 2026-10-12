@@ -537,6 +537,18 @@ restructuring: 76–94 MB; budget 64 MB); the 200-storylet game peaks at 21 MB. 
   run the reference game there, and replace the stand-in column in §3.1 with measured budgets.
 - Leave content load alone unless this stage shows a problem.
 
+## 5a. What the measurements and the owner's decisions leave open (October 12, 2026)
+
+Read this before starting any of the stages below; several are no longer worth doing as written.
+
+| Stage | Status | Why |
+| --- | --- | --- |
+| L4, calls at 1.0× C Lua | **Not reachable under current decisions.** | The owner kept exact call records and exact register clearing (ROADMAP, decisions of October 12). The measurements in L4 put the per-call cost of what is kept at roughly half of today's overhead, and the existing record-based executor is slower per call than native recursion. Expect 1.5–2× on call-heavy code. Reopen only if the owner allows lazy call records. |
+| Coroutines without fibers | **Deferred, specified.** | The owner's specification is "yield from Lua and across `pcall`". It needs frames kept as records, and today that executor is about 30 % slower per Lua call, so coroutine bodies would get slower while switches got faster. Fibers are also the key for transactions (`activeTransactions[Fiber.getThis()]`), no-yield scopes and per-coroutine debug stacks. Do it only together with a record-based executor that is at least as fast as native recursion. |
+| L1 remainder, natives returning statuses | **Deferred.** | Errors raised by `error` and errors crossing Lua frames no longer throw, and `core.pcall_error` is at 1.3×. What is left costs one throw per error raised inside a native, which is not on any measured hot path. Convert a library when it is rewritten for another reason. |
+| L3, compact execution encoding | **Open, low expected value.** | Loops are at 1.2–1.5× after the 16-byte value; halving the instruction size helps cache density but not the dependency chain of dispatch. Measure on one handler group before converting all of them. |
+| X1–X4 | **Open.** | Inline caches for method dispatch (`core.method_dispatch` 1.7×) and string operations (`core.string_ops` 2.1×) are now the largest remaining gaps that are not calls. |
+
 ## 6. Deliberately not planned
 
 - **A second collector, reference counting, or arenas that hide references from D's collector**

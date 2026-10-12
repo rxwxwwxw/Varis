@@ -111,6 +111,12 @@ def main():
         assert "lamp" in names("narrative.explain(s, :la") and "at" in names("query a")
         assert names("") == []
 
+        # Go to definition reads the source files.
+        found = call("/api/definition", {"name": "lamp"})["definitions"]
+        assert any(d["file"] == "content/lamp.lua" and d["kind"] == "storylet" for d in found), found
+        assert any(d["kind"] == "function" for d in call("/api/definition", {"name": "new_session"})["definitions"])
+        assert call("/api/definition", {"name": "no_such_name_anywhere"})["definitions"] == []
+
         # Files: listing, reading, the syntax check, and path safety.
         files = call("/api/files")["files"]
         assert "game.lua" in files and "content/lamp.lua" in files

@@ -921,6 +921,90 @@ private string localsJson(LuaState state, long frameIndex) {
     return json ~ "]}";
 }
 
+/// Go to definition, textually: the lines of the project that declare `name` as a storylet,
+/// action, choice, deck, relation, rule head, quality or function. It reads the source files, so
+/// it also finds declarations that have not been loaded.
+private string definitionsJson(string name) {
+    static bool isNameChar(char c) {
+        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+    }
+
+    foreach (char c; name)
+        if (!isNameChar(c))
+            return `{"definitions":[]}`;
+    if (name.length == 0)
+        return `{"definitions":[]}`;
+    static immutable string[] introducers = [
+        "storylet", "action", "choice", "deck", "relation", "rule", "function", "local function"
+    ];
+    string[] found;
+    listFiles(".", "", 0, found);
+    sortStrings(found);
+    string json = `{"definitions":[`;
+    bool first = true;
+    foreach (file; found) {
+        if (file.length < 4 || file[$ - 4 .. $] != ".lua")
+            continue;
+        string content;
+        if (!readFile(file, content))
+            continue;
+        long lineNumber;
+        while (content.length) {
+            ++lineNumber;
+            auto end = indexOf(content, "\n");
+            auto line = end < 0 ? content : content[0 .. end];
+            content = end < 0 ? null : content[end + 1 .. $];
+            size_t at;
+            while (at < line.length && (line[at] == ' ' || line[at] == '\t'))
+                ++at;
+            auto text = line[at .. $];
+            string kind;
+            foreach (introducer; introducers) {
+                if (text.length <= introducer.length || text[0 .. introducer.length] != introducer || text[introducer
+                        .length] != ' ')
+                    continue;
+                auto rest = text[introducer.length + 1 .. $];
+                // "deck :name", "function M.name" and "function M:name" declare `name` too.
+                size_t start;
+                foreach (i, char c; rest) {
+                    if (isNameChar(c))
+                        continue;
+                    if ((c == ':' || c == '.') && i + 1 < rest.length) {
+                        start = i + 1;
+                        continue;
+                    }
+                    break;
+                }
+                auto candidate = rest[start .. $];
+                if (candidate.length >= name.length && candidate[0 .. name.length] == name
+                        && (candidate.length == name.length || !isNameChar(candidate[name.length]))) {
+                    kind = introducer;
+                    break;
+                }
+            }
+            if (kind is null) {
+                enum define = "quality.define(:";
+                auto found2 = indexOf(text, define);
+                if (found2 >= 0) {
+                    auto candidate = text[found2 + define.length .. $];
+                    if (candidate.length >= name.length && candidate[0 .. name.length] == name
+                            && (candidate.length == name.length || !isNameChar(candidate[name.length])))
+                        kind = "quality";
+                }
+            }
+            if (kind is null)
+                continue;
+            char[32] number;
+            auto n = snprintf(number.ptr, number.length, "%lld", lineNumber);
+            json ~= (first ? "" : ",") ~ `{"file":` ~ jsonQuote(
+                    file) ~ `,"line":` ~ number[0 .. n].idup ~ `,"kind":` ~ jsonQuote(
+                    kind) ~ `,"text":` ~ jsonQuote(text.length > 100 ? text[0 .. 100] : text) ~ `}`;
+            first = false;
+        }
+    }
+    return json ~ "]}";
+}
+
 private string makeToken() {
     ubyte[16] bytes;
     auto source = fopen("/dev/urandom", "rb");
@@ -1114,6 +1198,9 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
         return Disposition.done;
     case "/api/why":
         respond(socket, 200, "application/json", callView(state, "why", [LuaValue(parameter("id"))], ok));
+        return Disposition.done;
+    case "/api/definition":
+        respond(socket, 200, "application/json", definitionsJson(parameter("name")));
         return Disposition.done;
     case "/api/complete":
         respond(socket, 200, "application/json", callView(state, "complete", [

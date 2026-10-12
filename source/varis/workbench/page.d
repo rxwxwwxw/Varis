@@ -76,7 +76,7 @@ immutable string workbenchPage = q"HTML
     <div class="body" id="workspaceBody"></div></section>
   <section id="editor"><header>Editor <select id="files"></select><span id="dirty" class="muted"></span>
       <span class="spacer"></span><input id="breakLine" class="mono" size="4" placeholder="line" title="Line number for a breakpoint in this file">
-      <button id="toggleBreak">Break</button><button id="save">Save</button><button id="run">Run</button></header>
+      <button id="toggleBreak">Break</button><button id="definition" title="Go to the definition of the name under the cursor (F12)">Definition</button><button id="save">Save</button><button id="run">Run</button></header>
     <div id="debugBar" class="mono" hidden><span id="where"></span> <button id="dbgContinue">Continue</button>
       <button id="dbgOver">Step over</button><button id="dbgInto">Step into</button><button id="dbgOut">Step out</button></div>
     <div id="breaks" class="muted mono"></div>
@@ -288,12 +288,26 @@ function showProblems(list) {
 }
 async function saveFile() { if (!current) return; await api("/api/file", { path: current }, $("source").value); saved = $("source").value; markDirty(); }
 $("files").onchange = () => openFile($("files").value);
+$("definition").onclick = goToDefinition;
 $("save").onclick = saveFile;
 $("run").onclick = async () => {
   await saveFile();
   logLine(">> run " + current + "\n", "in");
   showOutcome(await api("/api/run", { path: current }, ""));
 };
+// F12 or the Definition button: jump to where the name under the cursor is declared.
+async function goToDefinition() {
+  const area = $("source"); const text = area.value; let a = area.selectionStart, b = area.selectionStart;
+  while (a > 0 && /\w/.test(text[a - 1])) a--;
+  while (b < text.length && /\w/.test(text[b])) b++;
+  const name = text.slice(a, b); if (!name) return;
+  const data = await api("/api/definition", { name });
+  if (!data.definitions.length) { logLine("no definition of " + name + " found\n"); return; }
+  if (data.definitions.length > 1) logLine(data.definitions.map(d => d.file + ":" + d.line + "  " + d.text).join("\n") + "\n");
+  const target = data.definitions[0];
+  if (target.file !== current) await openFile(target.file);
+  selectLine(target.line);
+}
 let checkTimer = 0;
 $("source").addEventListener("input", () => { markDirty(); clearTimeout(checkTimer); checkTimer = setTimeout(check, 400); });
 $("source").addEventListener("keydown", event => {
@@ -304,6 +318,7 @@ $("source").addEventListener("keydown", event => {
     if (/[\w.:]$/.test(before)) completeIn($("source")); else document.execCommand("insertText", false, "    ");
   }
   if ((event.metaKey || event.ctrlKey) && event.key === "s") { event.preventDefault(); saveFile(); }
+  if (event.key === "F12") { event.preventDefault(); goToDefinition(); }
 });
 
 // The story is presented only on request: presenting advances the session's replay log.
