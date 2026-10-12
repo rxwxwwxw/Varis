@@ -362,6 +362,17 @@ class GamePlayer {
         }
     }
 
+    /// A one-shot sound on the `sfx` channel; a missing channel or sound is silent.
+    void sfx(string id) {
+        foreach (ref c; channels)
+            if (c.id == "sfx")
+                foreach (ref a; sounds)
+                    if (a.id == id) {
+                        v_play(c.track, a.sound, 0);
+                        return;
+                    }
+    }
+
     // ---- flow ----------------------------------------------------------------------
 
     bool newGame() {
@@ -424,8 +435,16 @@ class GamePlayer {
                     rows ~= row;
                 } else if (v.beat.kind == "say" || v.beat.kind == "narration")
             history ~= (v.beat.speaker.length ? v.beat.speaker ~ ": " : "") ~ v.beat.text;
-        foreach (t; host.takeToasts())
+        bool gained, lost;
+        foreach (t; host.takeToasts()) {
             toasts ~= ToastView(t.text, t.good, v_ticks());
+            gained = gained || t.good;
+            lost = lost || !t.good;
+        }
+        if (lost)
+            sfx("fail");
+        else if (gained)
+            sfx("stat_up");
         syncAudio();
         if (v.over && !v.inScene)
             mode = Mode.over;
@@ -441,6 +460,7 @@ class GamePlayer {
             noticeAt = v_ticks();
             return true;
         }
+        sfx("click");
         if (!host.choose(r.story, r.choice))
             return fail(host.error);
         autosave();

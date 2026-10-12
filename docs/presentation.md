@@ -80,7 +80,8 @@ PNG with alpha is suitable for finished sprite and portrait artwork.
 
 ## Controls and current limits
 
-- Enter, Space or left click advances dialogue; Escape closes the window.
+- Enter, Space or left click advances dialogue; Escape closes the window (in a scene-only
+  manifest; whole games, below, open a menu instead).
 - Up/Down selects a menu item; Enter or a click chooses it. Menus page in groups of six.
 - Type a name and press Enter at an input beat. Backspace removes a UTF-8 code point.
 - Up/Down scrolls long dialogue. H shows the five most recent lines.
@@ -133,3 +134,48 @@ make test-sdl                # optional software-rendered integration checks
 UTF-8 rendering, and byte-identical mid-scene save/load. It writes `build/sdl/harbour.bmp`
 using SDL's dummy video/audio drivers and software renderer. The screenshot is captured
 from the actual SDL render target. No display or audio hardware is required.
+
+## Whole games: the game host and its player
+
+A manifest with a `"project"` key (a directory with a project manifest, `project.lua`, that names
+`entry`, `session`, `load` and optionally `after_choose` and `finished`) is a whole game rather than a
+scene-only one: the project builds its own world and content, and the player presents its storylet
+hub, scenes, stage and a status panel. The adapter is `varis.services.gamehost.GameHost`:
+
+```d
+auto host = new GameHost;
+if (!host.loadProject("sample-rpg", "prologue")) { /* host.error */ }
+host.newGame(seed);            // session from the project's `session` function, first scene played
+auto view = host.view;         // inScene / beat, stories[] with choices (enabled, because, token), hud[], values
+host.advance(input);           // acknowledge a scene beat (input text or a menu choice id)
+host.choose(story, choice);    // take a hub choice; a disabled one is refused with its reason
+host.takeToasts();             // stat changes and notes since the last boundary
+host.save(bytes); host.restore(bytes);
+host.setLanguage("fr");        // a view: re-renders the same boundary, draws nothing
+```
+
+Statuses, not exceptions. `view` is read-only; the engine runs only inside `newGame`, `advance`,
+`choose`, `restore` and `refresh`. Optional hook functions of the entry module add to the view:
+`take_toasts()` (list of `{entity, name, delta}` or `{text}`), `journal(session)` (list of
+`{title, lines}`), `achievements()`, `map_state(session)` (`{at, reachable}`).
+
+Extra manifest fields of a whole game:
+
+| Field | Meaning |
+| --- | --- |
+| `project` | Directory of the project, relative to the manifest. |
+| `scene` | Scene started for a new game. |
+| `seed` | Fixed seed; omitted: derived from the clock. |
+| `autosave`, `settings` | Files written beside the manifest: the autosave after each choice (the title's Continue) and `{volume, fullscreen, language}`. |
+| `languages` | `[{ "tag": "fr", "name": "Français" }]`; an empty tag is the source language. Packs are loaded by the project. |
+| `clock` | Names of the four times of day, shown from the `slot` quality. |
+| `map` | `{ "places": [{id,x,y}], "roads": [[a,b]] }` for the map overlay; clicking a reachable place chooses the `walk` storylet bound to it. |
+| `choice_labels` | Storylets whose hub rows are labelled by their choice rather than the storylet title. |
+
+Controls: Up/Down, 1–9, Enter or the mouse choose; C character sheet, J journal, M map, H history,
+F1 help, F5/F9 quicksave/load, F11 fullscreen, Esc the pause menu (resume, save, load, language,
+volume, fullscreen, quit to title). A choice with an unmet requirement is listed greyed out as
+"locked", and hovering it shows why. Time of day is drawn as a tint; sprites, backgrounds, music and
+one-shot sounds (`click`, `stat_up`, `fail` on the `sfx` channel) come from the manifest as above.
+`make test-sdl` plays *The Hollowbrook Summer* headlessly (hub, every overlay, name input, a save
+round trip) and captures a frame. See [sample-rpg/README.md](../sample-rpg/README.md).
