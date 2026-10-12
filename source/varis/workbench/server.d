@@ -167,7 +167,7 @@ private struct Request {
     string body_;
 }
 
-private string jsonQuote(const(char)[] text) {
+package string jsonQuote(const(char)[] text) {
     char[] result;
     result ~= '"';
     foreach (char c; text) {
@@ -366,7 +366,7 @@ private struct Evaluation {
     string error;
 }
 
-private string errorText(LuaValue errorObject) {
+package string errorText(LuaValue errorObject) {
     return isString(errorObject) ? errorObject.asString : toLuaString(errorObject);
 }
 
@@ -434,7 +434,7 @@ private bool safePath(string path) {
     return path[0] != '.' && indexOf(path, "/.") < 0;
 }
 
-private bool readFile(string path, out string content) {
+package bool readFile(string path, out string content) {
     auto file = fopen((path ~ "\0").ptr, "rb");
     if (file is null)
         return false;
@@ -461,7 +461,7 @@ private bool writeFile(string path, string content) {
 }
 
 /// Source files of the project, at most three directories deep.
-private void listFiles(string directory, string prefix, int depth, ref string[] found) {
+package void listFiles(string directory, string prefix, int depth, ref string[] found) {
     import core.sys.posix.dirent : opendir, readdir, closedir, DT_DIR;
 
     auto handle = opendir((directory ~ "\0").ptr);
@@ -485,7 +485,7 @@ private void listFiles(string directory, string prefix, int depth, ref string[] 
     }
 }
 
-private void sortStrings(string[] items) {
+package void sortStrings(string[] items) {
     foreach (i; 1 .. items.length) {
         auto item = items[i];
         size_t j = i;

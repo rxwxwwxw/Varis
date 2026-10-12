@@ -164,6 +164,7 @@ tags = ["tools", "workbench"]
 timeout = 120
 cases = [
   { id = "protocol", command = ["python3", "tests/workbench/protocol_test.py", "{candidate}"] },
+  { id = "check-sample-game", command = ["{candidate}", "check", "main.lua", "game.lua", "world.lua", "qualities.lua", "content/decks.lua", "content/endings.lua", "content/events.lua", "content/explore.lua", "content/keeper.lua", "content/lamp.lua", "content/market.lua", "tools/check.lua"], cwd = "sample-game" },
 ]
 
 [[suite]]

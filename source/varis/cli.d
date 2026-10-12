@@ -516,9 +516,31 @@ private int runServe(string[] argv, ref LuaState state) {
     return serveWorkbench(state, directory, port);
 }
 
+/// `varis check [--json] [files...]`: compile without running (see varis.workbench.check).
+private int runCheck(string[] argv, ref LuaState state) {
+    import varis.workbench.check : checkProject;
+
+    bool json;
+    string[] files;
+    foreach (argument; argv[2 .. $]) {
+        if (argument == "--json")
+            json = true;
+        else if (argument.length && argument[0] == '-') {
+            writeErr("usage: varis check [--json] [files...]\n");
+            return 2;
+        } else
+            files ~= argument;
+    }
+    state = new LuaState();
+    openLibs(state);
+    return checkProject(state, files, json);
+}
+
 private int runMain(string[] argv, ref LuaState state) {
     if (argv.length > 1 && argv[1] == "serve")
         return runServe(argv, state);
+    if (argv.length > 1 && argv[1] == "check")
+        return runCheck(argv, state);
     int script;
     int args = collectArgs(argv, script);
     int optlim = script > 0 ? script : cast(int) argv.length;
