@@ -22,6 +22,7 @@ Varis Reference Manual linked below, not here.
 | How will localization work? | [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): workflows by role, stages T0–T5. |
 | What do the tests prove, and what is skipped? | [tests/narrative/README.md](tests/narrative/README.md), [tests/official/README.md](tests/official/README.md), [docs/STATUS.md](docs/STATUS.md) (generated). |
 | How do the benchmarks and gates work? | [benchmarks/README.md](benchmarks/README.md). |
+| What is the planned second sample game (`sample-rpg/`) and its SDL3 host work? | [SAMPLE_RPG_PLAN.md](SAMPLE_RPG_PLAN.md): plan only; nothing implemented until its stages land. |
 | How did we get here? | [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md), [benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md), [CONSOLIDATION_PLAN.md](CONSOLIDATION_PLAN.md). History only. |
 
 `LANGUAGE_EXTENSIONS.md` and `LANGUAGE_EXTENSIONS2.md` are redirects to the manual.
