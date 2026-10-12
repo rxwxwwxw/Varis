@@ -243,6 +243,7 @@ class Parser {
             case "scene":
             case "character":
             case "action":
+            case "procedure":
             case "deck":
             case "relation":
             case "rule":
@@ -482,7 +483,7 @@ class Parser {
         }
         // Declarative Statements (Phase 6)
         if (check(TokenType.Identifier)) {
-            if ((current.text == "storylet" || current.text == "action") && peekToken(0)
+            if ((current.text == "storylet" || current.text == "action" || current.text == "procedure") && peekToken(0)
                     .type == TokenType.Identifier && peekToken(1).type == TokenType.LParen)
                 return parseNarrativeDefinition(current.text, loc);
             if (current.text == "deck" && peekToken(0).type == TokenType.Colon && peekToken(1)
@@ -1207,11 +1208,11 @@ class Parser {
         return new RetractStmt(relRef, args, loc);
     }
 
-    private AstGoal[] parseWhenClause() {
-        auto when = consume(TokenType.Identifier, "'when' expected");
-        if (when.text != "when")
-            syntaxError("'when' expected", when);
-        consume(TokenType.LBrace, "'{' expected after when");
+    private AstGoal[] parseWhenClause(string keyword = "when") {
+        auto when = consume(TokenType.Identifier, "'" ~ keyword ~ "' expected");
+        if (when.text != keyword)
+            syntaxError("'" ~ keyword ~ "' expected", when);
+        consume(TokenType.LBrace, "'{' expected after " ~ keyword);
         AstGoal[] goals;
         do {
             goals ~= parseGoal();
@@ -1245,16 +1246,29 @@ class Parser {
             while (true);
             consume(TokenType.RParen, "')' expected after parameters");
         }
-        if (kind != "choice" || (check(TokenType.Identifier) && current.text == "when"))
+        if (kind == "procedure") {
+            if (check(TokenType.Identifier) && current.text == "when")
+                syntaxError("a procedure has no availability: it runs when a scene beat names it", current);
+        } else if (kind != "choice" || (check(TokenType.Identifier) && current.text == "when"))
             definition.goals = parseWhenClause();
         bool[string] fields;
         while (check(TokenType.Identifier)) {
             string field = current.text;
             if (field == "choice" || field == "effect")
                 break;
+            if (kind == "choice" && field == "require") {
+                if (definition.requireGoals.length)
+                    syntaxError("duplicate content field 'require'", current);
+                definition.requireGoals = parseWhenClause("require");
+                continue;
+            }
             bool allowed = kind != "action" && (field == "title" || field == "text");
+            if (kind == "choice" && field == "because")
+                allowed = true;
             if (kind == "storylet")
                 allowed = allowed || field == "deck" || field == "priority" || field == "weight" || field == "cooldown" || field == "repeatable" || field == "sticky" || field == "order";
+            if (kind == "procedure")
+                allowed = false;
             if (kind == "action")
                 allowed = field == "phase" || field == "priority" || field == "once_per";
             if (!allowed)
@@ -1264,7 +1278,7 @@ class Parser {
             fields[field] = true;
             advance();
             definition.fieldNames ~= field;
-            if (field == "title" || field == "text") {
+            if (field == "title" || field == "text" || field == "because") {
                 auto value = consume(TokenType.String, "template string literal expected");
                 auto literal = new LiteralStringExpr(value.text, value.loc);
                 literal.end = SourceLoc(value.endLine, value.endColumn);

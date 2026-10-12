@@ -1887,6 +1887,8 @@ class Compiler {
             } else if (auto aggregate = as!AstAggregateGoal(goal))
                 template_.groundedParameters ~= aggregate.resultVariable;
         }
+        if (definition.kind == "procedure")
+            template_.groundedParameters = definition.parameters.dup;
         foreach (i, field; definition.fieldNames) {
             int register = allocReg();
             registers ~= register;
@@ -1918,6 +1920,12 @@ class Compiler {
             auto query = new QueryExpr(definition.goals, true, definition.loc);
             auto body = new BlockStmt([cast(Stmt) new ReturnStmt([cast(Expr) query], definition.loc)], definition.loc);
             compileContext(body, incoming, incoming, template_.availabilityRegister);
+        }
+        if (definition.requireGoals.length) {
+            auto query = new QueryExpr(definition.requireGoals, true, definition.loc);
+            auto body = new BlockStmt([cast(Stmt) new ReturnStmt([cast(Expr) query], definition.loc)], definition.loc);
+            compileContext(body, incoming ~ definition.parameters, incoming ~ definition.parameters,
+                    template_.requirementRegister);
         }
         if (definition.effect !is null)
             compileContext(definition.effect, incoming ~ definition.parameters, [], template_.effectRegister);

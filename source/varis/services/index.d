@@ -660,9 +660,10 @@ private final class Builder {
         if (n.goals.length)
             whenText = slice(n.goals[0].loc, n.goals[$ - 1].end);
         goals(n.goals);
+        goals(n.requireGoals);
         foreach (i, field; n.fieldNames) {
             auto value = n.fieldValues[i];
-            if (field == "title" || field == "text")
+            if (field == "title" || field == "text" || field == "because")
                 message(d, field, value);
             else if (field == "deck") {
                 if (auto symbol = as!SymbolLiteralExpr(value)) {

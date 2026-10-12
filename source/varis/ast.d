@@ -560,6 +560,7 @@ final class NarrativeDefinitionStmt : Stmt {
     SourceLoc nameEnd;
     string[] parameters;
     AstGoal[] goals;
+    AstGoal[] requireGoals; // choice `require { ... }`: shown but disabled when it fails
     string[] fieldNames;
     Expr[] fieldValues;
     NarrativeDefinitionStmt[] choices;

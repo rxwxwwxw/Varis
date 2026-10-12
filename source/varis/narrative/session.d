@@ -236,6 +236,11 @@ final class ChoiceRender {
     LuaValue token;
     MessageRender title;
     MessageRender text;
+    /// Set when the choice has a `require`: `enabled` says whether it holds, and `because` is
+    /// the reason shown for a disabled choice. A disabled choice has no token.
+    bool hasRequirement;
+    bool enabled = true;
+    MessageRender because;
 }
 
 final class StoryRender {
@@ -404,20 +409,48 @@ class Session : TransactionParticipant {
             requireIdle();
         if (registry.scene(id) is null)
             throw new LuaException("unknown scene '" ~ id ~ "'");
+        if (inProcedure)
+            throw new LuaException("a scene procedure cannot start a scene");
         auto next = new SceneState;
         auto previous = view().scene;
         next.stage = previous is null ? immutableRecord(null) : previous.stage;
         next.revision = previous is null ? 1 : previous.revision + 1;
         next.frames = [SceneFrame(id, 0, immutableRecord(null))];
-        auto problem = seekBeat(registry, next);
-        if (problem.length)
-            throw new LuaException(problem);
-        edit().scene = next;
-        if (currentEffectSession() is null)
-            data.replayInputs ~= immutableRecord([
-            "kind": state.getSymbol("play"),
-            "value": state.getSymbol(id)
-        ]);
+        bool outside = currentEffectSession() is null;
+        void seek() {
+            auto problem = seekBeat(registry, next, &runSceneProcedure);
+            if (problem.length)
+                throw new LuaException(problem);
+            edit().scene = next;
+            if (outside)
+                edit().replayInputs ~= immutableRecord([
+                "kind": state.getSymbol("play"),
+                "value": state.getSymbol(id)
+            ]);
+        }
+
+        // Effect beats write to the world: outside an effect the whole seek is one transaction.
+        if (outside && registry.procedures().length)
+            runEffect(&seek);
+        else
+            seek();
+    }
+
+    private bool inProcedure;
+
+    /// Runs the named procedure of a scene `effect` beat inside the surrounding transaction.
+    private string runSceneProcedure(string id, LuaValue[string] arguments) {
+        auto definition = registry.procedure(id);
+        if (definition is null)
+            return "unknown procedure '" ~ id ~ "'";
+        LuaValue[] args = [wrapWorld(world)];
+        foreach (name; definition.parameters)
+            args ~= arguments.get(name, luaNil());
+        inProcedure = true;
+        scope (exit)
+            inProcedure = false;
+        VM.callValue(state, definition.effect, args);
+        return "";
     }
 
     LuaValue scenePresentation() {
@@ -496,11 +529,21 @@ class Session : TransactionParticipant {
         if (kind == "ended")
             next.frames.length = 0;
         next.revision++;
-        auto problem = seekBeat(registry, next);
-        if (problem.length)
-            throw new LuaException(problem);
-        data.scene = next;
-        data.replayInputs ~= immutableRecord(["kind": state.getSymbol("advance"), "value": input]);
+        void seek() {
+            auto problem = seekBeat(registry, next, &runSceneProcedure);
+            if (problem.length)
+                throw new LuaException(problem);
+            edit().scene = next;
+            edit().replayInputs ~= immutableRecord([
+                "kind": state.getSymbol("advance"),
+                "value": input
+            ]);
+        }
+
+        if (registry.procedures().length)
+            runEffect(&seek);
+        else
+            seek();
     }
 
     void seed(long seed) {
@@ -679,6 +722,23 @@ class Session : TransactionParticipant {
         return result;
     }
 
+    /// Whether a choice's `require` query has a result for these bindings (true when it has none).
+    bool requirementHolds(ContentDefinition definition, World snapshot, LuaValue[string] bindings) {
+        if (!isFunction(definition.requirement))
+            return true;
+        beginReadOnlyEvaluation();
+        scope (exit)
+            endReadOnlyEvaluation();
+        LuaValue[] args = [wrapWorld(snapshot)];
+        foreach (name; definition.incomingParameters ~ definition.parameters)
+            args ~= bindings.get(name, luaNil());
+        auto returned = VM.callValue(state, definition.requirement, args);
+        if (!returned.length)
+            throw new LuaException("requirement callback did not return an iterator");
+        auto next = VM.callValue(state, returned[0], []);
+        return next.length && !isNil(next[0]);
+    }
+
     bool policyAllows(ContentInstance instance, SessionData value, bool requireDeck = true) {
         if (requireDeck && instance.definition.symbolOption("deck", "default") != value.decks[$ - 1].name)
             return false;
@@ -759,15 +819,21 @@ class Session : TransactionParticipant {
         foreach (story; data.stories) {
             LuaValue[] choices;
             choices.reserve(story.choices.length);
-            foreach (choice; story.choices)
-                choices ~= immutableRecord([
-                "id": choice.id,
-                "instance_key": choice.instanceKey,
-                "bindings": choice.bindings,
-                "title": LuaValue(text(choice.title)),
-                "text": LuaValue(text(choice.text)),
-                "token": choice.token
-            ]);
+            foreach (choice; story.choices) {
+                LuaValue[string] record = [
+                    "id": choice.id,
+                    "instance_key": choice.instanceKey,
+                    "bindings": choice.bindings,
+                    "title": LuaValue(text(choice.title)),
+                    "text": LuaValue(text(choice.text)),
+                    "token": choice.token
+                ];
+                if (choice.hasRequirement) {
+                    record["enabled"] = LuaValue(choice.enabled);
+                    record["because"] = LuaValue(choice.enabled ? "" : text(choice.because));
+                }
+                choices ~= immutableRecord(record);
+            }
             stories ~= immutableRecord([
                 "id": story.id,
                 "instance_key": story.instanceKey,
@@ -930,14 +996,17 @@ class Session : TransactionParticipant {
                     auto choiceTextVars = selectVariants(definition.textTemplate, tentative);
                     logVariants(choice.key, "title", choiceTitleVars, definition.titleTemplate);
                     logVariants(choice.key, "text", choiceTextVars, definition.textTemplate);
+                    bool enabled = requirementHolds(definition, snapshot, choice.bindings);
                     auto token = new ChoiceToken();
                     token.session = this;
                     token.storylet = story;
                     token.choice = choice;
-                    if (tentative.nextToken == ulong.max)
-                        throw new LuaException("choice token identity exhausted");
-                    token.deckEntry = tentative.decks[$ - 1].identity;
-                    token.identity = tentative.nextToken++;
+                    if (enabled) {
+                        if (tentative.nextToken == ulong.max)
+                            throw new LuaException("choice token identity exhausted");
+                        token.deckEntry = tentative.decks[$ - 1].identity;
+                        token.identity = tentative.nextToken++;
+                    }
                     auto tokenMetatable = new LuaTable();
                     tokenMetatable.rawset(LuaValue("__metatable"), LuaValue("choice token"));
                     tokenMetatable.rawset(LuaValue("__newindex"), LuaValue(new LuaNativeFunction((void* p, LuaValue[] a) {
@@ -948,10 +1017,21 @@ class Session : TransactionParticipant {
                     choiceRender.id = state.getSymbol(definition.id);
                     choiceRender.instanceKey = LuaValue(choice.key);
                     choiceRender.bindings = immutableRecord(choice.bindings);
-                    choiceRender.token = LuaValue(new LuaUserData(token, tokenMetatable));
+                    if (enabled)
+                        choiceRender.token = LuaValue(new LuaUserData(token, tokenMetatable));
+                    if (definition.becauseTemplate !is null) {
+                        choiceRender.hasRequirement = true;
+                        choiceRender.enabled = enabled;
+                    }
                     auto choiceKey = storyId ~ "." ~ definition.id;
                     choiceRender.title = message(choiceKey ~ ".title", definition.titleTemplate, choice.bindings, choiceTitleVars);
                     choiceRender.text = message(choiceKey ~ ".text", definition.textTemplate, choice.bindings, choiceTextVars);
+                    if (choiceRender.hasRequirement && !enabled) {
+                        auto becauseVars = selectVariants(definition.becauseTemplate, tentative);
+                        logVariants(choice.key, "because", becauseVars, definition.becauseTemplate);
+                        choiceRender.because = message(choiceKey ~ ".because", definition.becauseTemplate,
+                                choice.bindings, becauseVars);
+                    }
                     storyRender.choices ~= choiceRender;
                 }
             storyRender.id = state.getSymbol(story.definition.id);
@@ -999,6 +1079,8 @@ class Session : TransactionParticipant {
             if (token.deckEntry != tentative.decks[$ - 1].identity || !policyAllows(token.storylet, tentative) ||
                 !stillAvailable(token.storylet, world) || !stillAvailable(token.choice, world, token.storylet.bindings))
                 throw new LuaException("STALE_CHOICE: eligibility or deck changed");
+            if (!requirementHolds(token.choice.definition, world, token.choice.bindings))
+                throw new LuaException("STALE_CHOICE: requirement no longer holds");
             LuaValue[] args = [wrapWorld(world)];
             foreach (name; token.choice.definition.incomingParameters ~ token.choice.definition.parameters)
                 args ~= token.choice.bindings[name];

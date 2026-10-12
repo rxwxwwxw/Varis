@@ -198,6 +198,7 @@ class ContentTemplate {
     int[] optionRegisters;
     int availabilityRegister = -1;
     int effectRegister = -1;
+    int requirementRegister = -1;
     ContentTemplate[] choices;
 }
 

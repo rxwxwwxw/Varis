@@ -93,6 +93,7 @@ private final class Walker {
             foreach (p; n.parameters)
                 declare(p);
             goals(n.goals);
+            goals(n.requireGoals);
             foreach (v; n.fieldValues)
                 expr(v);
             foreach (c; n.choices)

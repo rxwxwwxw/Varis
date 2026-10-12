@@ -305,6 +305,40 @@ string validateScenes(ContentRegistry registry) {
                         return "unknown menu target";
                 }
                 break;
+            case "effect":
+                auto procedure = registry.procedure(nameOf(field(beat, "name")));
+                if (procedure is null)
+                    return definition.id ~ ": effect beat names unknown procedure '" ~ nameOf(field(beat, "name")) ~ "'";
+                auto supplied = field(beat, "args");
+                auto fromLocals = field(beat, "locals");
+                if ((!supplied.isNil && !isRecord(supplied)) || (!fromLocals.isNil && !isRecord(fromLocals)))
+                    return "effect args and locals must be records";
+                bool[string] given;
+                if (isRecord(supplied))
+                    foreach (key, value; (cast(ImmutableRecord) supplied.asUserData.payload).fields) {
+                        given[key] = true;
+                        if (!portableScalar(value))
+                            return "effect argument '" ~ key ~ "' must be a portable scalar";
+                    }
+                if (isRecord(fromLocals))
+                    foreach (key, value; (cast(ImmutableRecord) fromLocals.asUserData.payload).fields) {
+                        if (key in given)
+                            return "effect argument '" ~ key ~ "' is given twice";
+                        given[key] = true;
+                        if (!nameOf(value).length)
+                            return "effect locals name the scene local that supplies each argument";
+                    }
+                foreach (parameter; procedure.parameters)
+                    if (parameter !in given)
+                        return definition.id ~ ": effect '" ~ procedure.id ~ "' needs argument '" ~ parameter ~ "'";
+                foreach (key, unused; given) {
+                    bool known;
+                    foreach (parameter; procedure.parameters)
+                        known = known || parameter == key;
+                    if (!known)
+                        return definition.id ~ ": effect '" ~ procedure.id ~ "' has no parameter '" ~ key ~ "'";
+                }
+                break;
             case "input":
             case "set":
                 if (!nameOf(field(beat, "local")).length)
@@ -377,7 +411,7 @@ string applyBeat(ContentRegistry registry, SceneState state, LuaValue beat) {
 }
 
 /// Resolve control beats with a budget; publish only a completed boundary in the caller.
-string seekBeat(ContentRegistry registry, SceneState state) {
+string seekBeat(ContentRegistry registry, SceneState state, string delegate(string, LuaValue[string]) run = null) {
     for (size_t steps; steps < 1000; steps++) {
         if (!state.frames.length) {
             state.beat = LuaValue.init;
@@ -408,6 +442,22 @@ string seekBeat(ContentRegistry registry, SceneState state) {
             }
         } else if (kind == "return") {
             state.frames.length--;
+        } else if (kind == "effect") {
+            if (run is null)
+                return "effect beats cannot run here";
+            LuaValue[string] arguments;
+            auto supplied = field(beat, "args");
+            if (isRecord(supplied))
+                foreach (key, value; (cast(ImmutableRecord) supplied.asUserData.payload).fields)
+                    arguments[key] = value;
+            auto fromLocals = field(beat, "locals");
+            if (isRecord(fromLocals))
+                foreach (key, value; (cast(ImmutableRecord) fromLocals.asUserData.payload).fields)
+                    arguments[key] = field(frame.locals, nameOf(value));
+            auto problem = run(nameOf(field(beat, "name")), arguments);
+            if (problem.length)
+                return problem;
+            frame.pc++;
         } else if (kind == "set") {
             frame.locals = replaceField(frame.locals, nameOf(field(beat, "local")), field(beat, "value"), false);
             frame.pc++;
@@ -477,7 +527,7 @@ SceneState restoreScene(ContentRegistry registry, LuaValue value, out string pro
         }
         state.beat = definition.beats[top.pc];
         auto kind = nameOf(field(state.beat, "kind"));
-        if (kind == "jump" || kind == "call" || kind == "return" || kind == "set") {
+        if (kind == "jump" || kind == "call" || kind == "return" || kind == "set" || kind == "effect") {
             problem = "position is not a beat boundary";
             return null;
         }

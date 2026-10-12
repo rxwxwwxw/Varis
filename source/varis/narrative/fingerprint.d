@@ -108,7 +108,7 @@ private string definitionFingerprint(ContentDefinition definition, bool legacy) 
     names.sort;
     foreach (name; names) {
         // Wording is not gameplay: a template contributes what it asks the engine to evaluate.
-        if (!legacy && (name == "title" || name == "text")) {
+        if (!legacy && (name == "title" || name == "text" || name == "because")) {
             auto value = definition.options[name];
             if (isString(value)) {
                 auto text = value.match!((string s) => s, _ => "");
@@ -139,7 +139,7 @@ private string definitionFingerprint(ContentDefinition definition, bool legacy) 
         }
         result ~= ":option:" ~ name ~ ":" ~ encoded;
     }
-    foreach (function_; [definition.availability, definition.effect]) {
+    foreach (function_; [definition.availability, definition.requirement, definition.effect]) {
         auto functionObject = function_.match!((LuaFunction fn) => fn, _ => null);
         if (auto closure = cast(LuaClosure) functionObject)
             result ~= ":closure:" ~ prototypeFingerprint(closure.proto);
@@ -166,7 +166,7 @@ string presentationRevision(ContentRegistry registry) {
             collect(choice, prefix ~ definition.id ~ ".");
     }
 
-    foreach (definition; registry.storylets() ~ registry.actions())
+    foreach (definition; registry.storylets() ~ registry.actions() ~ registry.procedures())
         collect(definition, "");
     foreach (definition; registry.scenes)
         foreach (beat; definition.beats) {
@@ -244,14 +244,15 @@ string portableRegistryFingerprint(ContentRegistry registry, bool legacy = false
         auto stored = legacy ? definition.legacyFingerprint : definition.fingerprint;
         entries ~= registry.sealed && stored.length ? stored : (legacy ? legacyContentFingerprint(definition)
                 : contentFingerprint(definition));
-        foreach (value; [definition.availability, definition.effect])
+        foreach (value; definition.requirement.isNil ? [definition.availability, definition.effect]
+                : [definition.availability, definition.requirement, definition.effect])
             entries ~= portableFunctionFingerprint(value, null, registry.explicitContentVersion, definition.kind ~ "." ~ definition
                     .id);
         foreach (choice; definition.choices)
             content(choice);
     }
 
-    foreach (definition; registry.storylets() ~ registry.actions())
+    foreach (definition; registry.storylets() ~ registry.actions() ~ registry.procedures())
         content(definition);
     entries ~= registry.sceneIdentity();
     foreach (name; registry.handlerNames())

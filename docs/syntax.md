@@ -38,7 +38,7 @@ stat           ::= ';'
                  | factstat | retractstat | relationstat | localrelstat
                  | rulestat | worldstat | setstat | deletestat | adjuststat
                  | transactionstat | rollbackstat
-                 | storyletdef | actiondef | deckdef | scenedef | characterdef
+                 | storyletdef | actiondef | proceduredef | deckdef | scenedef | characterdef
 
 attnamelist    ::= Name [ attrib ] { ',' Name [ attrib ] }
 attrib         ::= '<' Name '>'
@@ -140,6 +140,8 @@ storyletfield  ::= 'deck' exp | 'priority' exp | 'weight' exp
 choicedef      ::= 'choice' Name [ '(' [ params ] ')' ] [ whenclause ]
                    { choicefield } 'effect' 'do' block 'end' 'end'
 choicefield    ::= 'title' LiteralString | 'text' LiteralString
+                 | 'require' '{' goals '}' | 'because' LiteralString
+proceduredef   ::= 'procedure' Name '(' [ params ] ')' 'effect' 'do' block 'end' 'end'
 actiondef      ::= 'action' Name '(' [ params ] ')' whenclause
                    { actionfield } 'effect' 'do' block 'end' 'end'
 actionfield    ::= 'phase' exp | 'priority' exp | 'once_per' exp

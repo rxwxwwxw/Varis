@@ -90,7 +90,7 @@ private immutable string[] reservedWords = [
 private immutable string[] contentKeywords = [
     "storylet", "action", "choice", "deck", "scene", "character", "relation", "rule", "fact",
     "retract", "set", "delete",
-    "adjust", "when",
+    "adjust", "when", "require", "because",
     "title", "text", "effect", "priority", "weight", "cooldown", "repeatable", "sticky", "order",
     "phase", "once_per",
     "query", "transaction", "rollback", "local", "function", "if", "then", "else", "end", "for",

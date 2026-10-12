@@ -115,6 +115,25 @@ Consequently, calling a helper captured in another world does not authorize a
 foreign-world write during an effect transaction. Quality library defaults follow
 this lexical call metadata as described in section 6.8.
 
+A choice may state a requirement that is shown to the player rather than hiding the choice:
+
+```lua
+choice lift
+    require { quality(:player, :strength, ?s), ?s >= 50 }
+    because "You are not strong enough to lift {thing}."
+    title "Lift it"
+    effect do ... end
+end
+```
+
+`require` is a query over the storylet's and the choice's parameters; it holds when it has at
+least one result. `because` is a template (message key `<storylet>.<choice>.because`) and must
+accompany `require`. A choice that passes `when` but fails `require` is still presented:
+its record has `enabled = false`, `token = nil`, and `because` holds the rendered reason.
+When the requirement holds, `enabled = true` and `because = ""`. A choice without `require`
+has neither field. Choosing re-checks the requirement and raises `STALE_CHOICE` if it no
+longer holds. The `require` goals are part of the content identity; the `because` wording is not.
+
 A presentation contains immutable storylet and choice records with opaque tokens.
 Pass the exact `choice.token` to `session:choose`; do not reconstruct a token
 from its text or instance key. Tokens belong to one session and exact deck entry.
@@ -507,9 +526,29 @@ storylet turn or run the post phase.
 | `input` | Required `local` name; advance stores its portable scalar input, including nil. |
 | `menu` | Nonempty `choices`, each with `id`, `text`, and a scene `target`. Advance requires an exact choice id and jumps to its target. |
 | `ended` | Delivered to the host; advancing it clears the scene stack. |
+| `effect` | Required `name` of a registered `procedure`; `args` (record of portable scalars) and `locals` (record mapping a parameter to the scene local that supplies it) must together name exactly the procedure's parameters. Runs the procedure's effect in the session world, without displaying a beat. |
 | `set` | Required `local` name and portable scalar `value`; updates locals without displaying a beat. |
 | `jump`, `call` | Required scene `target`; jump replaces the current frame, call pushes a frame and saves the return address. `jump` to `:hub` clears the whole stack. |
 | `"return"` | Pops the frame; falling off a scene does the same. The spelling is a string because `return` is a Lua keyword. |
+
+A **procedure** is content that a scene beat names:
+
+```lua
+procedure set_name(?name)
+    effect do set player_name(:player, name) end
+end
+scene intro {
+    {kind=:input, ["local"]="visitor", text="Your name?"},
+    {kind=:effect, name=:set_name, locals={name="visitor"}},
+}
+```
+
+It has parameters (read-only locals in the effect, as in a storylet) and no `when`. The
+effect beats reached by one command run in one transaction: if any raises, the world, the
+position and the stage stay as they were. A procedure runs with the same restrictions as a
+choice effect and cannot start a scene. Beat advances still increment no turn and run no
+post phase. Procedures are part of the content identity (their code, not any wording); the
+registry rejects an `effect` beat naming an unknown procedure, or missing or extra arguments.
 
 Calls inherit a copy of the caller's scalar bindings; child changes remain local
 to the child. Jumps preserve the current bindings. There are at most 128 frames

@@ -36,11 +36,14 @@ class ContentDefinition {
     string[] incomingParameters;
     string[] groundedParameters;
     LuaValue availability;
+    /// The `require` query of a choice, over storylet and choice parameters; nil when absent.
+    LuaValue requirement;
     LuaValue effect;
     LuaValue[string] options;
     ContentDefinition[] choices;
     NarrativeTemplate titleTemplate;
     NarrativeTemplate textTemplate;
+    NarrativeTemplate becauseTemplate;
     string fingerprint;
     /// The identity first-format saves recorded: wording included. Computed on first use, by the
     /// hook the narrative layer installs; only reading a first-format save needs it.
@@ -138,6 +141,7 @@ class ContentRegistry {
 
     private ContentDefinition[string] storylets_;
     private ContentDefinition[string] actions_;
+    private ContentDefinition[string] procedures_;
     private DeckDefinition[string] decks_;
     private QualityDefinition[string] qualities_;
     private string[string] names_;
@@ -181,6 +185,14 @@ class ContentRegistry {
         return actions_.values;
     }
 
+    ContentDefinition[] procedures() {
+        return procedures_.values;
+    }
+
+    ContentDefinition procedure(string id) {
+        return procedures_.get(id, null);
+    }
+
     ContentDefinition storylet(string id) {
         return storylets_.get(id, null);
     }
@@ -209,9 +221,10 @@ class ContentRegistry {
 
     void registerContent(ContentDefinition definition) {
         requireOpen();
-        if (definition.kind != "storylet" && definition.kind != "action")
+        if (definition.kind != "storylet" && definition.kind != "action" && definition.kind != "procedure")
             throw new LuaException("invalid content kind");
-        auto registry = definition.kind == "storylet" ? &storylets_ : &actions_;
+        auto registry = definition.kind == "storylet" ? &storylets_ : definition.kind == "action" ? &actions_
+            : &procedures_;
         if (definition.id in *registry)
             throw new LuaException("duplicate " ~ definition.kind ~ " identifier '" ~ definition.id ~ "'");
         (*registry)[definition.id] = definition;
@@ -487,6 +500,12 @@ class ContentRegistry {
             else
                 definition.textTemplate = parsed;
         }
+        if (isFunction(definition.requirement) != isString(definition.option("because")))
+            throw new LuaException("choice 'require' and 'because' go together: " ~ definition.id);
+        if (isFunction(definition.requirement))
+            definition.becauseTemplate = new NarrativeTemplate(definition.option("because")
+                    .match!((string text) => text,
+                        _ => ""), definition.incomingParameters ~ definition.parameters);
     }
 
     /// Copy into an already allocated registry shell, preserving capture cycles.
@@ -515,6 +534,8 @@ class ContentRegistry {
             destination.storylets_[name] = cloneDefinition(definition);
         foreach (name, definition; actions_)
             destination.actions_[name] = cloneDefinition(definition);
+        foreach (name, definition; procedures_)
+            destination.procedures_[name] = cloneDefinition(definition);
         foreach (name, handler; handlers_)
             destination.handlers_[name] = cloneValue(handler);
         destination.sealed_ = sealed_;
@@ -559,7 +580,7 @@ class ContentRegistry {
         auto sceneProblem = validateScenes(this);
         if (sceneProblem.length)
             throw new LuaException(sceneProblem);
-        foreach (definition; storylets_.values ~ actions_.values) {
+        foreach (definition; storylets_.values ~ actions_.values ~ procedures_.values) {
             try {
                 validateContent(definition);
             } catch (LuaException failure) {
@@ -572,7 +593,7 @@ class ContentRegistry {
         }
         // The identity of the content: wording (titles, texts, names, labels) is not part of it.
         string[] manifests = sceneIdentity();
-        foreach (definition; storylets_.values ~ actions_.values)
+        foreach (definition; storylets_.values ~ actions_.values ~ procedures_.values)
             manifests ~= definition.kind ~ ":" ~ definition.id ~ ":" ~ definition.fingerprint;
         foreach (name, definition; decks_)
             manifests ~= "deck:" ~ name ~ ":" ~ definition.draw.to!string ~ ":" ~ definition.replacement.to!string;

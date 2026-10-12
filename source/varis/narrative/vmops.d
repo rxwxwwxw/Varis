@@ -139,6 +139,8 @@ private void declarativeOp(LuaState state, LuaClosure closure, Prototype proto, 
                 content.availability = registers[template_.availabilityRegister];
             if (template_.effectRegister >= 0)
                 content.effect = registers[template_.effectRegister];
+            if (template_.requirementRegister >= 0)
+                content.requirement = registers[template_.requirementRegister];
             foreach (choice; template_.choices)
                 content.choices ~= instantiateContent(choice);
             import varis.narrative.fingerprint : contentFingerprint, legacyContentFingerprint;

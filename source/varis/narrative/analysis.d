@@ -234,7 +234,9 @@ private class AnalysisClone {
         copy.fingerprint = original.fingerprint;
         copy.legacyFingerprint = original.legacyFingerprint;
         copy.availability = cloneValue(original.availability);
+        copy.requirement = cloneValue(original.requirement);
         copy.effect = cloneValue(original.effect);
+        copy.becauseTemplate = original.becauseTemplate;
         foreach (name, value; original.options)
             copy.options[name] = cloneValue(value);
         foreach (choice; original.choices)
