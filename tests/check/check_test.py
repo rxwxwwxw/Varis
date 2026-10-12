@@ -37,6 +37,26 @@ def main():
         assert list(problem)[:5] == FIVE, list(problem)
         assert problem["line"] > 0 and problem["column"] > 0 and problem["endColumn"] > problem["column"]
 
+    # The project index of the sample game (AUTHORING_TOOLS_PLAN stage A1): a golden file.
+    code, out = run(binary, ROOT / "sample-game", "--index")
+    assert code == 0, out
+    index_golden = HERE / "sample_game.index.expected.json"
+    if update:
+        index_golden.write_text(out)
+    else:
+        assert index_golden.read_text() == out, "index differs from tests/check/sample_game.index.expected.json"
+    index = json.loads(out)
+    kinds = {d["kind"] for d in index["declarations"]}
+    assert {"storylet", "choice", "action", "deck", "relation", "rule", "quality", "function"} <= kinds, kinds
+    # Every title, text and label has a key, except the one registered by a loop (qualities.lua:21).
+    unkeyed = [m for m in index["messages"] if not m["key"]]
+    assert len(unkeyed) == 1 and unkeyed[0]["computed"] and unkeyed[0]["file"] == "qualities.lua", unkeyed
+    keys = [m["key"] for m in index["messages"] if m["key"]]
+    assert len(keys) == len(set(keys)), "message keys are not unique"
+    assert "lamp.light.title" in keys and "quality.oil.label" in keys
+    lamp = [m for m in index["messages"] if m["key"] == "look.text"][0]
+    assert lamp["placeholders"] == ["room"] and lamp["variantOptions"] == 3 and "outdoors" in lamp["conditionRelations"], lamp
+
     # A broken project: a manifest with an unknown field, a syntax error with a range, a clean file.
     code, out = run(binary, HERE / "fixtures" / "broken", "--json")
     assert code == 1, out

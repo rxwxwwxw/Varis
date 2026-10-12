@@ -272,9 +272,12 @@ class Parser {
                     .type == TokenType.Identifier && peekToken(2).type == TokenType.LBrace) {
                 advance();
                 advance();
-                string name = consume(TokenType.Identifier, "deck symbol expected").text;
+                auto nameToken = consume(TokenType.Identifier, "deck symbol expected");
                 consume(TokenType.LBrace, "deck configuration expected");
-                return new NarrativeDeckStmt(name, parseTableConstructor(loc), loc);
+                auto deck = new NarrativeDeckStmt(nameToken.text, parseTableConstructor(loc), loc);
+                deck.nameLoc = nameToken.loc;
+                deck.nameEnd = SourceLoc(nameToken.endLine, nameToken.endColumn);
+                return deck;
             }
             if (current.text == "transaction" && (peekToken(0).type == TokenType.KwDo || isWorldBlockStmt("transaction"))) {
                 advance();
@@ -413,30 +416,40 @@ class Parser {
 
     private Stmt parseFunctionDecl(bool isLocal, SourceLoc loc) {
         if (isLocal) {
-            auto name = consume(TokenType.Identifier, "<name> expected").text;
+            auto localToken = consume(TokenType.Identifier, "<name> expected");
+            auto name = localToken.text;
             declareLocals();
             auto def = parseFunctionDef(loc);
-            return new FunctionDeclStmt(new VariableExpr(name, loc), def, true, name, loc);
+            auto localDecl = new FunctionDeclStmt(new VariableExpr(name, loc), def, true, name, loc);
+            localDecl.nameLoc = localToken.loc;
+            localDecl.nameEnd = SourceLoc(localToken.endLine, localToken.endColumn);
+            return localDecl;
         }
 
         // Global / Member function: Name {'.' Name} [':' Name]
         auto nameToken = consume(TokenType.Identifier, "<name> expected");
         Expr target = new VariableExpr(nameToken.text, nameToken.loc);
         bool isMethod = false;
+        auto lastName = nameToken;
 
         while (match(TokenType.Dot)) {
             auto field = consume(TokenType.Identifier, "<name> expected").text;
             target = new FieldExpr(target, field, previous.loc);
+            lastName = previous;
         }
 
         if (match(TokenType.Colon)) {
             auto method = consume(TokenType.Identifier, "<name> expected").text;
             target = new FieldExpr(target, method, previous.loc);
             isMethod = true;
+            lastName = previous;
         }
 
         auto def = parseFunctionDef(loc, isMethod);
-        return new FunctionDeclStmt(target, def, false, "", loc);
+        auto declaration = new FunctionDeclStmt(target, def, false, "", loc);
+        declaration.nameLoc = lastName.loc;
+        declaration.nameEnd = SourceLoc(lastName.endLine, lastName.endColumn);
+        return declaration;
     }
 
     private Stmt parseLocalDecl(SourceLoc loc) {
@@ -710,7 +723,9 @@ class Parser {
 
         if (match(TokenType.Colon)) {
             auto name = consume(TokenType.Identifier, "<name> expected for symbol literal").text;
-            return new SymbolLiteralExpr(name, loc);
+            auto symbol = new SymbolLiteralExpr(name, loc);
+            symbol.end = SourceLoc(previous.endLine, previous.endColumn);
+            return symbol;
         }
 
         if (check(TokenType.Identifier) && current.text == "query") {
@@ -770,6 +785,7 @@ class Parser {
             expr.parenthesized = true;
         } else if (match(TokenType.Identifier)) {
             expr = new VariableExpr(previous.text, loc);
+            expr.end = SourceLoc(previous.endLine, previous.endColumn);
         } else {
             syntaxError("unexpected symbol", current);
         }
@@ -930,11 +946,10 @@ class Parser {
             auto next = consume(TokenType.Identifier, "relation name expected after '.'").text;
             parts ~= next;
         }
-        if (parts.length == 1) {
-            return new AstRelRef([], parts[0], loc);
-        } else {
-            return new AstRelRef(parts[0 .. $ - 1], parts[$ - 1], loc);
-        }
+        auto reference = parts.length == 1 ? new AstRelRef([], parts[0], loc) : new AstRelRef(parts[0 .. $ - 1],
+                parts[$ - 1], loc);
+        reference.end = SourceLoc(previous.endLine, previous.endColumn);
+        return reference;
     }
 
     private Stmt parseFactStmt(SourceLoc loc) {
@@ -993,8 +1008,11 @@ class Parser {
 
     private NarrativeDefinitionStmt parseNarrativeDefinition(string kind, SourceLoc loc) {
         advance();
-        string name = consume(TokenType.Identifier, "content identifier expected").text;
+        auto nameToken = consume(TokenType.Identifier, "content identifier expected");
+        string name = nameToken.text;
         auto definition = new NarrativeDefinitionStmt(kind, name, loc);
+        definition.nameLoc = nameToken.loc;
+        definition.nameEnd = SourceLoc(nameToken.endLine, nameToken.endColumn);
         if (kind != "choice" || check(TokenType.LParen)) {
             consume(TokenType.LParen, "'(' expected after content identifier");
             if (!check(TokenType.RParen))
@@ -1084,13 +1102,17 @@ class Parser {
 
     private Stmt parseRelationDeclStmt(SourceLoc loc) {
         advance();
-        auto name = consume(TokenType.Identifier, "relation name expected").text;
+        auto nameToken = consume(TokenType.Identifier, "relation name expected");
+        auto name = nameToken.text;
         consume(TokenType.LParen, "'(' expected after relation name");
         if (check(TokenType.Integer)) {
             auto intTok = current;
             advance();
             consume(TokenType.RParen, "')' expected after relation arity");
-            return new RelationDeclStmt(name, cast(int) intTok.intValue, loc);
+            auto declaration = new RelationDeclStmt(name, cast(int) intTok.intValue, loc);
+            declaration.nameLoc = nameToken.loc;
+            declaration.nameEnd = SourceLoc(nameToken.endLine, nameToken.endColumn);
+            return declaration;
         }
         string[] columns;
         if (!check(TokenType.RParen)) {
@@ -1118,16 +1140,22 @@ class Parser {
         declaration.columns = columns;
         declaration.keys = keys;
         declaration.named = true;
+        declaration.nameLoc = nameToken.loc;
+        declaration.nameEnd = SourceLoc(nameToken.endLine, nameToken.endColumn);
         return declaration;
     }
 
     private Stmt parseLocalRelationDeclStmt(SourceLoc loc) {
         advance(); // consume "relation"
-        auto name = consume(TokenType.Identifier, "relation name expected").text;
+        auto nameToken = consume(TokenType.Identifier, "relation name expected");
+        auto name = nameToken.text;
         consume(TokenType.LParen, "'(' expected after relation name");
         auto intTok = consume(TokenType.Integer, "integer arity expected");
         consume(TokenType.RParen, "')' expected after relation arity");
-        return new LocalRelationDeclStmt(name, cast(int) intTok.intValue, loc);
+        auto declaration = new LocalRelationDeclStmt(name, cast(int) intTok.intValue, loc);
+        declaration.nameLoc = nameToken.loc;
+        declaration.nameEnd = SourceLoc(nameToken.endLine, nameToken.endColumn);
+        return declaration;
     }
 
     private bool isWorldBlockStmt(string keyword = "logic") {
@@ -1226,6 +1254,12 @@ class Parser {
     private size_t aggregateExpressionDepth;
 
     private AstGoal parseGoal() {
+        auto goal = parseGoalInner();
+        goal.end = SourceLoc(previous.endLine, previous.endColumn);
+        return goal;
+    }
+
+    private AstGoal parseGoalInner() {
         auto loc = current.loc;
         if (check(TokenType.Question) && peekToken(0).type == TokenType.Identifier && peekToken(1)
                 .type == TokenType.Equal) {

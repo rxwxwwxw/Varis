@@ -414,6 +414,8 @@ final class FunctionDeclStmt : Stmt {
     FunctionDefExpr def;
     bool isLocal;
     string localName;
+    SourceLoc nameLoc; // the last name of the function's name, for tools
+    SourceLoc nameEnd;
 
     this(Expr target, FunctionDefExpr def, bool isLocal = false, string localName = "", SourceLoc loc = SourceLoc.init) {
         super(loc);
@@ -554,6 +556,8 @@ final class RetractStmt : Stmt {
 final class NarrativeDefinitionStmt : Stmt {
     string kind;
     string name;
+    SourceLoc nameLoc; // where the name is written, for tools
+    SourceLoc nameEnd;
     string[] parameters;
     AstGoal[] goals;
     string[] fieldNames;
@@ -569,6 +573,8 @@ final class NarrativeDefinitionStmt : Stmt {
 
 final class NarrativeDeckStmt : Stmt {
     string name;
+    SourceLoc nameLoc;
+    SourceLoc nameEnd;
     Expr options;
     this(string name, Expr options, SourceLoc loc) {
         super(loc);
@@ -609,6 +615,8 @@ final class UpdateStmt : Stmt {
 
 final class RelationDeclStmt : Stmt {
     string name;
+    SourceLoc nameLoc;
+    SourceLoc nameEnd;
     int arity;
     string[] columns;
     string[] keys;
@@ -623,6 +631,8 @@ final class RelationDeclStmt : Stmt {
 
 final class LocalRelationDeclStmt : Stmt {
     string name;
+    SourceLoc nameLoc;
+    SourceLoc nameEnd;
     int arity;
 
     this(string name, int arity, SourceLoc loc = SourceLoc.init) {

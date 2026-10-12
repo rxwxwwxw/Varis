@@ -23,55 +23,10 @@ import core.stdc.stdio;
 
 import varis.state;
 import varis.exception : LuaException;
-import varis.lexer : Lexer, Token, TokenType;
-import varis.parser : Parser;
 import varis.services.diagnostic;
+import varis.services.index;
 import varis.services.manifest;
 import varis.workbench.server : readFile, listFiles, sortStrings, errorText;
-
-private struct SymbolUse {
-    string file;
-    int line;
-    int column;
-    int endLine;
-    int endColumn;
-    size_t count;
-}
-
-/// Records every `:name` symbol of a file that compiled. A colon starts a symbol unless it follows
-/// something a method call can follow (a name, a closing bracket or a string).
-private void collectSymbols(string file, string content, ref SymbolUse[string] uses, ref bool[string] identifiers) {
-    try {
-        auto lexer = new Lexer(content, "@" ~ file);
-        auto previous = TokenType.EOF;
-        while (true) {
-            auto token = lexer.nextToken();
-            if (token.type == TokenType.EOF)
-                break;
-            if (token.type == TokenType.Colon && previous != TokenType.Identifier && previous != TokenType.RParen
-                    && previous != TokenType.RBracket && previous != TokenType.RBrace && previous != TokenType.String) {
-                auto name = lexer.nextToken();
-                if (name.type == TokenType.Identifier) {
-                    if (auto known = name.text in uses)
-                        known.count++;
-                    else
-                        uses[name.text] = SymbolUse(file, token.loc.line, token.loc.column, name.endLine, name
-                                .endColumn, 1);
-                }
-                previous = name.type;
-                if (name.type == TokenType.EOF)
-                    break;
-                continue;
-            }
-            // A plain name also counts as a mention: `storylet lamp` declares what `:lamp` refers to.
-            if (token.type == TokenType.Identifier)
-                identifiers[token.text] = true;
-            previous = token.type;
-        }
-    } catch (Exception) {
-        // The file compiled, so the lexer does not fail here; if it does, skip the lint.
-    }
-}
 
 /// Splits "chunk:12: message" as produced by the parser and compiler for a chunk named "@file".
 private Diagnostic diagnose(string file, string text) {
@@ -96,7 +51,7 @@ private Diagnostic diagnose(string file, string text) {
 /// file under the current directory when there is no manifest.
 /// Prints one line per problem (or JSON with `json`) and returns the process exit status:
 /// 1 when a file does not compile, 0 otherwise (warnings do not fail the check).
-int checkProject(LuaState state, string[] files, bool json) {
+int checkProject(LuaState state, string[] files, bool json, bool dumpIndex = false) {
     auto manifest = loadManifest(".");
     if (files.length == 0) {
         if (manifest.present && (manifest.content.length || manifest.scripts.length || manifest.tests.length))
@@ -117,46 +72,54 @@ int checkProject(LuaState state, string[] files, bool json) {
         files = kept;
     }
     Diagnostic[] problems = manifest.problems.dup;
-    SymbolUse[string] symbolUses;
-    bool[string] identifiers;
+    ProjectIndex index;
     foreach (file; files) {
         string content;
         if (!readFile(file, content)) {
             problems ~= makeDiagnostic("error", "io", file, 0, 0, 0, 0, "cannot read file");
             continue;
         }
-        // A leading "#!" line is not part of the program.
-        if (content.length > 1 && content[0] == '#') {
-            content = "--" ~ content[2 .. $];
-        }
-        // Parse first, to know where a syntax error is; then compile for the errors the
-        // compiler finds. Compiling parses again, which costs little against what it finds.
-        auto parser = new Parser(content, "@" ~ file);
-        bool parsed;
-        try {
-            parser.parse();
-            parsed = true;
-        } catch (LuaException failure) {
-            auto d = diagnose(file, errorText(failure.errorObject));
-            if (parser.hasErrorToken) {
-                auto at = parser.errorToken;
-                d.line = at.loc.line;
-                d.column = at.loc.column;
-                d.endLine = at.endLine;
-                d.endColumn = at.endColumn;
-            }
-            problems ~= d;
-        }
-        if (!parsed)
+        auto indexed = indexFile(file, content);
+        if (!indexed.parsed) {
+            problems ~= indexed.problems;
             continue;
+        }
+        // The compiler finds errors the parser does not (labels, attributes, limits).
+        if (content.length > 1 && content[0] == '#')
+            content = "--" ~ content[2 .. $];
         try {
             state.loadString(content, "@" ~ file);
-            collectSymbols(file, content, symbolUses, identifiers);
+            index.files ~= indexed;
         } catch (LuaException failure) {
             problems ~= diagnose(file, errorText(failure.errorObject));
         }
     }
+    if (dumpIndex) {
+        auto text = indexJson(index);
+        fwrite(text.ptr, 1, text.length, stdout);
+        return problems.length ? 1 : 0;
+    }
     // A symbol that appears once cannot connect two things: nothing else mentions it.
+    struct SymbolUse {
+        string file;
+        Range range;
+        size_t count;
+    }
+
+    SymbolUse[string] symbolUses;
+    bool[string] identifiers;
+    foreach (ref f; index.files) {
+        foreach (name, _; f.identifiers)
+            identifiers[name] = true;
+        foreach (ref r; f.references) {
+            if (r.kind != "symbol" || r.role == "engine")
+                continue;
+            if (auto known = r.name in symbolUses)
+                known.count++;
+            else
+                symbolUses[r.name] = SymbolUse(r.file, r.range, 1);
+        }
+    }
     string[] once;
     foreach (name, use; symbolUses)
         if (use.count == 1 && name !in identifiers)
@@ -164,9 +127,8 @@ int checkProject(LuaState state, string[] files, bool json) {
     sortStrings(once);
     foreach (name; once) {
         auto use = symbolUses[name];
-        problems ~= makeDiagnostic("warning", "symbol-once", use.file, use.line, use.column, use.endLine, use
-                .endColumn,
-                "symbol :" ~ name ~ " appears only here; is it misspelled?", "symbol :" ~ name);
+        problems ~= makeDiagnostic("warning", "symbol-once", use.file, use.range.line, use.range.column, use.range.endLine,
+                use.range.endColumn, "symbol :" ~ name ~ " appears only here; is it misspelled?", "symbol :" ~ name);
     }
     sortDiagnostics(problems);
     size_t errors;

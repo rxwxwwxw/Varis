@@ -520,20 +520,22 @@ private int runServe(string[] argv, ref LuaState state) {
 private int runCheck(string[] argv, ref LuaState state) {
     import varis.services.check : checkProject;
 
-    bool json;
+    bool json, dumpIndex;
     string[] files;
     foreach (argument; argv[2 .. $]) {
         if (argument == "--json")
             json = true;
+        else if (argument == "--index")
+            dumpIndex = true;
         else if (argument.length && argument[0] == '-') {
-            writeErr("usage: varis check [--json] [files...]\n");
+            writeErr("usage: varis check [--json] [--index] [files...]\n");
             return 2;
         } else
             files ~= argument;
     }
     state = new LuaState();
     openLibs(state);
-    return checkProject(state, files, json);
+    return checkProject(state, files, json, dumpIndex);
 }
 
 private int runMain(string[] argv, ref LuaState state) {

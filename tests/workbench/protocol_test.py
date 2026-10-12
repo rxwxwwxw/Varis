@@ -116,6 +116,9 @@ def main():
         assert any(d["file"] == "content/lamp.lua" and d["kind"] == "storylet" for d in found), found
         assert any(d["kind"] == "function" for d in call("/api/definition", {"name": "new_session"})["definitions"])
         assert call("/api/definition", {"name": "no_such_name_anywhere"})["definitions"] == []
+        # Found through the AST: choices (with owner-less names) and qualities.
+        assert any(d["kind"] == "choice" and d["file"] == "content/lamp.lua" for d in call("/api/definition", {"name": "light"})["definitions"])
+        assert any(d["kind"] == "quality" and d["file"] == "qualities.lua" for d in call("/api/definition", {"name": "oil"})["definitions"])
 
         # The project manifest is read without executing it.
         project = call("/api/project")

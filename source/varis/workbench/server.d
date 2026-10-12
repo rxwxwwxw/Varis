@@ -921,22 +921,17 @@ private string localsJson(LuaState state, long frameIndex) {
     return json ~ "]}";
 }
 
-/// Go to definition, textually: the lines of the project that declare `name` as a storylet,
-/// action, choice, deck, relation, rule head, quality or function. It reads the source files, so
-/// it also finds declarations that have not been loaded.
+/// Go to definition: the declarations of the project named `name`, read from the project index
+/// (services/index.d), which parses the source files. It finds declarations that have not been
+/// loaded, and files that do not parse are skipped.
 private string definitionsJson(string name) {
-    static bool isNameChar(char c) {
-        return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
-    }
+    import varis.services.index : indexFile, FileIndex;
 
     foreach (char c; name)
-        if (!isNameChar(c))
+        if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_'))
             return `{"definitions":[]}`;
     if (name.length == 0)
         return `{"definitions":[]}`;
-    static immutable string[] introducers = [
-        "storylet", "action", "choice", "deck", "relation", "rule", "function", "local function"
-    ];
     string[] found;
     listFiles(".", "", 0, found);
     sortStrings(found);
@@ -948,56 +943,36 @@ private string definitionsJson(string name) {
         string content;
         if (!readFile(file, content))
             continue;
-        long lineNumber;
-        while (content.length) {
-            ++lineNumber;
-            auto end = indexOf(content, "\n");
-            auto line = end < 0 ? content : content[0 .. end];
-            content = end < 0 ? null : content[end + 1 .. $];
-            size_t at;
-            while (at < line.length && (line[at] == ' ' || line[at] == '\t'))
-                ++at;
-            auto text = line[at .. $];
-            string kind;
-            foreach (introducer; introducers) {
-                if (text.length <= introducer.length || text[0 .. introducer.length] != introducer || text[introducer
-                        .length] != ' ')
-                    continue;
-                auto rest = text[introducer.length + 1 .. $];
-                // "deck :name", "function M.name" and "function M:name" declare `name` too.
-                size_t start;
-                foreach (i, char c; rest) {
-                    if (isNameChar(c))
-                        continue;
-                    if ((c == ':' || c == '.') && i + 1 < rest.length) {
-                        start = i + 1;
-                        continue;
-                    }
-                    break;
-                }
-                auto candidate = rest[start .. $];
-                if (candidate.length >= name.length && candidate[0 .. name.length] == name
-                        && (candidate.length == name.length || !isNameChar(candidate[name.length]))) {
-                    kind = introducer;
-                    break;
-                }
-            }
-            if (kind is null) {
-                enum define = "quality.define(:";
-                auto found2 = indexOf(text, define);
-                if (found2 >= 0) {
-                    auto candidate = text[found2 + define.length .. $];
-                    if (candidate.length >= name.length && candidate[0 .. name.length] == name
-                            && (candidate.length == name.length || !isNameChar(candidate[name.length])))
-                        kind = "quality";
-                }
-            }
-            if (kind is null)
+        auto indexed = indexFile(file, content);
+        foreach (ref d; indexed.declarations) {
+            if (d.name != name || d.range.line == 0)
                 continue;
-            char[32] number;
-            auto n = snprintf(number.ptr, number.length, "%lld", lineNumber);
+            // The declaring line, as the old textual scan reported it.
+            string text;
+            long number = 1;
+            size_t from;
+            foreach (i, char c; content) {
+                if (number == d.range.line && c == '\n') {
+                    text = content[from .. i];
+                    break;
+                }
+                if (c == '\n') {
+                    ++number;
+                    from = i + 1;
+                }
+            }
+            if (text.length == 0 && number == d.range.line)
+                text = content[from .. $];
+            size_t at;
+            while (at < text.length && (text[at] == ' ' || text[at] == '\t'))
+                ++at;
+            text = text[at .. $];
+            string kind = d.kind == "local-function" ? "local function" : d.kind;
+            char[96] numbers;
+            auto n = snprintf(numbers.ptr, numbers.length, `"line":%d,"column":%d,"endLine":%d,"endColumn":%d`,
+                    d.range.line, d.range.column, d.range.endLine, d.range.endColumn);
             json ~= (first ? "" : ",") ~ `{"file":` ~ jsonQuote(
-                    file) ~ `,"line":` ~ number[0 .. n].idup ~ `,"kind":` ~ jsonQuote(
+                    file) ~ `,` ~ numbers[0 .. n].idup ~ `,"kind":` ~ jsonQuote(
                     kind) ~ `,"text":` ~ jsonQuote(text.length > 100 ? text[0 .. 100] : text) ~ `}`;
             first = false;
         }
