@@ -175,7 +175,7 @@ Run the base extension suite from the repository root:
 python3 tools/suite test --suite acceptance --suite rejection
 ```
 
-The runner also accepts `LUA_BIN` instead of a binary argument. Supply the extended interpreter explicitly: its default is `lua`, and stock Lua cannot parse the extension syntax.
+The standalone shell runner `tests/datalog/acceptance/run-tests.sh` runs the same programs against any interpreter given as its argument or in `LUA_BIN`; its default is `lua`, and stock Lua cannot parse the extension syntax.
 
 The suite covers symbols, facts, recursion, stratified negation, retraction, conjunctive queries, guards and captures, world inheritance, lexical world blocks, local relations, snapshot iterators, immutable records, zero arity, and `nil` bindings. Positive programs assert their results without requiring a particular iteration order. Negative programs exercise unsafe negation, a negation cycle, and an arity mismatch.
 
@@ -195,15 +195,15 @@ make varis
 ### Running Benchmarks
 
 ```bash
-make bench          # report ratios against C Lua and earlier versions
+make bench          # report ratios against C Lua and absolute time budgets
 make bench-check    # enforce gates and floors from benchmarks/targets.toml
 make status         # regenerate docs/STATUS.md (full tests + all benchmarks; idle machine)
 ```
 
 Current counts and ratios: [docs/STATUS.md](docs/STATUS.md) (generated, not hand-edited).
 
-Targets are ratios measured in the same session against named comparators: stock C Lua 5.4.9
-(`-O2`) and earlier Varis versions built from git tags. See [benchmarks/README.md](benchmarks/README.md).
+Core-language workloads are compared, in the same session, against stock C Lua 5.4.9 (`-O2`);
+Datalog and narrative workloads have absolute time budgets. See [benchmarks/README.md](benchmarks/README.md).
 
 ### Repository Workflow
 
@@ -225,16 +225,21 @@ make clean
 
 The performance that matters for Varis is how a game behaves under a graphical front
 end on low-end hardware: turn latency, content load time and memory on a reference game.
-Those budgets are planned ([ROADMAP.md](ROADMAP.md), Phase 11) and not yet measured; the
-expected bottleneck is inference, which has no materialization cache, argument indexes or
-semi-naive evaluation and recomputes on every presentation.
+Budgets for those are provisional ([ROADMAP.md](ROADMAP.md), Phase 11) and not yet enforced.
+First measurements on a synthetic game (Apple M1): 3 ms per presentation with 100 rooms and
+200 storylets, 16 ms with 1000 storylets, and about 0.8 s once a storylet depends on a recursive
+rule over the 100-room map. The cost is inference, which copies the facts each query depends on
+and recomputes without caches, indexes or semi-naive evaluation.
+[benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md) has the measurements and the
+staged plan.
 
 The numbers below are the record of the earlier goal of **no more than 2× C Lua 5.4
 execution time on each core-Lua workload**. That goal is closed and no longer pursued.
 The ratios remain as regression gates (`make bench-check`), and Datalog and narrative
 workloads keep separate absolute budgets because stock Lua cannot execute their syntax.
 
-Measured on October 9, 2026 with `python3 benchmarks/bench.py` (release CLI built
+Measured on October 9, 2026 with the former `benchmarks/bench.py` script, since replaced by
+`tools/suite bench` (release CLI built
 with `-O3 -release`, C Lua with `-O2`; execution only, one warmup, median of seven
 runs of five repetitions; assertion-checked workloads):
 
@@ -253,9 +258,8 @@ methodology, the changes and the remaining costs. Calls and returns, object
 creation, closures and coroutines (≈2.3–2.5×) and caught errors (≈4.5 µs each; macOS's unwinder
 is slow for D exceptions) are the known remaining gaps; deep recursion past 150 frames runs in a
 flat-stack executor (stack overflow ≈2.6× C Lua).
-The ratios are printed without a failure threshold. The Datalog check enforces
-machine-specific suite medians and functional success, but includes
-process/runner overhead and does not isolate engine costs.
+`make bench-check` enforces a per-workload ratio gate against C Lua and absolute time
+budgets, including for the Datalog and narrative groups.
 
 Current per-workload ratios are in the generated [docs/STATUS.md](docs/STATUS.md).
 [Phase 8](LANGUAGE_EXTENSIONS_PLAN.md#phase-8--performance-and-remaining-lua-conformance)

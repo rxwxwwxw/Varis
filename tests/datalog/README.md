@@ -9,7 +9,7 @@ section numbers, resolved by the [migration map](../../docs/coverage.md).
 python3 tools/suite test --suite scenario --suite gap                              # unit tests + both scales + known gaps
 python3 tests/datalog/run.py --scale small 08    # one program, hand-checkable size
 python3 tests/datalog/run.py --record            # deliberately rewrite golden output
-python3 tools/suite bench --group datalog     # large-scale timings
+python3 tools/suite bench --group scenarios   # large-scale timings of these programs
 ```
 
 ## How a program reads

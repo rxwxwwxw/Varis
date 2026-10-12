@@ -5,14 +5,17 @@
 > **Direction note (2026-10-11):** the ≤2× C Lua goal this document works toward is closed and
 > no longer pursued; see [ROADMAP.md](../ROADMAP.md). The measurements and the list of remaining
 > costs are still accurate as a record. Future performance work targets narrative turn latency
-> and memory on low-end hardware, starting with the inference engine.
+> and memory on low-end hardware, starting with the inference engine: see
+> [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md). File links below point into
+> `history/2026-10-09-perf/`, where the raw results now live; other mentions of `results/` in the
+> text refer to the same directory.
 
 # Performance work — October 9, 2026
 
 ## Stage 2 (target ≈ 2× C Lua)
 
 Result on the six `bench.py` workloads (`python3 benchmarks/bench.py`, release CLI, execution only,
-median of seven runs; raw data in [results/final-execution.json](results/final-execution.json)):
+median of seven runs; raw data in [results/final-execution.json](history/2026-10-09-perf/final-execution.json)):
 
 | Workload | Start of stage 2 | Now | C Lua (s) |
 |---|---:|---:|---:|
@@ -133,8 +136,8 @@ linked JSON reports; short C workloads are susceptible to noise.
 | string_manipulation | 0.088510 | 0.075081 | 0.052278 | 0.050153 | 4.70× |
 | sieve_of_eratosthenes | 0.045862 | 0.023112 | 0.024198 | 0.022328 | 9.57× |
 
-[Before](results/before-execution.json), [context](results/context-execution.json),
-[call records](results/storage-execution.json), [registers](results/registers-execution.json).
+[Before](history/2026-10-09-perf/before-execution.json), [context](history/2026-10-09-perf/context-execution.json),
+[call records](history/2026-10-09-perf/storage-execution.json), [registers](history/2026-10-09-perf/registers-execution.json).
 
 ## Measured changes
 

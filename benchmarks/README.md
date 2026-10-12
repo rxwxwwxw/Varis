@@ -6,7 +6,9 @@ One suite, one driver: `python3 tools/suite bench` (Make: `make bench`, `make be
 below are kept as regression gates for the procedural core. The performance targets that matter
 for the product (turn latency, content load time and memory on a reference game running on
 low-end hardware) are planned in [ROADMAP.md](../ROADMAP.md), Phase 11, and are **not yet in this
-suite**; the `datalog`, `narrative` and `narrative_e2e` groups are the closest existing measures.
+suite**; the `datalog`, `scenarios`, `narrative` and `narrative_e2e` groups are the closest existing
+measures. [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md) has the first scale measurements (from
+`experiments/synthetic_game.lua`, which is not part of the suite) and the staged plan.
 Design and rationale: [CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md) §4.
 
 ## What is measured
@@ -17,8 +19,10 @@ Design and rationale: [CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md) §4.
 | `programs` | fresh process, CPU time (rusage) | `workloads/programs/*.lua` | C Lua (output must match) |
 | `regression` | fresh process | `tests/regression/*.lua` (checksum programs reused) | C Lua |
 | `startup` | fresh process | `workloads/startup/*.lua` | C Lua |
-| `datalog` | fresh process, `large` scale | `tests/datalog/NN_*.lua` | none (absolute budget only) |
-| `narrative` | fresh process | `sample-game/tools/check.lua` | none (absolute budget only) |
+| `datalog` | in-process kernels, fresh world per run | `workloads/datalog/*.lua` | none (absolute budget only) |
+| `scenarios` | fresh process, `large` scale | `tests/datalog/NN_*.lua` | none (absolute budget only) |
+| `narrative` | in-process kernels on the sample game | `workloads/narrative/*.lua` | none (absolute budget only) |
+| `narrative_e2e` | fresh process | `sample-game/tools/check.lua` | none (absolute budget only) |
 
 Every sample is interleaved across interpreters (alternating order); ratios are paired per
 sample and the **median of paired ratios** is reported. Peak RSS is recorded. A candidate
@@ -38,8 +42,9 @@ slower and cost more than 80 % of the run time. The mechanism for `ref = "<git r
 
 [targets.toml](targets.toml): per workload,
 
-* `goal.<comparator>` – the former project target (≤ 2.0× C Lua), kept as an informational
-  reference. Reported as "behind goal", never fatal; closing these gaps is not planned work.
+* `goal.<comparator>` – an informational ratio against C Lua: 1.2 on twelve `core` workloads
+  (set in commit `15522b1`) and 2.0, the former project target, elsewhere. Reported as
+  "behind goal", never fatal; no planned work aims at these values.
 * `gate.<comparator>` – regression ratchet; exceeding it fails `make bench-check`
   (confirmed by two re-runs before failing).
 * `gate.time` – absolute budget in candidate CPU seconds (per repetition for in-process kernels).

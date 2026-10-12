@@ -171,6 +171,9 @@ Keep engine modules independent of compiler internals. Pass a guard invocation i
 
 ## Follow-on optimization work
 
+> Superseded as a plan by [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md)
+> (October 11, 2026), which measures the copy cost this paragraph asks about and orders the work.
+
 After milestone 8, add argument-position indexes and grounded join planning, then semi-naive delta evaluation within positive SCCs. Reuse the reference evaluator as an oracle. Consider immutable structural sharing for worlds and query snapshots after measuring copy cost. Defer incremental deletion until evidence warrants its complexity; full recomputation remains a correct fallback for retractions and negation changes.
 
 ## Delivery order

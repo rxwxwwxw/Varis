@@ -95,11 +95,14 @@ and playtests it, without reading D or engine scripts.
 ### Phase 11 — Low-end runtime and host interface
 
 Goal: a game of realistic size runs comfortably under a graphical front end on a low-end machine.
+The staged plan, with the measurements behind it, is
+[benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md). Its engine stages do not depend
+on the Phase 9 syntax, so they can be scheduled earlier if playtesting or the checker needs them.
 
 | Milestone | Deliverable |
 | --- | --- |
-| 34 | **Reference game, reference machine, budgets.** A synthetic game at realistic scale (hundreds of storylets, a map of about a hundred rooms, thousands of facts) and enforced budgets in `benchmarks/targets.toml` for turn latency, content load time, peak memory and save/load time. Provisional starting points, to be replaced by measurement: a turn (choose → effects → actions → next presentation) within 50 ms, no engine work on the render path between turns, content load under 1 s, engine heap under 64 MB. |
-| 35 | **Inference engine.** Semi-naive evaluation, argument indexes, a version-keyed materialization cache shared across one presentation snapshot, slot-based bindings (§1.11). Today every `present()` recomputes with a naive fixpoint and unindexed nested-loop joins. Value or tuple representation changes only on profile evidence. |
+| 34 | **Reference game, reference machine, budgets.** A synthetic game at realistic scale (hundreds of storylets, a map of about a hundred rooms, thousands of facts) and enforced budgets in `benchmarks/targets.toml` for turn latency, content load time, peak memory and save/load time. Provisional low-end budgets: a turn (choose → effects → actions → next presentation) within 50 ms, no engine work on the render path between turns, content load under 1 s, `save()` under 50 ms, peak engine memory under 64 MB. Measured on an Apple M1 today: a 100-room game with one recursive rule takes about 0.8 s per presentation and 171 MB. |
+| 35 | **Inference engine.** Semi-naive evaluation, argument indexes, a version-keyed materialization cache shared across one presentation snapshot, slot-based bindings (§1.11). Today every query copies the facts it depends on and recomputes with a naive fixpoint and unindexed nested-loop joins; a profile shows about half the time in the collector and a third in tuple hashing. The plan orders the work: shared snapshots, per-version caching, compiled plans with indexes, then semi-naive evaluation. Value or tuple representation changes only on profile evidence. |
 | 36 | **Host interface.** A documented D embedding API: create a state, load content, run session commands, receive presentations and beats as typed D values (§4.11); a reference graphical host. The front-end technology is an open decision. |
 | 37 | **Portability and footprint.** Builds for the platforms low-end machines actually run; development and all measurements so far are on macOS arm64, and several modules import `core.sys.posix` (`gc.d` uses `fork` for reachability probes, `package_lib.d` uses `dlopen`). Bounded GC pauses and heap, start-up time, binary size. Frozen Lua features that block portability are removed here. |
 
@@ -124,16 +127,17 @@ Exit: the reference game meets its budgets on the reference machine under the re
 
 ## Closed: Phase 8 — core-Lua performance and conformance
 
-Closed October 11, 2026. State at closure ([docs/STATUS.md](docs/STATUS.md), commit `72f5c8d`):
+Closed October 11, 2026. State at closure ([docs/STATUS.md](docs/STATUS.md), commit `15522b1`):
 
 - Official Lua 5.4.9 suite: 31 pass, 1 partial, 1 skipped, 0 fail.
-- Core workloads at 0.60–2.41× C Lua and program workloads at 0.21–2.13×, with two known
-  outliers: `core.pcall_error` (37.5×, D exceptions through the platform unwinder) and
-  `core.deep_recursion` (8.1×).
+- Core workloads at 0.60–2.41× C Lua and program workloads at 0.21–2.17×, with two known
+  outliers: `core.pcall_error` (37.4×, D exceptions through the platform unwinder) and
+  `core.deep_recursion` (8.4×).
 - Milestones 19 and 20 are done (`tools/suite` runs the benchmark gates and the official suite).
   Milestones 21–25 are **retired, not completed**: the ≤2× C Lua target is no longer pursued.
 
-The `gate.*` ratchets in `benchmarks/targets.toml` stay in force as regression floors, and the
-`goal.clua` values stay as an informational reference. See
+The `gate.*` ratchets in `benchmarks/targets.toml` stay in force as regression floors. The
+`goal.clua` values are informational and never enforced (twelve core workloads carry 1.2 since
+commit `15522b1`; the rest keep the former 2.0). See
 [benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md) for what was done and why the
 remaining gaps exist.
