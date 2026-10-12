@@ -141,6 +141,7 @@ timeout = 120
 cases = [
   { id = "check", command = ["{candidate}", "tools/check.lua"], cwd = "sample-game" },
   { id = "golden", command = ["python3", "tests/sample_game/check_golden.py", "{candidate}"] },
+  { id = "wording", command = ["python3", "tests/sample_game/wording_test.py", "{candidate}"] },
 ]
 
 # Every query of the relational programs and the sample game answered by both evaluators
