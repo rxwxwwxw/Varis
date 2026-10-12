@@ -81,6 +81,9 @@ class ContentRegistry {
     private bool sealed_;
     string contentVersion;
     bool explicitContentVersion;
+    // Last result of portableRegistryFingerprint and the entries it was computed from.
+    string[] fingerprintEntries;
+    string fingerprintDigest;
 
     this(LuaState state) {
         this.state = state;

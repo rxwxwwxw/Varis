@@ -269,6 +269,7 @@ class Prototype {
     size_t[] constantHashes; // hashOf of string constants (0 otherwise), for hashed table lookups
     Instruction[] execCode; // `code` plus a guaranteed final Return, run by the interpreter loop
     bool prepared; // sentinel Return appended and callSites built (see VM.prepareForExecution)
+    string fingerprintCache; // derived text identity of this prototype (see narrative.fingerprint)
 
     void buildCallSites() {
         auto table = new CallSite[code.length];

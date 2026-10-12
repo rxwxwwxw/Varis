@@ -20,7 +20,15 @@ import varis.narrative.codec;
 import std.algorithm : sort;
 import std.conv : to;
 
+/// A prototype is immutable once compiled, so its fingerprint is computed once and kept on it.
+/// (Captured values are not part of it; `portableFunctionFingerprint` reads those every time.)
 string prototypeFingerprint(Prototype prototype) {
+    if (prototype.fingerprintCache.length == 0)
+        prototype.fingerprintCache = computePrototypeFingerprint(prototype);
+    return prototype.fingerprintCache;
+}
+
+private string computePrototypeFingerprint(Prototype prototype) {
     string result = prototype.numParams.to!string ~ ":" ~ prototype.isVararg.to!string;
     foreach (instruction; prototype.code)
         result ~= ":" ~ instruction.toString();
@@ -149,7 +157,9 @@ string portableRegistryFingerprint(ContentRegistry registry) {
 
     string[] entries;
     void content(ContentDefinition definition) {
-        entries ~= contentFingerprint(definition);
+        // Registration stores the fingerprint of a top-level definition; its fields are frozen then.
+        entries ~= registry.sealed && definition.fingerprint.length ? definition.fingerprint
+            : contentFingerprint(definition);
         foreach (value; [definition.availability, definition.effect])
             entries ~= portableFunctionFingerprint(value, null, registry.explicitContentVersion, definition.kind ~ "." ~ definition
                     .id);
@@ -167,10 +177,21 @@ string portableRegistryFingerprint(ContentRegistry registry) {
     foreach (id; registry.nameIds())
         entries ~= "name." ~ id ~ ":" ~ registry.name(id);
     entries.sort;
+    // Hashing the concatenated text dominates a save. The entries are mostly cached strings, so
+    // when they equal the previous call's (usually by pointer) the previous digest is reused.
+    bool unchanged = registry.fingerprintDigest.length != 0 && registry.fingerprintEntries.length == entries.length;
+    for (size_t i = 0; unchanged && i < entries.length; ++i) {
+        auto previous = registry.fingerprintEntries[i];
+        unchanged = previous.length == entries[i].length && (previous.ptr is entries[i].ptr || previous == entries[i]);
+    }
+    if (unchanged)
+        return registry.fingerprintDigest;
     string result;
     foreach (entry; entries)
         result ~= entry.length.to!string ~ ":" ~ entry;
-    return result.sha256Of.toHexString.idup;
+    registry.fingerprintEntries = entries;
+    registry.fingerprintDigest = result.sha256Of.toHexString.idup;
+    return registry.fingerprintDigest;
 }
 
 string portableProgramFingerprint(varis.logic.world.World world, bool authored = false) {

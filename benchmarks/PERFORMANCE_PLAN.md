@@ -221,6 +221,12 @@ Exit: `make test` runs the sample game and the golden comparison; `make bench` r
 
 ### Stage S1 — The seam (milestone 45)
 
+**Measured October 11, 2026:** a build with the world swap removed from the Lua-to-Lua `Call`
+handler ran `core.fib` at 2.37× against 2.42× (within noise). The swap reads a global, not
+thread-local storage, so it is cheap. The seam is therefore an **architectural** stage (layering,
+one executor source, a home for the debugger), not a speed-up, and tracks W and L do not depend
+on it. It may be done after track W.
+
 Goal: the Lua core stops knowing about the world model, with **no behaviour change**. Saves and
 fingerprints stay byte-identical (the S0 golden test proves it).
 
@@ -268,8 +274,14 @@ evaluator as a **test oracle** (§7) until W3 has shipped and soaked. `logic/` i
 lines, so this track is also where the kernel conventions (status type, growable buffers, hash
 sets over value rows) are settled before they are used in the much larger `vm.d`.
 
-**W0 — Fingerprint once (quick win).** Compute the content fingerprint at `narrative.seal` and
-reuse it in `save()`. Exit: `save()` time no longer grows with the number of storylets.
+**W0 — Cheaper saves (done October 11, 2026).** The content fingerprint cannot simply be computed
+once at `narrative.seal`: it includes the **current values captured by content closures**, which
+can change, and a save must reflect them. What is cached instead: each prototype's fingerprint
+text (on `Prototype.fingerprintCache`; prototypes are immutable), the fingerprint each definition
+already receives at registration, and the last digest together with the entries it came from
+(`ContentRegistry.fingerprintEntries`), reused when the entries are unchanged. Measured on the
+1000-storylet game: first `save()` 57 ms → 22 ms (one SHA-256 over the whole text), every later
+`save()` 4.9 ms. The saved text is byte-identical (golden test).
 
 **W1 — Shared immutable fact storage.** Store a relation's facts as flat rows of values with an
 open-addressing hash index, not as `bool[RelTuple]`. A snapshot holds a reference to the storage
