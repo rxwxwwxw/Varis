@@ -7,6 +7,8 @@
 A Varis program can compute values with functions and tables, describe finite
 relations with facts and rules, and execute state changes in transactions.
 Narrative definitions add choices and scheduled effects over those same worlds.
+Declarative scenes add linear dialogue, menus and input with a saved position and
+engine-owned stage (§6.11); their media assets belong to the presentation host.
 Inference determines what is true. Effects change state only when procedural
 execution or the narrative scheduler invokes them.
 

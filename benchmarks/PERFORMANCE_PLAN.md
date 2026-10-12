@@ -1,7 +1,11 @@
 # Performance plan: a fast Lua core and a fast world model
 
-Status: **plan**, revised October 11, 2026. Nothing below is implemented. This replaces the
-earlier plan of the same date (which covered only turn latency and ruled out interpreter work)
+Status: **partially implemented plan**, audited October 12, 2026. S0 (except its
+remaining reference-game coverage), the S1 boundary/shared handlers, W0–W4 and W5(a),
+the first L1 step, the main L2 step and initial X1 caches are implemented. Turn-boundary
+collection and an initial SDL3 scene-host slice also exist. Remaining stage exit criteria
+are not complete; status notes below give the details. This replaces the
+earlier October 11 plan (which covered only turn latency and ruled out interpreter work)
 and details milestones 34, 35, 37, 45, 46 and 47 of [ROADMAP.md](../ROADMAP.md) Phase 11.
 [PERFORMANCE_WORK.md](PERFORMANCE_WORK.md) remains the record of the Phase 8 tuning work.
 
@@ -20,7 +24,11 @@ Why both: the world model is what a player waits for, and the Lua core is what a
 against. Why separately: they share almost no hot code, and today they are tangled in a way that
 slows the core (§2.3).
 
-## 2. What was measured
+## 2. Baseline before restructuring (October 11, 2026)
+
+The measurements and implementation descriptions in this section are historical,
+before the changes recorded in §5. Current counts and ratios are generated in
+[docs/STATUS.md](../docs/STATUS.md); current architecture is in [AGENTS.md](../AGENTS.md) §4–5.
 
 Release CLI (`make varis`, `-O3 -release`) at commit `cad1d5b`, Apple M1, October 11, 2026. Core
 ratios are paired interleaved samples from `python3 tools/suite bench`. Profiles are 3–4 second
@@ -86,7 +94,7 @@ rule multiplies that by the size of its closure.
 
 Structural facts behind those numbers:
 
-| Fact | Varis today | C Lua 5.4 |
+| Fact | Varis at the baseline | C Lua 5.4 |
 | --- | --- | --- |
 | Size of a value | 24 bytes (`std.sumtype`, string slice stored inline) | 16 bytes |
 | Size of an instruction | 32 bytes (`struct Instruction` with separate `a`, `b`, `c`, `sBx`, `line` and three "is constant" flags) | 4 bytes |
@@ -133,9 +141,11 @@ The stand-in column assumes a low-end machine is ten times slower than an M1 per
 That factor is a guess until stage M puts a real machine in the loop; the owner picks the
 reference machine (ROADMAP open decision 3).
 
-Distance today: the recursive 100-room game is about 170× over the turn budget; the
+Distance at the pre-restructuring baseline: the recursive 100-room game is about 170× over the turn budget; the
 1000-storylet game without recursion is about 3× over; `save()` is about 12× over; RSS is 1.5–3.7×
-over.
+over. Track W and turn-boundary collection subsequently brought presentation and memory
+inside the stand-in budgets in the recorded experiments (§5). Separate per-metric gates,
+the complete reference workload and real low-end hardware validation remain unfinished.
 
 ### 3.2 Lua core
 
@@ -144,7 +154,7 @@ over.
 | Parity (milestone 46) | Every workload that has a C Lua comparator at or below 1.0× | `goal.clua = 1.0` in `targets.toml` (reported); `gate.clua` ratchets tightened as stages land (enforced) |
 | Beyond (milestone 47) | Below 1.0×; the number is ROADMAP open decision 10 | Set a new `goal.clua` when parity is measured |
 
-Estimates, to be replaced by measurement: stage L1 should bring `core.pcall_error` from 37× to
+Original planning estimates (not current measurements): stage L1 should bring `core.pcall_error` from 37× to
 under 2×; stages L2–L4 should bring loops and table access to about 1.2–1.5× and calls to about
 1.5–1.8×; reaching 1.0× on calls and going below it needs the X stages. Do not report an estimate
 as a result.
@@ -415,8 +425,9 @@ core) is still to do.
   exception cleanup.
 
 Exit: `core.pcall_error` and `core.deep_recursion` at or below their new gates (set after
-measuring; expected under 2×); `errors.lua` in the official suite, about 25 s today, runs in a
-few seconds; no `throw` in core modules.
+measuring; originally expected under 2×); `errors.lua` runs in a few seconds (the
+pre-L1 baseline was about 25 s); no `throw` in core modules. The first step improves
+error timing, but does not satisfy the no-throw exit condition.
 
 **L2 — Value representation.**
 

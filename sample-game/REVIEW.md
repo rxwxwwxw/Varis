@@ -1,6 +1,9 @@
 # Saltmarsh Light — Review and Proposed Amendments to the Narrative Extensions
 
-**Status:** proposed changes to *Lua 5.4 — Narrative and Stateful Relational Extensions*, v0.1. This document is a delta, not a replacement. It assumes the earlier untyped declarative specification also applies. The reviewed sample is `sample-game.zip` (files rooted at `sample-game/`).
+**Status:** historical review of proposed changes to *Lua 5.4 — Narrative and Stateful Relational Extensions*, v0.1. This document preserves the original review, not current implementation status.
+The [manual](../docs/README.md) defines current behavior, [needed_extensions.md](needed_extensions.md)
+tracks remaining gaps, and [the scene sample](../sample-vn/README.md) demonstrates the
+implemented scene/stage slice. This document is a delta, not a replacement. It assumes the earlier untyped declarative specification also applies. The reviewed sample is `sample-game.zip` (files rooted at `sample-game/`).
 
 ## 1. Conformance target
 

@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="400" height="700" viewBox="0 0 400 700">
+<path fill="#302b3d" d="M96 165Q75 40 200 35q125 5 104 160l25 127H74z"/>
+<path fill="#b47761" d="M169 224h62v104h-62z"/><path fill="#e9bfa3" d="M110 120q10-60 90-60t90 60l-6 75q-18 75-84 75t-84-75z"/>
+<path fill="#302b3d" d="M100 155q-10-115 100-116t100 116q-55-12-80-65-25 50-120 65z"/>
+<path stroke="#433540" stroke-width="6" stroke-linecap="round" d="M137 169l28-3m70 0l28 3"/>
+<ellipse cx="153" cy="183" rx="8" ry="11" fill="#354855"/><ellipse cx="247" cy="183" rx="8" ry="11" fill="#354855"/>
+<circle cx="155" cy="180" r="3" fill="#fff"/><circle cx="249" cy="180" r="3" fill="#fff"/>
+<path d="M180 210q20 25 40 0" fill="none" stroke="#8e4d56" stroke-width="4"/>
+<path fill="#325367" d="M160 282l40 37 40-37 63 26 53 240-51 19-31-126 9 259H117l9-259-31 126-51-19 53-240z"/>
+<path fill="#d7c6ac" d="M160 282l40 37 40-37-10 105h-60z"/>
+<path fill="#253e53" d="M160 282l-25 93 48 30 17-86-17 381h-66l9-259-31 126-51-19 53-240zM240 282l25 93-48 30-17-86 17 381h66l-9-259 31 126 51-19-53-240z"/>
+<path fill="#ceaa71" d="M170 305l30 14 30-14-12 39h-36z"/>
+<g fill="#c5b08a"><circle cx="213" cy="434" r="5"/><circle cx="215" cy="493" r="5"/><circle cx="217" cy="552" r="5"/></g>
+</svg>

@@ -7,8 +7,8 @@ id = "unit"
 kind = "d-unit"
 tags = ["unit"]
 timeout = 600
-expect_count = 7
-expect_results = 53
+expect_count = 8
+expect_results = 55
 cases = [
   { id = "foundation", unit = "test_foundation", tier = "smoke" },
   { id = "parser", unit = "test_parser", tier = "smoke" },
@@ -17,6 +17,7 @@ cases = [
   { id = "logic", unit = "test_logic", tier = "fast" },
   { id = "stateful", unit = "test_stateful", tier = "fast" },
   { id = "narrative", unit = "test_narrative", tier = "fast" },
+  { id = "presentation", unit = "test_presentation", tier = "fast" },
 ]
 
 [[suite]]
@@ -67,7 +68,7 @@ tier = "fast"
 tags = ["extensions"]
 glob = "tests/extensions/cases/*.lua"
 helpers = "tests/extensions/helpers.lua"
-expect_count = 60
+expect_count = 62
 timeout = 300
 
 [suite.override.negative_unsafe_head]
@@ -141,6 +142,8 @@ timeout = 120
 cases = [
   { id = "check", command = ["{candidate}", "tools/check.lua"], cwd = "sample-game" },
   { id = "golden", command = ["python3", "tests/sample_game/check_golden.py", "{candidate}"] },
+  { id = "linear-vn", command = ["{candidate}", "sample-vn/main.lua"] },
+  { id = "scene-save", command = ["python3", "tests/sample_game/scene_save_test.py", "{candidate}"] },
   { id = "wording", command = ["python3", "tests/sample_game/wording_test.py", "{candidate}"] },
 ]
 

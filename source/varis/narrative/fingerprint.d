@@ -168,6 +168,21 @@ string presentationRevision(ContentRegistry registry) {
 
     foreach (definition; registry.storylets() ~ registry.actions())
         collect(definition, "");
+    foreach (definition; registry.scenes)
+        foreach (beat; definition.beats) {
+            import varis.narrative.scenes : field, nameOf, sequence;
+
+            auto text = field(beat, "text");
+            if (text.isString)
+                parts ~= "scene." ~ definition.id ~ "." ~ nameOf(field(beat, "id")) ~ "=" ~ text.asString;
+            foreach (choice; sequence(field(beat, "choices")))
+                parts ~= "menu." ~ definition.id ~ "." ~ nameOf(field(choice, "id")) ~ "=" ~ nameOf(field(choice, "text"));
+        }
+    foreach (definition; registry.characters) {
+        import varis.narrative.scenes : field, nameOf;
+
+        parts ~= "character." ~ definition.id ~ "=" ~ nameOf(field(definition.fields, "name"));
+    }
     foreach (id; registry.nameIds())
         parts ~= "name." ~ id ~ "=" ~ registry.name(id);
     parts.sort;
@@ -238,6 +253,7 @@ string portableRegistryFingerprint(ContentRegistry registry, bool legacy = false
 
     foreach (definition; registry.storylets() ~ registry.actions())
         content(definition);
+    entries ~= registry.sceneIdentity();
     foreach (name; registry.handlerNames())
         entries ~= name ~ portableFunctionFingerprint(registry.handler(name), null, registry.explicitContentVersion, "handler." ~ name);
     foreach (key; registry.formatterKeys())

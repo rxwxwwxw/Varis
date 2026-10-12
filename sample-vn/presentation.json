@@ -1,0 +1,19 @@
+{
+  "title": "Harbour Window — Varis SDL3",
+  "content": "content.lua",
+  "scene": "harbour",
+  "font_size": 28,
+  "save": "quicksave.json",
+  "backgrounds": [{"id": "harbour_evening", "file": "assets/harbour.svg"}],
+  "sprites": [
+    {"character": "mira", "attributes": {"expression": "quiet", "outfit": "coat"}, "file": "assets/mira-quiet.svg"},
+    {"character": "mira", "attributes": {"expression": "smile", "outfit": "coat"}, "file": "assets/mira-smile.svg"}
+  ],
+  "portraits": [
+    {"character": "mira", "attributes": {"expression": "quiet"}, "file": "assets/portrait-quiet.svg"},
+    {"character": "mira", "attributes": {"expression": "smile"}, "file": "assets/portrait-smile.svg"}
+  ],
+  "slots": [{"id": "left", "x": 100, "y": 0, "width": 400, "height": 680}],
+  "audio": [{"id": "evening_theme", "file": "assets/evening.wav"}],
+  "channels": [{"id": "music", "loop": 1}]
+}

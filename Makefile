@@ -3,7 +3,7 @@
 DC ?= ldc2
 UNAME_S := $(shell uname -s)
 EXPORT_DYNAMIC := $(if $(filter Darwin,$(UNAME_S)),-L-exported_symbols_list -Llua_api.exports,-L--export-dynamic)
-DFLAGS ?= -Isource -g $(EXPORT_DYNAMIC)
+DFLAGS ?= -Isource -Jworkbench -g $(EXPORT_DYNAMIC)
 
 SRC_FILES = source/varis/package.d \
             source/varis/types.d \
@@ -46,11 +46,11 @@ SRC_FILES = source/varis/package.d \
             source/varis/narrative/templates.d source/varis/narrative/translation.d source/varis/narrative/plural.d source/varis/narrative/text.d \
             source/varis/narrative/fingerprint.d \
             source/varis/narrative/session.d source/varis/narrative/persistence.d source/varis/narrative/observe.d source/varis/narrative/diagnostics.d source/varis/narrative/analysis.d \
-            source/varis/narrative/registry.d \
+            source/varis/narrative/registry.d source/varis/narrative/scenes.d \
             source/varis/lib/narrative.d source/varis/lib/quality.d \
             source/varis/lib/logic.d \
-            source/varis/narrative/vmops.d source/varis/workbench/page.d source/varis/workbench/server.d \
-            source/varis/services/check.d source/varis/services/diagnostic.d source/varis/services/manifest.d source/varis/services/index.d source/varis/services/checks.d source/varis/services/tier.d source/varis/services/lang.d source/varis/services/lsp.d source/varis/services/play.d source/varis/services/loadpass.d source/varis/services/json.d source/varis/services/catalog.d source/varis/services/xliff.d source/varis/services/l10n.d
+            source/varis/narrative/vmops.d source/varis/workbench/page.d source/varis/workbench/server.d source/varis/workbench/inspect.d \
+            source/varis/services/check.d source/varis/services/diagnostic.d source/varis/services/manifest.d source/varis/services/index.d source/varis/services/checks.d source/varis/services/tier.d source/varis/services/lang.d source/varis/services/lsp.d source/varis/services/play.d source/varis/services/loadpass.d source/varis/services/presentation.d source/varis/services/json.d source/varis/services/catalog.d source/varis/services/xliff.d source/varis/services/l10n.d
 
 # Per-test timeout for a unit executable (seconds).
 TIMEOUT ?= 300
@@ -75,22 +75,24 @@ bin:
 # ---- Builds ---------------------------------------------------------------------------------
 
 # Optimized release CLI.
-varis: bin
-	$(DC) -Isource -O3 -release $(EXPORT_DYNAMIC) $(SRC_FILES) source/varis/cli.d -of=$(BIN_DIR)/varis
+WORKBENCH_ASSETS = workbench/editor.bundle.js
+
+varis: bin $(WORKBENCH_ASSETS)
+	$(DC) -Isource -Jworkbench -O3 -release $(EXPORT_DYNAMIC) $(SRC_FILES) source/varis/cli.d -of=$(BIN_DIR)/varis
 
 # Optimized with assertions enabled (no -release): the "checked" validation profile.
-varis-checked: $(SRC_FILES) source/varis/cli.d
+varis-checked: $(SRC_FILES) source/varis/cli.d $(WORKBENCH_ASSETS)
 	mkdir -p $(BUILD_DIR)/checked
-	$(DC) -Isource -O3 $(EXPORT_DYNAMIC) $(SRC_FILES) source/varis/cli.d -of=$(BUILD_DIR)/checked/varis
+	$(DC) -Isource -Jworkbench -O3 $(EXPORT_DYNAMIC) $(SRC_FILES) source/varis/cli.d -of=$(BUILD_DIR)/checked/varis
 
 # Reference interpreter (stock Lua 5.4.9, -O2).
 c-lua:
 	$(MAKE) -C c-implementation/src $(if $(filter Darwin,$(UNAME_S)),macosx,linux)
 
 # Unit tests link one shared, once-compiled object set instead of recompiling every module.
-$(DEBUG_STAMP): $(SRC_FILES)
+$(DEBUG_STAMP): $(SRC_FILES) $(WORKBENCH_ASSETS)
 	mkdir -p $(DEBUG_OBJ_DIR)
-	$(DC) -c -Isource -g -oq -od=$(DEBUG_OBJ_DIR) $(SRC_FILES)
+	$(DC) -c -Isource -Jworkbench -g -oq -od=$(DEBUG_OBJ_DIR) $(SRC_FILES)
 	touch $@
 
 # Build and run one D unit group: make unit-test UNIT=test_vm [ARGS=testName]
@@ -163,3 +165,17 @@ check-sources:
 
 # Fast gate used by the pre-push hook.
 check: fmt-check check-sources test-fast
+
+# Optional native presentation player; the CLI and tests do not require SDL.
+SDL_PACKAGES = sdl3 sdl3-image sdl3-ttf sdl3-mixer
+SDL_CFLAGS = $(shell pkg-config --cflags $(SDL_PACKAGES))
+SDL_LIBS = $(shell pkg-config --libs $(SDL_PACKAGES))
+.PHONY: varis-sdl test-sdl
+varis-sdl: bin
+	pkg-config --exists $(SDL_PACKAGES)
+	mkdir -p $(BUILD_DIR)/sdl
+	$(CC) -std=c11 -Wall -Wextra -Werror $(SDL_CFLAGS) -c tools/sdl/bridge.c -o $(BUILD_DIR)/sdl/bridge.o
+	$(DC) -Isource -Jworkbench -I. -O3 $(SRC_FILES) tools/sdl/main.d tools/sdl/native.d $(BUILD_DIR)/sdl/bridge.o $(addprefix -L,$(SDL_LIBS)) -of=$(BIN_DIR)/varis-sdl
+
+test-sdl: varis-sdl
+	python3 tests/sample_game/sdl_test.py

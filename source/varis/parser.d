@@ -240,6 +240,8 @@ class Parser {
         case TokenType.Identifier:
             switch (current.text) {
             case "storylet":
+            case "scene":
+            case "character":
             case "action":
             case "deck":
             case "relation":
@@ -462,6 +464,22 @@ class Parser {
             return parseLocalDecl(loc);
         }
 
+        // Scene/character declarations lower to registration calls, keeping the words contextual.
+        if (check(TokenType.Identifier) && (current.text == "scene" || current.text == "character") &&
+                peekToken(0).type == TokenType.Identifier && peekToken(1).type == TokenType.LBrace) {
+            auto kind = current.text;
+            advance();
+            auto name = consume(TokenType.Identifier, "content identifier expected");
+            consume(TokenType.LBrace, "content body expected");
+            auto body = parseTableConstructor(loc);
+            auto identifier = new SymbolLiteralExpr(name.text, name.loc);
+            identifier.end = SourceLoc(name.endLine, name.endColumn);
+            auto call = new CallExpr(new FieldExpr(new VariableExpr("narrative", loc), kind, loc), [
+                identifier, body
+            ], loc);
+            call.end = SourceLoc(previous.endLine, previous.endColumn);
+            return new CallStmt(call, loc);
+        }
         // Declarative Statements (Phase 6)
         if (check(TokenType.Identifier)) {
             if ((current.text == "storylet" || current.text == "action") && peekToken(0)

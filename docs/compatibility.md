@@ -54,8 +54,9 @@ or public programmatic Lua rule/query builder is defined by this manual.
 
 ### 8.3 — The project manifest and `varis check`
 
-`bin/varis check [--json] [files...]` compiles files without running them. Without
-file arguments it checks the files listed by the project manifest, or every `.lua`
+`bin/varis check [--json] [files...]` parses, compiles and statically checks files.
+With a manifest entry it also runs the load pass described below; use `--no-load`
+for static checking only. Without file arguments it checks the files listed by the project manifest, or every `.lua`
 file under the current directory when there is no manifest.
 
 The **project manifest** is the file `project.lua` at the project root: one
@@ -70,7 +71,7 @@ The **project manifest** is the file `project.lua` at the project root: one
 | `content` | list of patterns | Files that hold content. |
 | `scripts` | list of patterns | Engine scripts. |
 | `tests` | list of patterns | Author tests. |
-| `symbols` | list of strings | Opt-in strictness: symbols (entities, flags, event kinds) that no declaration names. With it, any symbol neither listed nor named by a storylet, action, deck, relation, quality or choice is an `undeclared-symbol` error, and `symbol-once` is not reported. `varis check --symbols` prints the symbols that need listing. |
+| `symbols` | list of strings | Opt-in strictness: symbols (entities, flags, event kinds) that no declaration names. With it, any symbol neither listed nor named by a storylet, action, deck, scene, character, relation, quality or choice is an `undeclared-symbol` error, and `symbol-once` is not reported. `varis check --symbols` prints the symbols that need listing. |
 | `locales` | list of strings | Translations kept in the repository. |
 
 In a pattern `*` matches within one path segment, `**` across segments and `?` one
@@ -87,10 +88,13 @@ byte columns; the end is just past the last byte; 0 when unknown), and a `messag
 `--json` prints `{"files": N, "problems": [...]}`; the text form is
 `file:line:column: severity: message [code]`. Only errors give exit status 1.
 Codes in use: `syntax`, `io`, `manifest`, `manifest-key`, `symbol-once` (a
-symbol written once in the whole project and never as a plain name) and
+symbol written once in the whole project and never as a plain name),
+`undeclared-symbol` (error under the manifest's optional `symbols` list), `tier`
+(content-file policy violation), `unknown-scene`, `unknown-character`, and
+`unknown-character-attribute` (errors for unresolved literal scene references),
 `computed-text` (a label or name whose text is not a string literal, so it cannot
 be extracted for translation), `duplicate-id` (error: two storylets, actions or
-decks of one name, or two choices of one storylet), `unknown-deck` (error: `deck :x`
+decks, scenes or characters of one name, or two choices of one storylet), `unknown-deck` (error: `deck :x`
 with no `deck :x {...}`), `unknown-placeholder` (error: `{name}` that is not a
 parameter of the storylet or choice), `relation-arity` (error: a use that disagrees
 with the declared columns), `unknown-relation` and `unknown-quality` (warnings: a
@@ -125,8 +129,9 @@ the declarations, references and display messages read from the source files.
 `.lua` file) and runs nothing. Every display text that is a string literal has a
 **message key** built from authored names: a storylet's `title` is `lamp.title`,
 a choice's is `lamp.light.title`, a quality's label `quality.oil.label`, a
-`narrative.name` label `name.keeper`. Text built by code has no key and is
-reported as `computed-text`; empty text is not extracted.
+`narrative.name` label `name.keeper`, a scene line `scene.<line-id>.text`,
+and a character name `character.<id>.name`. Scene menu labels are not yet extracted.
+Text built by code has no key and is reported as `computed-text`; empty text is not extracted.
 
 | Command | Does |
 | --- | --- |
@@ -206,6 +211,43 @@ the error names the language and each bad key. Packs are registered with
 selector (a switch renders the current presentation again) and a panel to edit a
 translation, which is saved to `l10n/L.json` as a draft; for a message with `{#plural}` or `{#select}` it lists every branch rendered with sample values, in the language's plural rules, as the translation is typed. The editor highlights comments, strings and their template tags, symbols, logic variables, numbers and the content words.
 
+### 8.8 — Web workbench: `varis serve`
+
+`bin/varis serve [--port N] [project directory]` starts a native loopback HTTP
+server and prints a browser URL with an access token. The browser provides the
+command window, editor, workspace, relation tables and story panel; code runs
+in the native interpreter. The server supports ordinary project scripts with
+the user's permissions, rather than a content sandbox.
+
+Storylets can be played through the manifest-backed Start button or after binding
+a session with `story(session)` in the command window. The panel shows turn changes,
+explains availability, and supports language switching and draft translations (8.7).
+
+The source debugger supports file/line breakpoints and step over/into/out for code
+started by commands, Run and story-panel operations. Effects stop with their transaction
+open; inspection shows tentative facts, and continuation preserves normal commit/rollback.
+Selecting a stack frame shows its locals. While paused, the command prompt evaluates
+read-only expressions in that frame: literals, locals, captured values, raw table fields,
+Boolean operations and basic numeric arithmetic/comparisons. It rejects calls, queries,
+assignments and unsupported operators; it never invokes metamethods. Pause stops a running command or
+story operation at its next line (never inside the workbench's own code); Stop aborts it
+with `interrupted!`, also while stopped. Stop-on-error and pushed events remain unfinished.
+
+In projects with manifest entry/session fields, Start creates a seeded playtest (`s` and
+`w` in the workspace). Reload and Run rebuild in a fresh state and replay story-panel
+commands by stable instance keys; Rewind reconstructs an earlier turn. Failed reloads
+retain the current state. Replay covers panel commands and the manifest's `after_choose`
+callback, not arbitrary command-window writes or external inputs. History lists recorded
+panel commands. Workspace inspection supports raw paged Lua tables, session periods/decks/
+completed instances, and snapshot-derived relation facts.
+
+The editor uses the shared language services for source completion, definition, hover,
+rename preview and project diagnostics over unsaved buffers. File switching retains drafts
+and undo; rename applies to drafts and Save all writes them. Vendored CodeMirror provides
+syntax highlighting, inline diagnostics and clickable breakpoint gutters that follow edits.
+Pane sizes and selectable command history persist in browser storage. No Node installation
+or network access is needed to build or use the editor.
+
 ## 9 — Compatibility and implementation limits
 
 ### 9.1 — Relationship to Lua
@@ -242,13 +284,13 @@ for further ones (owner decisions, October 11, 2026; see the decision record in 
   subset and native module loading (8.2), binary chunks, weak-table and finalizer
   emulation with collector tuning modes, debug-hook and line-attribution
   fidelity (9.3), and exact upstream error text. They keep working while they
-  exist. Planned authoring tools debug at the level of source lines and story
-  turns and are not built on the `debug` library.
-- A restricted tier for content files is planned, excluding coroutines, function
-  values that capture mutable state, and the `io`, `os`, `debug`, `package`, and
-  `load` facilities and metatables from authored content. Engine scripts and
-  script mods keep the full language. The tier is not implemented; every file is
-  currently compiled as the full language.
+  exist. The workbench's initial debugger works at source lines and story
+  turns; the complete interface remains planned and is not built on the `debug` library.
+- The manifest content tier is checked statically by `varis check` and LSP,
+  including restricted globals and function captures (8.3). Engine scripts and
+  script mods keep the full language. Runtime/compiler enforcement of file tiers
+  and a distinct source extension remain planned; ordinary loading still accepts
+  the full language.
 - The internal representation of values, instructions and errors is planned to
   change for performance. Such changes are not divergences: they must leave every
   behavior defined in this manual, and saved games, unchanged.
@@ -272,8 +314,8 @@ suite as a stock binary with `T == nil`, excluding `gc.lua` by owner decision.
 `code.lua` self-skip internal `T` assertions as under stock C Lua; their process
 passes do not validate a complete C API or upstream instruction representation.
 The harness also supplies native modules, a closed-pipe stdin, and a documented
-platform shell shim. These are recorded results, not a fresh run of every suite
-for this documentation change or a claim of complete Lua conformance.
+platform shell shim. These baseline results do not claim complete Lua conformance.
+The generated [project status](STATUS.md) records the most recent full test and benchmark run.
 
 [The official audit](../tests/official/README.md) records exact scope, environment,
 remaining diagnostics, baseline JSON, and test commands. Separate
@@ -336,6 +378,8 @@ Lazy inference errors reach the iterator caller. Errors include:
   prohibited transaction declarations/local mutations/cross-world writes/yields.
 - Duplicate/sealed content, unknown decks/placeholders, invalid frozen options,
   ungrounded parameters, and nonportable scalar instance keys.
+- `STALE_BEAT`, invalid scene input/control flow, unknown characters/attributes,
+  duplicate line ids, and malformed saved scene positions/stage (§6.11).
 - `STALE_CHOICE`, reentrant commands, `ACTION_LIMIT`, `EVENT_LIMIT`, and
   `OBSERVER_QUEUE_LIMIT`, with the commit boundaries specified in section 6.
 - Unsupported saved values/captures, non-reconstructible programs, malformed

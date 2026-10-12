@@ -83,6 +83,15 @@ Current `sticky` and `order` fields are documented in §§6.2 and 6.5 and exerci
 by `tests/extensions/cases/narrative_sticky_order.lua`; these post-proposal fields
 are not silently folded into the historical C2.20 formatter/variant requirement.
 
+## Additions after the original requirements
+
+The historical V1/C2 identifiers remain stable. They do not claim coverage of every
+later tool or scene feature: declarative scenes/stage and scene saves are defined in
+§6.11, translated rendering in §§6.6/7.4, authoring/localization commands in §§8.3–8.7,
+and the SDL3 host in [presentation.md](presentation.md). Scene coverage is recorded in
+[the narrative audit](../tests/narrative/README.md); current suite results are generated
+in [STATUS.md](STATUS.md).
+
 ## Decisions consolidated from the implementation plan
 
 This manual incorporates the plan's resolved edges: unknown retraction is a

@@ -14,6 +14,8 @@ import varis.types;
 import varis.logic.model;
 import varis.state;
 import varis.narrative.codec;
+import varis.narrative.persistence : canonicalJSON;
+import varis.narrative.scenes;
 import varis.narrative.templates;
 import varis.narrative.translation;
 import varis.vm : VM;
@@ -103,6 +105,37 @@ void narrativeRegistry(LuaState state, ContentRegistry registry) {
 /// State-owned immutable-after-sealing authored content, independent of worlds.
 class ContentRegistry {
     LuaState state;
+    SceneDefinition[] scenes;
+    CharacterDefinition[] characters;
+
+    SceneDefinition* scene(string id) {
+        foreach (ref definition; scenes)
+            if (definition.id == id)
+                return &definition;
+        return null;
+    }
+
+    CharacterDefinition* character(string id) {
+        foreach (ref definition; characters)
+            if (definition.id == id)
+                return &definition;
+        return null;
+    }
+
+    string[] sceneIdentity() {
+        string[] entries;
+        foreach (definition; scenes) {
+            auto beats = new LuaValue[definition.beats.length];
+            foreach (i, beat; definition.beats)
+                beats[i] = structural(beat);
+            entries ~= "scene:" ~ definition.id ~ ":" ~ canonicalJSON(encodeValue(immutableSequence(beats)));
+        }
+        foreach (definition; characters)
+            entries ~= "character:" ~ definition.id ~ ":" ~ canonicalJSON(
+                    encodeValue(replaceField(definition.fields, "name", LuaValue.init)));
+        return entries;
+    }
+
     private ContentDefinition[string] storylets_;
     private ContentDefinition[string] actions_;
     private DeckDefinition[string] decks_;
@@ -459,6 +492,8 @@ class ContentRegistry {
     /// Copy into an already allocated registry shell, preserving capture cycles.
     void copyForAnalysis(ContentRegistry destination, LuaValue delegate(LuaValue) cloneValue,
             ContentDefinition delegate(ContentDefinition) cloneDefinition) {
+        destination.scenes = scenes.dup;
+        destination.characters = characters.dup;
         destination.contentVersion = contentVersion;
         destination.explicitContentVersion = explicitContentVersion;
         destination.decks_ = decks_.dup;
@@ -521,6 +556,9 @@ class ContentRegistry {
                 throw new LuaException("registry already sealed with another version");
             return;
         }
+        auto sceneProblem = validateScenes(this);
+        if (sceneProblem.length)
+            throw new LuaException(sceneProblem);
         foreach (definition; storylets_.values ~ actions_.values) {
             try {
                 validateContent(definition);
@@ -533,7 +571,7 @@ class ContentRegistry {
             }
         }
         // The identity of the content: wording (titles, texts, names, labels) is not part of it.
-        string[] manifests;
+        string[] manifests = sceneIdentity();
         foreach (definition; storylets_.values ~ actions_.values)
             manifests ~= definition.kind ~ ":" ~ definition.id ~ ":" ~ definition.fingerprint;
         foreach (name, definition; decks_)

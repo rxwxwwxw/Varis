@@ -6,8 +6,10 @@ through the real lexer, parser, compiler, VM, and declarative engine. It runs
 separately from the existing engine unit tests and 15 acceptance examples, and
 is included in `make test`.
 
-The suite contains 56 Lua cases and four runner checks. All language cases and
-runner checks pass after fixing the seven failures found during initial validation.
+The unified manifest discovers the Lua cases under `cases/`; the standalone runner
+also has four harness checks. The suite has grown beyond the initial 56 cases,
+including scenes and effect rollback. Use `python3 tools/suite test --list` and
+[the generated status](../../docs/STATUS.md) for current counts and results.
 
 ```sh
 python3 tools/suite test --suite extensions
@@ -22,8 +24,8 @@ Each Lua case gets a fresh interpreter process and a **300-second timeout**.
 Timeouts kill the process group, including subprocesses started by a guard.
 The suite continues after failures and exits nonzero if any case fails. There
 is no aggregate five-minute limit: each case gets its own budget.
-The existing test executable timeout and Datalog acceptance timeout now both
-default to 300 seconds as well.
+The standalone extension runner uses that limit. Unified-suite timeouts are defined
+by `tests/manifest.toml`; `make unit-test` has a separate `TIMEOUT` (default 300 s).
 
 The runner prepends `helpers.lua` to a temporary copy of each source. `count`
 consumes unordered results; `reject` checks both rejection and the intended

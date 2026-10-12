@@ -1,8 +1,12 @@
 # Narrative localization plan
 
-Status: **proposed**, rewritten October 11, 2026 for the project's actual targets. Nothing here
-is implemented. The [Varis Reference Manual](docs/README.md) remains authoritative for current
-semantics; API names, syntax and commands below are proposals.
+Status: design plan, rewritten October 11, 2026 for the project's actual targets.
+T1–T4 and the first scene-line catalog integration are implemented (October 12, 2026);
+scene keys are `scene.<line-id>.text`, character names `character.<id>.name`.
+Menu label and character-name rendering in scenes remain authored-text only.
+The historical inventory below predates these implementations. The [Varis Reference Manual](docs/README.md) remains authoritative for current
+semantics. Later sections retain the target design; implemented commands and template
+syntax are documented in the manual, while remaining proposals are identified below.
 
 The first version of this plan (commit `dbb0960` and earlier) was a general design centred on an
 English/Arabic slice, MessageFormat 2 and UUID annotations. Its right-to-left, bidi and
@@ -18,14 +22,14 @@ which also gives the combined order of the two plans.
 
 ## 1a. What exists today
 
-| Piece | Today | Consequence |
+| Piece | Today | Remaining limits |
 | --- | --- | --- |
-| Display text | `title` and `text` of storylets and choices are templates (`{name}`, `{#if query …}`, weighted `{#variant N}`); quality `label`s and `narrative.name(symbol, label)` are plain strings. All are written inline, in English. | Every storylet, choice, quality and named symbol already has an authored name, so keys can be derived for all of them now. Only scene lines (milestone 29) lack one. |
-| Rendering | `session:present()` selects, draws variants and renders in one step; the presentation holds finished strings. | There is nothing to re-render in another language (stage T3). |
-| Variants in replay | The replay log records the drawn alternatives by **zero-based index** per storylet and field (`session.d`, `logVariants`). | Naming them (§3.4) changes the replay-log format. |
-| Fingerprint | `contentFingerprint` hashes every option of a definition, `title` and `text` included. | Fixing a typo invalidates saves today (§3.6). |
-| Extraction | None. Text assembled by code is accepted silently; *Saltmarsh Light* registers its names in a loop (`qualities.lua:21`). | Stage T1 finds these before any translator does. |
-| Language selection, catalogs, plural rules | None. | |
+| Display text and keys | Storylet/choice fields, quality labels, named symbols, scene lines and character names are indexed when literal. Scene line keys are `scene.<line-id>.text`. | Computed text cannot be extracted; scene menu labels are not cataloged. Explicit scene ids are recommended over positional defaults. |
+| Rendering | Selection captures bindings, condition outcomes and variant draws. `session:render` and `set_language` re-render without changing tokens, turns or RNG. Scene line text is translated. | Scene menu labels and character metadata still render authored text; structured rich-text spans are unfinished. |
+| Variants and templates | Named variants, plural and select blocks, generated plural rules, translated names and pseudo-localization exist. | Legacy unnamed variants retain positional identity. |
+| Fingerprints and saves | Wording is excluded from format 2/3 content identity; template structure remains significant. Format 1 retains legacy validation. Translations are never saved or fingerprinted. | Structural edits still invalidate content identity; scene saves use format 3. |
+| Catalogs and handoff | Extract/status, CSV/JSON/XLIFF, revision tracking, kits/delta kits, glossary, import/review, checks, packs and character-set output. | Font subsetting itself and configurable per-locale manifest coverage remain unfinished. |
+| Tools and presentation | CLI locale options, workbench selector/editor, engine grapheme/line-break/ruby/particle helpers, initial SDL3 scene player with a supplied UTF-8 font. | Complete CJK layout, font fallback/switching, ruby drawing and native-reader validation remain T5 work. |
 
 ## 1. Targets and what they imply
 
@@ -54,7 +58,8 @@ which also gives the combined order of the two plans.
 4. **Whole messages.** Translators get complete sentences or paragraphs, never fragments glued
    together by code. A message with a missing translation falls back as a whole.
 5. **The engine does not lay out text.** Shaping, fonts, line breaking and text boxes belong to
-   the presentation layer. The engine hands over structured spans in logical order.
+   the presentation layer. The target output is structured spans in logical order; current presentations
+   still carry rendered strings.
 
 ## 3. Decisions to freeze with the syntax (ROADMAP milestones 27 and 29)
 
@@ -64,13 +69,14 @@ exist.
 1. **Keys come from authored names.** A storylet's title is `topic_lamp.title`, a choice's is
    `topic_lamp.nod.title`, a scene line uses the stable line id of milestone 29. Renaming a
    storylet already breaks saves, so these names are already permanent; no generated identifiers
-   appear in content files. The rename of the language services (ROADMAP milestone 32, used by both the workbench and the
-   language server) rewrites catalogs. Two messages with the
+   appear in content files. The language services' rename operation (ROADMAP milestone 32, exposed through the
+   language server) rewrites catalogs; workbench UI rename is unfinished. Two messages with the
    same English text stay separate.
 2. **Scene lines need an id that survives editing.** Lines have no authored name, and an id
-   derived from position breaks when a line is inserted. Milestone 29 must choose between a short
-   tool-written tag on the line and an id derived from the line's first-seen text; either way the
-   checker reports duplicates and the tool never guesses identity from similar text.
+   derived from position breaks when a line is inserted. The implemented declarative beats use an explicit `id` field, falling back to
+   `<scene>.<beat-index>`. Positional ids do not survive insertion, so authors should set
+   explicit ids. Registry validation rejects duplicate text ids. Automatic tool-written
+   tags for a future compact syntax remain proposed.
 3. **One template grammar.** The Varis template language gains named placeholders (already
    present), a `select` on a declared value with a required fallback branch, a plural select on a
    number, and **named** variant alternatives. Translators write the same grammar as writers.
@@ -80,8 +86,7 @@ exist.
 5. **Literal display text in content files.** Titles, text and dialogue are string literals with
    placeholders; the checker rejects computed strings there and flags byte-oriented operations
    (`#`, `string.sub`) applied to display text. Extraction then needs no execution.
-6. **Wording leaves the gameplay fingerprint.** Today the content fingerprint hashes every option
-   of a definition, including `title` and `text`, so fixing a typo invalidates saves. Split it:
+6. **Wording leaves the gameplay fingerprint (implemented T2).** Formats 2/3 split it:
    conditions embedded in text and the structure of variants stay in the gameplay fingerprint;
    wording moves to a presentation revision. This is worth doing even with no translations.
 7. **Presentation output is spans.** Rendered text is a sequence of spans carrying markup
@@ -362,36 +367,28 @@ old `L0` is now T0 and T2, `L1` is part of T3, `L2` is T1 and T3, `L3` is T4 and
 | T0 | **Decisions.** The §3 decisions written into the grammar and the manual with milestone 27; the scene-line id scheme with milestone 29; the owner choices of §12. | Owner | No | Each §3 item is recorded as accepted, changed or rejected. |
 | T1 (done) | **Extraction.** The message table of the project index; key derivation for storylets, choices, quality labels and named symbols; the catalog model and canonical JSON; the CSV adapter; `varis l10n extract`, `extract --check` and `status`; the `computed-text` diagnostic; cosmetic versus substantive change detection. | Stages A0 and A1 of the authoring tools plan | No | Every title, text and label of *Saltmarsh Light* has a key or a diagnostic. Extraction is deterministic (golden file). Editing one source string marks exactly its translations stale in a fixture catalog. CSV export and import round-trip. |
 | T2 (done) | **Wording out of the gameplay fingerprint; named variants.** A new save-format revision behind a versioned reader (§8). | T0, and the owner's approval of the save-format change (AGENTS §8.1 item 5) | **Yes** | A wording edit no longer changes the gameplay fingerprint. Old save fixtures load as before. A replay log names its variants, and reordering alternatives replays identically. The sample game's golden file is regenerated once, in its own reviewed commit. |
-| T3 (done, except scenes and spans) | **Translated rendering.** Selection separated from rendering; a session language that can be switched and re-rendered; catalog lookup with whole-message fallback; the pseudo-locale; `select` and plural in templates with the generated plural table; translatable names with grammatical attributes; `varis check --locale`; the workbench language selector and translation panel (§7.7). Span output arrives with beat-stream presentations (milestone 29) and is not required for this stage's exit. | T1, T2; stage A3 for the checker | Yes (additive: presentations gain what re-rendering needs) | Re-rendering changes no token, draw, turn or replay log. French and Russian translations of *Saltmarsh Light* pass the checker and read correctly to the owner; every plural category and a case-inflected name are exercised. A gameplay replay in two languages produces identical logs. |
-| T4 | **Handoff.** Kit export with context and glossary, kit ids and delta kits, the XLIFF adapter, import with review states, `varis l10n check --kit`, loadable packs with whole-pack rejection, the key overlay, the release gate. | T3 | No | A pack built only from an exported kit loads into a release build. A deliberately broken pack is rejected with diagnostics by key. A delta kit after a source edit contains exactly the stale and new messages. |
+| T3 (done for storylets; scene lines implemented, menus/metadata/spans incomplete) | **Translated rendering.** Selection separated from rendering; a session language that can be switched and re-rendered; catalog lookup with whole-message fallback; the pseudo-locale; `select` and plural in templates with the generated plural table; translatable names with grammatical attributes; `varis check --locale`; the workbench language selector and translation panel (§7.7). Span output arrives with beat-stream presentations (milestone 29) and is not required for this stage's exit. | T1, T2; stage A3 for the checker | Yes (additive: presentations gain what re-rendering needs) | Re-rendering changes no token, draw, turn or replay log. French and Russian translations of *Saltmarsh Light* pass the checker and read correctly to the owner; every plural category and a case-inflected name are exercised. A gameplay replay in two languages produces identical logs. |
+| T4 (implemented; remaining production refinements below) | **Handoff.** Kit export with context and glossary, kit ids and delta kits, the XLIFF adapter, import with review states, `varis l10n check --kit`, loadable packs with whole-pack rejection, the key overlay, the release gate. | T3 | No | A pack built only from an exported kit loads into a release build. A deliberately broken pack is rejected with diagnostics by key. A delta kit after a source edit contains exactly the stale and new messages. |
 | T5, with milestone 36 | **Presentation.** Line breaking, per-language fonts, ruby, the Korean particle formatter, character-set output for font subsetting. | T4; the SDL3 presentation layer | No | A Chinese, a Japanese and a Korean sample render correctly in the SDL3 layer, reviewed by a reader of each language; fonts are subset from the emitted character sets. |
 
-**Status, October 12, 2026.** T1 and T2 are done (T2 approved by the owner the same day: wording
-is out of the gameplay fingerprint behind a versioned reader, named variants, `{#plural}` and
-`{#select}` in the "block tags" syntax). The text below the line is the earlier status of T3. Of T3, built without T2 (nothing here touches saves,
-fingerprints or the replay log): translations as presentation data (`narrative.translate`), selection
-separated from rendering (`session:render`, `session:set_language`; a presentation keeps the
-condition results and variant draws its messages used), whole-message fallback, translated names
-(`name.<symbol>`), the pseudo-locale, `varis check --locale`, `varis l10n check`, `play --locale
-[--keys]`. Still waiting on owner decisions: **T2** (wording out of the fingerprint, named variants:
-a save-format change, AGENTS §8.1 item 5), and the **syntax** of `select`, plural and named variants
-(T0, milestone 27); until then translations use the source's own conditions and variant groups, by
-position. The workbench language selector and translation panel (§7.7) exist in a first
-version (switch, list of the presentation's messages with status, save as draft, every plural and
-select branch rendered with sample values). T4 is built except the font-subset output and the
-manifest's per-locale coverage: kits with context, glossary, character sets and ids, delta kits,
-the XLIFF and CSV adapters, import with stale/draft states, `l10n review`, `l10n check --kit`,
-`l10n build` packs and `narrative.load_pack` with whole-pack rejection, the key overlay and the
-release gate (`l10n check --locale all --require reviewed`). T5 (presentation: line breaking, fonts,
-ruby, the Korean particle formatter): the **rules** exist in the engine (`narrative.particle`,
-`graphemes`, `truncate`, `line_breaks`, `ruby`; `narrative/text.d`) and are tested; drawing them,
-per-language font chains and glyph caches belong to the SDL3 layer (milestone 36), which does not
-exist yet. The character sets for font subsetting are emitted by `l10n export --kit` and `l10n build`.
+**Status, October 12, 2026.** T1–T4 are implemented within the limits in §1a.
+T2 was approved by the owner on October 12: format 2 removes wording from gameplay
+identity, with legacy format 1 validation; named variants, `{#plural}` and `{#select}`
+use block tags. Format 3 adds scene positions/stage. The first scene slice supplies
+line ids, catalog extraction and translated line rendering; menus and character metadata
+remain authored text. The proposed generated `#tag` line annotation is not implemented:
+current declarative beat records use an `id` field, with a positional fallback.
 
-T1 needs no owner decision and no runtime change; start it as soon as the project index exists.
-T2 should land before content is written in volume, because it changes saves. The feature is
-announced after T4 and T5, with review by native readers, not when the first translated string
-renders.
+The workbench language selector, draft editor and branch previews work. T4 includes
+kits with context/glossary/character sets/ids, delta kits, CSV/JSON/XLIFF adapters,
+review states, kit checks, built packs with whole-pack rejection, key display and the
+reviewed-translation gate. Font subsetting and manifest per-locale coverage policy remain.
+
+T5 is partial: engine text helpers (`particle`, `graphemes`, `truncate`, `line_breaks`,
+`ruby`) and character-set output exist. The [SDL3 player](docs/presentation.md) renders
+UTF-8 through SDL3_ttf with one supplied font. Per-locale font chains, ruby drawing,
+complete CJK layout and native-reader validation remain unfinished. Production localization
+is not complete merely because translated strings render.
 
 ## 10. Deferred
 
@@ -421,10 +418,10 @@ Use the default until decided, and say so in the change.
 
 | Choice | Default | Reason for the default |
 | --- | --- | --- |
-| Scene-line ids (§3.2) | A short tag written onto the line by a tool the first time the line is extracted | An id derived from text changes when a typo is fixed; an id derived from position changes when a line is inserted. |
+| Scene-line ids (§3.2), future compact syntax | Tool-written short tag remains a proposal; current beat tables use explicit `id`, with a positional fallback | Explicit ids survive wording edits and insertion. Automatic annotation is not implemented. |
 | Translator notes | A `note "…"` field, decided with milestone 27 | Context that structure cannot supply has to come from the writer. |
 | Where catalogs live | `l10n/` in the game's repository, one JSON file per locale | Diffs and history for free. |
-| Who may set `reviewed` | Only `varis l10n review` or the workbench, never an import | A returned file saying "final" has not been read by anyone on the project. |
-| Coverage required to ship a locale | 100% reviewed, set per locale in the manifest | A lower number is a deliberate choice, not an accident. |
-| Pack format | A directory holding the canonical JSON plus a small index | Readable by fan translators; a binary form can come later if load time needs it. |
+| Who may set `reviewed` | Implemented: `varis l10n review`; workbench edits save drafts, imports cannot approve | A returned file saying "final" has not been read by anyone on the project. |
+| Coverage required to ship a locale | `l10n check --locale all --require reviewed` enforces reviewed coverage; per-locale manifest policy remains proposed | A lower number is a deliberate choice, not an accident. |
+| Pack format | Implemented: locale directory containing `pack.json` with messages and charset | Readable by fan translators; a binary form can come later if load time needs it. |
 | Non-ASCII identifiers (§3.8) | Not allowed; display text may be any UTF-8 | Decided with milestone 27. |

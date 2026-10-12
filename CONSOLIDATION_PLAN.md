@@ -9,6 +9,11 @@ replaced by a stricter one (`goal.clua = 1.0`: the core is never slower than C L
 goals are in [ROADMAP.md](ROADMAP.md) and the benchmark suite's current behaviour in
 [benchmarks/README.md](benchmarks/README.md).
 
+Current-state note (October 12, 2026): counts, comparator choices and timings in
+the implementation record are historical. [Generated project status](docs/STATUS.md)
+records the latest release-tier run and benchmark gates; [the benchmark guide](benchmarks/README.md)
+includes the implemented `narrative_scale` and Soufflé comparison groups.
+
 ## Implementation record
 
 | Phase | Result |

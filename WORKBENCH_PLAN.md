@@ -1,10 +1,10 @@
 # Workbench plan: a web editor served by the Varis executable
 
-Status: **proposal with a first version implemented**, October 11, 2026. Section 1a says what
-exists; everything else is still the plan. It details milestones 42,
+Status: **partially implemented**, audited October 12, 2026. Section 1a says what
+exists; later sections describe the complete target and may exceed the current interface. It details milestones 42,
 43 and 44 of [ROADMAP.md](ROADMAP.md) Phase 10 and implements decisions D10 and D11 of the ROADMAP
 decision record. Language behaviour is defined only by the [manual](docs/README.md). The checker and the language
-services the editor calls (milestones 30–33) are planned in
+services (milestones 30–33, A0–A6 implemented) are recorded in
 [AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md); the language selector and translation panel
 are in [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md) §7.7.
 
@@ -13,12 +13,13 @@ are in [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md) §7.7.
 The workbench is the main tool for working on a Varis game. One command starts it:
 
 ```sh
-varis serve path/to/project        # planned; does not exist yet
+varis serve path/to/project
 ```
 
 The Varis executable loads the project, keeps its state alive, and serves a web application on
 the local machine. The user opens it in a browser. There is nothing else to install: no editor
-plug-in, no separate language server process, the same on Windows, macOS and Linux.
+plug-in, no separate language server process, with Windows, macOS and Linux as targets. The current build and tests are on macOS arm64;
+Windows/Linux packaging is not verified.
 
 Users, in order of how much it must suit them:
 
@@ -36,19 +37,53 @@ a token and serves one page with the layout of §3.
 
 | Panel | State |
 | --- | --- |
-| Command window | Works: expressions print, statements run, multi-line input continues, history with the arrow keys. Output of `print` and `io.write` is captured. |
-| Workspace | Works: user-created globals with type and preview. A world opens as its list of relations; a relation opens as a paged table of its base facts. Read-only. |
-| Story | Works after `story(session)` in the command window: presents on request, choices are buttons. It presents only when asked, because presenting appends to the session's replay log. |
-| Story-level debugging | Partly: after a choice the command window lists the facts the turn added and removed, per relation (computed from the immutable fact tables before and after). "Why?" explains any storylet through `narrative.explain`: eligible or not, each condition's outcome and candidate counts, each instance's exclusions. Rewind and seeds are not implemented. |
-| Editor | A plain text area with open, save and Run (runs the file in the live state). Tab completes the name before the cursor, here and in the command window: globals, keywords, fields of a table path, relation names, and storylet ids after a colon. Completion reads the live state, not the source, so it knows only what has been loaded. F12 or the Definition button jumps to where the name under the cursor is declared (storylet, action, choice, deck, relation, rule, quality or function), found by reading the project's source files. No hover or rename. |
-| Source-level debugging | Works for code started from the command window or Run: line breakpoints (file and line), stop with every frame alive, locals of the innermost frame and the call stack in the workspace, step over/into/out, continue, and evaluating in the command window while stopped. Built on the executor's per-line slow path, installed only while a breakpoint or step is pending. Not yet: breakpoints inside the story panel's present/choose, selecting an outer frame, evaluating in a frame's scope, pause, stop-on-error. |
-| Problems | Syntax errors of the open file only (the full checker of milestone 30 does not exist). |
+| Command window | Works: expressions print, statements run, multi-line input continues, persistent history with arrow-key recall and a selectable history view. Output of `print` and `io.write` is captured. |
+| Workspace | Works: user-created globals with type and preview. A world opens as its list of relations; derived relations open through snapshot queries, others as base facts. Lua tables support paged raw key/value browsing and nested tables. Sessions show turn, periods, decks/draw counts and completed instances. Inspection bypasses Lua metamethods. |
+| Story | Works after manifest-backed Start or `story(session)` in the command window: presents on request, choices are buttons. It presents only when asked, because presenting appends to the session's replay log. |
+| Story-level debugging | Partly: after a choice the command window lists the facts the turn added and removed, per relation (computed from the immutable fact tables before and after). "Why?" explains any storylet through `narrative.explain`: eligible or not, each condition's outcome and candidate counts, each instance's exclusions. Manifest-backed Start accepts a seed; Reload rebuilds and replays panel commands by stable instance keys; Rewind reconstructs an earlier turn. History lists the commands. Failed reconstruction retains the live playtest. |
+| Editor | Vendored CodeMirror 6 with syntax highlighting, inline diagnostics, clickable breakpoint gutters that move with edits, retained drafts and undo across file switches, Save all, and Run. Source completion, F12/Definition, Hover and Rename use the same frontend services as LSP, with unsaved drafts overlaid across files. Rename previews all edits, applies to drafts and writes only on Save all. Command completion still reads live state. In a manifest-backed playtest, Run saves drafts and rebuilds/replays the project; otherwise it runs the open file in the live state. |
+| Source-level debugging | File/line breakpoints and step over/into/out work for commands, Run and story-panel present/choose. Clicking a frame selects its locals. The paused command prompt reads expressions in that frame, including upvalues and raw table fields; it rejects calls, queries, assignments and unsupported operators without invoking metamethods. Effect breakpoints preserve tentative transaction state until continuation. **Pause** stops a running command or story operation at its next line with frames alive; **Stop** aborts it with "interrupted!" (also from a stopped program). Stop-on-error remains planned. |
+| Problems | Project-wide static/compile diagnostics include unsaved drafts; clicking a diagnostic opens its file and line. Load and bounded analysis passes remain CLI operations. |
+| Localization | Language selector re-renders the retained presentation; translation panel lists messages, previews plural/select branches and saves drafts. |
 
-Differences from the rest of this plan, all deliberate for a first version: plain HTTP
-request/response instead of a WebSocket with pushed events (§6); text bodies and query parameters
-instead of JSON requests; no language services; no rewind or history views; derived relations
-show only their base facts. While stopped at a breakpoint the server answers requests from inside
-the line hook, and the connection that resumes execution receives the evaluation's result.
+Differences from the rest of this plan: plain HTTP request/response instead of a
+WebSocket with pushed events (§6), text/query requests plus JSON editor requests. The vendored editor requires no Node or
+network access at build or runtime; maintenance instructions and third-party notices are in
+[workbench/README.md](workbench/README.md). Resizable panels and command history persist
+in browser storage. The hand-written loopback server and bottom-left workspace follow
+§9's documented defaults.
+While stopped at a breakpoint the server answers requests from inside the line hook;
+the connection that resumes execution receives the final command or story response.
+
+Replay covers commands made through the story panel, including the manifest's
+`after_choose` callback. It does not reconstruct arbitrary command-window mutations,
+external inputs or effects of impure host code. Start creates globals `s` and `w` for
+the session and world. A new Start uses the requested seed; Reload/Rewind keep it.
+Language selection is retained on reload without a new presentation or random draw.
+
+### Remaining acceptance work
+
+- **42:** JSON request/response/event protocol over WebSocket, with pushed output and
+  state/debug notifications. HTTP remains the tested compatibility transport.
+- **43 UI delivered:** CodeMirror, inline diagnostics and breakpoint gutters, resizable
+  panels, persistent command history and browser coverage. The fix → Run → reconstructed
+  presentation workflow is covered by the browser test.
+- **44:** error stops, which need the error-status prerequisite (L1), and the separate
+  fast/instrumented executor (S1), each in its planned stage. Asynchronous Pause and Stop,
+  explanations of a selected choice and bounded analysis in the UI are done.
+- **Scene-beat playtesting** is connected to the scene host: the story panel plays scenes
+  (`/api/play`, `/api/advance`), shows beats, stage and locals, and Reload/Rewind replay them.
+
+Protocol coverage: `python3 tests/workbench/protocol_test.py bin/varis` (also in
+`make test`). Optional browser smoke test: with Node and Playwright available,
+`node tests/workbench/ui_test.cjs bin/varis`; `VARIS_BROWSER` selects a Chromium
+executable. Both use temporary copies of the sample project and leave authored files alone.
+
+Verification for this slice (October 12, 2026): full `make test` (240 pass,
+3 known-gap, 1 partial, 1 skip), optimized assertion-enabled protocol coverage,
+the browser smoke test, the sample game's own checks, and all 80 benchmark regression gates passed. Lua parity goals remain unmet and unchanged. The replay
+protocol test compares complete saved bytes across reload and across debugged/
+undebugged choices, and verifies failed reloads retain the live session.
 
 ## 2. The model: MATLAB, with a story
 
@@ -120,9 +155,11 @@ Rules that the design must keep:
 2. **The server is a layer above everything else.** It imports the language services, the
    narrative layer and the core. Nothing below imports the server (ROADMAP D9, AGENTS §4.1).
 3. **A state is single-threaded.** One thread owns the project state and runs every command,
-   query and debugger request in turn. Network threads only pass messages to it. The pause button
-   works by setting a flag the instrumented executor checks; it never touches the state from
-   another thread.
+   query and debugger request in turn. The accept thread only reads requests and passes them to
+   it. The one exception is Pause and Stop while the interpreter is busy: the accept thread sets
+   the flags the executor already polls (`vmInterrupt`, the line-hook mask) and nothing else. It
+   decides under the queue lock, together with queueing, so a Stop cannot be left waiting behind
+   the command it was meant to stop.
 4. **Inspection is read-only and uses snapshots.** The workspace and the table view read through
    the existing snapshot queries and read-only explanations, so looking at a value can never
    change the game or consume random numbers. Changing state is always an explicit command in
@@ -167,11 +204,12 @@ Built on facilities that already exist and are documented in the manual: `narrat
 | Evaluate | Run an expression in the selected paused frame from the command window. Read-only by default; changing a local is an explicit action. |
 | Error stop | When an error is about to leave the outermost call, stop there with the stack intact, as MATLAB's "pause on errors" does. |
 
-How it is built: stage S1 of [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md)
+The target implementation: stage S1 of [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md)
 generates two executors from one handler source. The **fast** executor contains no debugging
 code. The **instrumented** executor checks, per instruction, a per-function table of breakpoint
 positions and the stepping state. A function runs on the instrumented executor when a debugger is
-attached. Because errors will be values (ROADMAP D7), "stop where the error happened" is a status
+attached. The current debugger uses the per-line slow path; fully separate fast/instrumented
+executors and status-returning errors are not complete. Once errors are values (ROADMAP D7), "stop where the error happened" is a status
 check, not an exception filter.
 
 Stopping inside an effect means stopping inside an open transaction. While stopped, the workspace

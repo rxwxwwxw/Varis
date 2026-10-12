@@ -27,8 +27,11 @@ import std.algorithm : sort;
 /// Save formats. Format 1 recorded the content identity with wording in it; format 2 does not
 /// (a typo fix no longer invalidates saves) and adds the presentation revision, which is
 /// informational. Format 1 saves are read with their own validation and are written back as 2.
+/// Sessions that have entered a scene use format 3, so old readers reject rather than discard
+/// the continuation. Sessions without scenes keep their exact format-2 representation.
 enum saveFormat1 = "varis-session-1";
 enum saveFormat2 = "varis-session-2";
+enum saveFormat3 = "varis-session-3"; // Scene positions and engine-owned stage state.
 
 /// Changing code/sampling semantics requires a new runtime identity.
 enum narrativeRuntimeVersion = "varis-narrative-1/xorshift64star-tier-1";
@@ -241,7 +244,7 @@ string saveSession(Session session) {
         foreach (record; data.replayInputs)
             inputs ~= encodeValue(record, "replay input");
         auto encoded = JSONValue([
-            "format": JSONValue(saveFormat2),
+            "format": JSONValue(data.scene is null ? saveFormat2 : saveFormat3),
             "runtime": JSONValue(narrativeRuntimeVersion),
             "content": JSONValue(session.registry.contentVersion),
             "content_fingerprint": JSONValue(portableRegistryFingerprint(session.registry)),
@@ -271,6 +274,8 @@ string saveSession(Session session) {
             "action_limit": counter(session.actionLimit),
             "event_limit": counter(session.eventLimit)
         ]);
+        if (data.scene !is null)
+            encoded.object["scene"] = encodeValue(data.scene.portable(), "scene");
         return canonicalJSON(encoded);
     } catch (LuaException error) {
         throw error;
@@ -298,7 +303,7 @@ Session loadSession(LuaState state, string saved, LuaValue factory) {
         auto input = parseJSON(saved);
         auto format = input["format"].str;
         bool firstFormat = format == saveFormat1;
-        if (!firstFormat && format != saveFormat2)
+        if (!firstFormat && format != saveFormat2 && format != saveFormat3)
             throw new LuaException("incompatible save format version");
         if (input["runtime"].str != narrativeRuntimeVersion)
             throw new LuaException("incompatible narrative runtime version");
@@ -311,6 +316,17 @@ Session loadSession(LuaState state, string saved, LuaValue factory) {
                 state.narrativeRegistry, firstFormat))
             throw new LuaException("incompatible narrative content version or fingerprint");
         auto data = new SessionData();
+        if ((format == saveFormat3) != (("scene" in input.object) !is null))
+            throw new LuaException("invalid scene save format");
+        if (auto savedScene = "scene" in input.object) {
+            import varis.narrative.scenes;
+
+            auto portable = decodeValue(*savedScene);
+            string problem;
+            data.scene = restoreScene(state.narrativeRegistry, portable, problem);
+            if (problem.length)
+                throw new LuaException("invalid saved scene: " ~ problem);
+        }
         data.turn = unsignedValue(input["turn"], "turn");
         if (data.turn > long.max)
             throw new LuaException("saved turn exceeds runtime range");

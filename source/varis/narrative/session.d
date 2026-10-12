@@ -19,6 +19,7 @@ import varis.logic.world;
 import varis.logic.model;
 import varis.logic.query;
 import varis.narrative.registry;
+import varis.narrative.scenes;
 import varis.narrative.codec;
 import varis.narrative.templates : NarrativeTemplate;
 import varis.narrative.translation;
@@ -148,6 +149,7 @@ private RequiredFact requiredFact(LuaState state, ContentDefinition definition) 
 }
 
 class SessionData {
+    SceneState scene;
     ulong turn;
     ulong rng;
     bool seeded;
@@ -166,6 +168,7 @@ class SessionData {
 
     SessionData copy() {
         auto result = new SessionData();
+        result.scene = scene is null ? null : scene.copy();
         result.turn = turn;
         result.rng = rng;
         result.seeded = seeded;
@@ -250,16 +253,40 @@ final class PresentationRender {
     LuaValue turn;
     LuaValue deck;
     StoryRender[] stories;
+    LuaValue stage;
 }
 
 /// The payload of a presentation record: its fields, as for any immutable record, and the data
 /// to render it again in another language.
+final class ScenePresentationRecord : ImmutableRecord {
+    SceneState snapshot;
+    LuaValue token;
+    ulong turn;
+    MessageRender message;
+    this(LuaValue[string] fields, SceneState snapshot, LuaValue token, ulong turn, MessageRender message) {
+        super(fields);
+        this.snapshot = snapshot;
+        this.token = token;
+        this.turn = turn;
+        this.message = message;
+    }
+}
+
 final class PresentationRecord : ImmutableRecord {
     PresentationRender render;
 
     this(LuaValue[string] fields, PresentationRender render) {
         super(fields);
         this.render = render;
+    }
+}
+
+private class SceneToken {
+    Session session;
+    SceneState scene;
+    this(Session session, SceneState scene) {
+        this.session = session;
+        this.scene = scene;
     }
 }
 
@@ -368,6 +395,112 @@ class Session : TransactionParticipant {
         if (busy || currentEffectSession() !is null || currentTransaction() !is null || world
                 .transactionOwner !is null || world.notifyingDepth || isReadOnlyEvaluation())
             throw new LuaException("recursive or conflicting narrative session command");
+    }
+
+    void playScene(string id) {
+        if (currentEffectSession() is this)
+            requireEffectSession();
+        else
+            requireIdle();
+        if (registry.scene(id) is null)
+            throw new LuaException("unknown scene '" ~ id ~ "'");
+        auto next = new SceneState;
+        auto previous = view().scene;
+        next.stage = previous is null ? immutableRecord(null) : previous.stage;
+        next.revision = previous is null ? 1 : previous.revision + 1;
+        next.frames = [SceneFrame(id, 0, immutableRecord(null))];
+        auto problem = seekBeat(registry, next);
+        if (problem.length)
+            throw new LuaException(problem);
+        edit().scene = next;
+        if (currentEffectSession() is null)
+            data.replayInputs ~= immutableRecord([
+            "kind": state.getSymbol("play"),
+            "value": state.getSymbol(id)
+        ]);
+    }
+
+    LuaValue scenePresentation() {
+        return buildScenePresentation(data.scene, language, LuaValue(new LuaUserData(new SceneToken(this, data.scene))), data
+                .turn);
+    }
+
+    private LuaValue buildScenePresentation(SceneState scene, string target, LuaValue token, ulong turn, MessageRender message = null) {
+        auto frame = scene.frames[$ - 1];
+        auto beat = scene.beat;
+        auto text = field(beat, "text");
+        if (text.isString) {
+            // Locals are portable scalar bindings; templates use the existing narrative grammar.
+            auto locals = cast(ImmutableRecord) frame.locals.asUserData.payload;
+            string[] names;
+            foreach (name; locals.fields.keys)
+                names ~= name;
+            auto template_ = new NarrativeTemplate(text.asString, names);
+            if (message is null) {
+                message = new MessageRender;
+                message.bindings = locals.fields;
+                message.source = template_.render(state, world.cloneSnapshot(), locals.fields, &registry.display, null, &message
+                        .trace, registry.sourceLanguage);
+                message.key = "scene." ~ nameOf(field(beat, "id")) ~ ".text";
+            }
+            auto text_ = message.source;
+            if (target.length)
+                if (auto translated = registry.translation(target, message.key)) {
+                    string output;
+                    if (renderTranslation(translated, message.bindings, (LuaValue v) => registry.displayIn(target, v), message
+                            .trace, target, output))
+                        text_ = output;
+                }
+            beat = replaceField(beat, "text", LuaValue(text_));
+        }
+        auto character = registry.character(nameOf(field(beat, "character")));
+        if (character !is null)
+            beat = replaceField(beat, "speaker", character.fields);
+        LuaValue[string] fields = [
+            "turn": LuaValue(cast(long) turn), "scene": state.getSymbol(frame.id),
+            "beat_index": LuaValue(cast(long) frame.pc + 1), "locals": frame.locals,
+            "beats": immutableSequence([beat]), "stage": scene.stage,
+            "token": token,
+            "storylets": immutableSequence(null)
+        ];
+        return wrapImmutable(new ScenePresentationRecord(fields, scene, token, turn, message));
+    }
+
+    void advanceScene(LuaValue token, LuaValue input) {
+        requireIdle();
+        SceneToken identity;
+        if ((token.typeOf() == LuaType.UserData))
+            identity = cast(SceneToken) token.asUserData.payload;
+        if (identity is null || identity.session !is this || identity.scene !is data.scene || !data.scene.frames.length)
+            throw new LuaException("STALE_BEAT: expected exact scene token");
+        auto next = data.scene.copy();
+        auto beat = next.beat;
+        auto kind = nameOf(field(beat, "kind"));
+        auto frame = &next.frames[$ - 1];
+        if (kind == "input") {
+            canonicalScalar(input);
+            frame.locals = replaceField(frame.locals, nameOf(field(beat, "local")), input, false);
+        } else if (kind == "menu") {
+            string target;
+            foreach (choice; sequence(field(beat, "choices")))
+                if (luaRawEqual(field(choice, "id"), input))
+                    target = nameOf(field(choice, "target"));
+            if (!target.length)
+                throw new LuaException("invalid scene menu choice");
+            frame.id = target;
+            frame.pc = 0;
+        } else if (!input.isNil)
+            throw new LuaException("this scene beat accepts no input");
+        if (kind != "menu")
+            frame.pc++;
+        if (kind == "ended")
+            next.frames.length = 0;
+        next.revision++;
+        auto problem = seekBeat(registry, next);
+        if (problem.length)
+            throw new LuaException(problem);
+        data.scene = next;
+        data.replayInputs ~= immutableRecord(["kind": state.getSymbol("advance"), "value": input]);
     }
 
     void seed(long seed) {
@@ -650,6 +783,8 @@ class Session : TransactionParticipant {
             "deck": data.deck,
             "storylets": immutableSequence(stories)
         ];
+        if (!data.stage.isNil)
+            fields["stage"] = data.stage;
         // An ordinary immutable record that also remembers how to be rendered again.
         return wrapImmutable(new PresentationRecord(fields, data));
     }
@@ -657,6 +792,11 @@ class Session : TransactionParticipant {
     /// `render(presentation, language)`: the same presentation, with titles and texts in `language`
     /// (empty: the source language). The tokens are the same ones.
     LuaValue render(LuaValue presentation, string target) {
+        if (presentation.typeOf() == LuaType.UserData) {
+            auto scene = cast(ScenePresentationRecord) presentation.asUserData.payload;
+            if (scene !is null)
+                return buildScenePresentation(scene.snapshot, target, scene.token, scene.turn, scene.message);
+        }
         PresentationRecord record;
         if (presentation.typeOf() == LuaType.UserData)
             record = cast(PresentationRecord) presentation.asUserData.payload;
@@ -675,6 +815,8 @@ class Session : TransactionParticipant {
             collectAtTurnBoundary();
         size_t eventCount;
         runPhase("pre", eventCount);
+        if (data.scene !is null && data.scene.frames.length)
+            return scenePresentation();
         auto snapshot = world.cloneSnapshot();
         auto tentative = data.copy();
         auto deck = registry.deck(tentative.decks[$ - 1].name);
@@ -822,6 +964,8 @@ class Session : TransactionParticipant {
         renderData.turn = LuaValue(cast(long) tentative.turn);
         renderData.deck = state.getSymbol(tentative.decks[$ - 1].name);
         renderData.stories = storyRenders;
+        if (tentative.scene !is null)
+            renderData.stage = tentative.scene.stage;
         auto presentation = buildPresentation(renderData, language);
         LuaValue[] selections;
         foreach (story; selected)
@@ -841,6 +985,8 @@ class Session : TransactionParticipant {
 
     void choose(ChoiceToken token) {
         requireIdle();
+        if (data.scene !is null && data.scene.frames.length)
+            throw new LuaException("STALE_CHOICE: a scene is active");
         busy = true;
         scope (exit)
             busy = false;
@@ -1047,6 +1193,18 @@ LuaValue wrapSession(Session session) {
         if (a.length != 3 || !isSymbol(a[1]))
             throw new LuaException("period requires a symbol and a serializable value");
         unwrapSession(a[0]).setPeriod(a[1].match!((Symbol s) => s.name, _ => ""), a[2]);
+        return cast(LuaValue[])[];
+    });
+    method("play", (void* p, LuaValue[] a) {
+        if (a.length != 2 || !a[1].isSymbol)
+            throw new LuaException("play requires a scene symbol");
+        unwrapSession(a[0]).playScene(nameOf(a[1]));
+        return cast(LuaValue[])[];
+    });
+    method("advance", (void* p, LuaValue[] a) {
+        if (a.length < 2 || a.length > 3)
+            throw new LuaException("advance requires the scene token and optional input");
+        unwrapSession(a[0]).advanceScene(a[1], a.length == 3 ? a[2] : LuaValue.init);
         return cast(LuaValue[])[];
     });
     method("present", (void* p, LuaValue[] a) {

@@ -348,9 +348,10 @@ Foreign-world mutations still fail the effect transaction's world check.
 ### 6.9 — Portable saves and replay
 
 Save only at an idle boundary, with no active transaction, effect, scheduler, or
-presentation. `session:save()` returns canonical tagged JSON text. The current
-wire format keeps the legacy identifiers `varis-session-2` (written) and
-`varis-session-1` (still read); the language rename does not silently change
+presentation command in progress. A retained immutable presentation or a scene
+waiting for advance does not prevent saving. `session:save()` returns canonical tagged JSON text. The current
+wire format uses `varis-session-3` for sessions that have entered scenes (6.11),
+`varis-session-2` for other sessions, and reads `varis-session-1` as well; the language rename does not silently change
 persisted identities. Format 2 differs from 1 only in the content identity: wording
 (titles, texts, names and labels) is not part of it, only the conditions, variant
 weights and names, and plural/select parameters a text contains, so correcting a
@@ -448,3 +449,99 @@ frontiers, errors, and blocked operations. Exhausted bounds and errors make
 `complete=false`. Neither bounded non-reachability nor action-budget exhaustion
 proves global unreachability or a cycle. The original state and captures remain
 unchanged.
+
+### 6.11 — Scenes, beats, and stage state
+
+A scene is a registered sequence of immutable beat records. `scene Name { ... }`
+and `character Name { ... }` are contextual declarations, equivalent to
+`narrative.scene(:Name, {...})` and `narrative.character(:Name, {...})`.
+Their tables are copied at registration; subsequent author-table mutations have
+no effect. Functions, cycles, nonfinite numbers, and arbitrary objects are rejected.
+Registration is forbidden after sealing. Scene and character identifiers are unique
+within their respective kinds.
+
+```lua
+character mira {
+    name = "Mira", tag = :mira,
+    attributes = {expression = {:quiet, :smile}},
+    defaults = {expression = :quiet}
+}
+scene greeting {
+    {kind=:background, tag=:harbour},
+    {kind=:show, character=:mira, slot=:left},
+    {kind=:input, ["local"]="visitor", text="Your name?"},
+    {kind=:say, character=:mira, attributes={expression=:smile},
+        id="greeting.welcome", text="Welcome, {visitor}."},
+    {kind="return"}
+}
+```
+
+`session:play(:greeting)` starts the scene at an idle boundary. Inside an existing
+choice/action/handler effect, `narrative.play(:greeting)` starts it transactionally:
+a failed effect restores the previous scene and stage along with the world.
+Playing replaces the active scene stack and preserves the existing stage.
+Control steps run until the first display beat before publishing the position;
+a failed command publishes no partial position or stage.
+
+While a scene is active, `session:present()` returns an immutable record with
+`scene`, `beat_index` (1-based), `locals`, `beats` (one current beat), `stage`,
+`token`, `turn`, and an empty `storylets` sequence. It does not advance the beat,
+draw RNG, or append a scene presentation to the command log. The ordinary pre
+phase still runs. `session:advance(presentation.token [, input])` consumes that
+boundary and moves to the next one. Tokens belong to their session and exact
+position object; an advance or a replacement play invalidates them. Tokens from
+another session, before loading, or from an earlier position raise `STALE_BEAT`.
+A rejected input leaves the position and token valid. Storylet choice tokens
+cannot be used while a scene is active. Beat advances do not increment the
+storylet turn or run the post phase.
+
+| Beat kind | Fields and behavior |
+| --- | --- |
+| `say` | Required `character` and `text`; optional `attributes` update the character. `speaker` in the presentation contains its registered metadata. |
+| `narration` | Required `text`, without a character. |
+| `show` | Required `character` and named `slot`; optional `attributes`. Replaces another occupant of that slot. |
+| `hide` | Required `character`; removes its slot and preserves attributes. |
+| `background` | Required `tag`; replaces the background. |
+| `audio` | Required `channel`; `tag` starts/replaces it, absent `tag` stops it. |
+| `pause`, `transition`, `screen`, `picture` | Portable structured directives delivered to the host. Only character slots, attributes, background, and audio are persistent stage fields. |
+| `input` | Required `local` name; advance stores its portable scalar input, including nil. |
+| `menu` | Nonempty `choices`, each with `id`, `text`, and a scene `target`. Advance requires an exact choice id and jumps to its target. |
+| `ended` | Delivered to the host; advancing it clears the scene stack. |
+| `set` | Required `local` name and portable scalar `value`; updates locals without displaying a beat. |
+| `jump`, `call` | Required scene `target`; jump replaces the current frame, call pushes a frame and saves the return address. `jump` to `:hub` clears the whole stack. |
+| `"return"` | Pops the frame; falling off a scene does the same. The spelling is a string because `return` is a Lua keyword. |
+
+Calls inherit a copy of the caller's scalar bindings; child changes remain local
+to the child. Jumps preserve the current bindings. There are at most 128 frames
+and 1,000 control steps per command; a loop or excess nesting is an error.
+After the stack empties, presentation resumes the storylet deck; its presentation
+also includes the retained stage. The engine owns tags, attributes, slots,
+background and audio channel tags; assets, pixels, animation and audio playback
+belong to the host. This version has no arbitrary procedural code between beats,
+beat undo/history, or automatic exploration of scene branches by `narrative.analyze`.
+
+Characters declare allowed attribute values in `attributes`, with optional
+`defaults`. Unknown characters, attribute names, or values are rejected at seal;
+`varis check --no-load` also checks literal scene/character references and
+attribute values with source ranges. Portable scene locals are nil, Boolean,
+integer, finite float, string, or symbol; tables and closures are never live locals.
+
+Text beats have an authored `id`, or receive `<scene>.<1-based beat index>`.
+Text ids are unique across the registry. Explicit ids preserve identity when
+inserting or moving beats. The localization catalog key is `scene.<id>.text`;
+character names use `character.<character>.name`. Scene line text uses ordinary
+narrative templates with the current locals as bindings. `set_language` and
+`render(presentation, language)` translate scene line text; re-rendering preserves
+the token, captured template trace, position, and stage. Menu labels and character
+metadata are currently delivered as authored text.
+
+A session that has entered a scene saves as `varis-session-3`. It extends format 2
+with validated frames (scene id, zero-based position, scalar locals) and stage
+state. Current beat wording is reconstructed from the authored program, not saved.
+Scene structure, targets, line ids and character attributes affect content identity;
+wording does not, while template structure does. Loading recreates the current
+beat without replaying earlier media or input. It validates the position and stage
+before invoking the world factory, and issues fresh tokens only upon presentation.
+Sessions that have never entered a scene still write format 2 unchanged. Older
+formats remain readable; an older runtime rejects format 3. See the executable
+[linear sample](../sample-vn/README.md) for a mid-scene and mid-call save/load proof.

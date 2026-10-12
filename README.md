@@ -25,15 +25,17 @@ are:
 [ROADMAP.md](ROADMAP.md) states the goals, records who decided what and why, and defines
 the planned phases. [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md) is the
 staged performance plan and [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md) the tool design.
-**The planned work is not implemented yet**; the sections below describe the code as it is.
+The plans contain both implemented stages and remaining work; their status notes and the
+sections below distinguish them.
 
 The [Varis Reference Manual](docs/README.md) is the single source of truth for the
 current language: procedural programming, symbols, finite relations, keyed state,
 transactions, aggregates, and the narrative runtime and authoring libraries.
 [Conformance evidence and limits](tests/narrative/README.md) are recorded separately;
 [the implementation plan](LANGUAGE_EXTENSIONS_PLAN.md) is engineering history, not
-another language reference. [`sample-game/`](sample-game/README.md) is a small complete
-game written against the current manual.
+another language reference. [`sample-game/`](sample-game/README.md) is a complete storylet
+game; [`sample-vn/`](sample-vn/README.md) demonstrates linear scenes, stage state and
+mid-scene saves, with an optional [SDL3 player](docs/presentation.md).
 
 ---
 
@@ -45,9 +47,9 @@ This is the implementation **as it stands**. Several of these points are planned
 
 - **Relational and Narrative Runtime**: A finite Datalog engine (worlds, stratified negation, snapshot queries, aggregates), keyed state with transactions, and a narrative runtime (storylets, choices, actions, decks, templates, qualities, events, portable saves and replay) in `source/varis/logic/` and `source/varis/narrative/`.
 - **D Implementation**: Written in D for LDC. Existing code leans on Phobos; the project's style is now C-like D (return values, `@nogc nothrow` hot paths, plain structs), and the code is being moved to it by planned stages, not piecemeal.
-- **Value Representation**: `LuaValue` wraps `std.sumtype` today (24 bytes), with customized equality and hashing adhering to Lua 5.4 semantics (e.g. `1 == 1.0`, NaN handling, reference equality for objects). A 16-byte hand-written tagged union is planned.
+- **Value Representation**: `LuaValue` is a 16-byte tagged payload with allocation-free string slices and Lua equality/hashing (`1 == 1.0`, NaN handling, reference identity). The compatibility `match!` helper still converts to `std.sumtype`; removing those remaining uses is planned.
 - **One Garbage Collector**: All objects live on D's garbage collector (`core.memory.GC`), so host D code can hold tables, worlds and sessions as ordinary references. This is permanent.
-- **Errors**: Lua errors are D exceptions today (`class LuaException : Exception`), caught by `pcall` and `xpcall`. Errors as return values are planned, because unwinding is the largest single cost in the core (`pcall` round trips are 37× C Lua).
+- **Errors**: Lua errors remain `LuaException` objects, but the recursive executor propagates them between Lua frames by return and handles `error` without throwing. Natives, out-of-line helpers and some boundaries still throw. Complete status-returning error handling remains planned; the first step reduced caught-error cost from about 37× to about 1.3× C Lua in the recorded measurements.
 - **Fiber-Backed Coroutines**: Coroutines and Lua threads are backed by D's `core.thread.Fiber`, enabling yields across native boundaries. The declarative engine evaluates finite relations to a fixed point; guards cannot yield during inference.
 - **Typed AST Intermediate Representation**: Replaces Lua's single-pass intertwined parser/compiler with a modular pipeline (`Lexer -> AST -> Compiler -> VM`), making AST transforms and grammar modifications straightforward.
 - **Lua Pattern Engine**: Ports Lua's pattern matching engine to D, targeting compatibility with Lua string patterns (`%a`, `%b`, frontier patterns `%f[]`, and captures).
@@ -92,7 +94,7 @@ This is the implementation **as it stands**. Several of these points are planned
       v                         v                         v
 +-----------+            +-------------+           +--------------+
 | varis.types|            | varis.table  |           |  varis.fiber  |
-|  SumType  |            | Dual-Storage|           | D Lang Fiber |
+| Tagged value|            | Dual-Storage|           | D Lang Fiber |
 +-----------+            +-------------+           +--------------+
 ```
 
@@ -106,14 +108,17 @@ varis/
 ├── README.md                    # Project overview and quick start
 ├── AGENTS.md                    # Architecture guide and instructions for AI agents
 ├── ROADMAP.md                   # Direction, decision record, order of work, planned phases
-├── WORKBENCH_PLAN.md            # Proposal: web workbench (editor, command window, workspace, debugger)
-├── NARRATIVE_LOCALIZATION_PLAN.md # Proposal: localization pipeline
+├── WORKBENCH_PLAN.md            # Workbench implementation status and remaining design
+├── AUTHORING_TOOLS_PLAN.md      # Implemented A0–A6 and authoring workflow
+├── NARRATIVE_LOCALIZATION_PLAN.md # Implemented T1–T4 and remaining text presentation work
 ├── benchmarks/                  # Workloads, targets.toml, PERFORMANCE_PLAN.md (current plan), history
 ├── docs/                        # Varis language reference, libraries, grammar, examples
 ├── LANGUAGE_EXTENSIONS.md       # Redirect to the Varis reference
 ├── LANGUAGE_EXTENSIONS2.md      # Redirect to the Varis reference
 ├── LANGUAGE_EXTENSIONS_PLAN.md  # Engineering history: base, companion and Phase 8 milestones
-├── sample-game/                 # Saltmarsh Light sample game and proposed extensions
+├── sample-game/                 # Saltmarsh Light storylet game and proposed extensions
+├── sample-vn/                   # Harbour Window scene sample and SDL media manifest
+├── tools/sdl/                   # Optional native SDL3 scene player
 ├── LICENSE                      # MIT License (Lua 5.4 PUC-Rio + varis)
 ├── tests/datalog/acceptance/          # Base declarative extension acceptance tests
 │   ├── README.md                # Coverage and runner limitations
@@ -126,7 +131,7 @@ varis/
 ├── source/
 │   └── varis/
 │       ├── package.d            # Public API exports
-│       ├── types.d              # LuaValue sumtype, value helpers, raw equality
+│       ├── types.d              # 16-byte LuaValue, value helpers, raw equality
 │       ├── exception.d          # LuaException, error reporting
 │       ├── table.d              # Dual-storage LuaTable (array + hash)
 │       ├── state.d              # LuaState runtime, globals (_G), pcall
@@ -140,7 +145,9 @@ varis/
 │       ├── pattern.d            # Ported Lua pattern matching engine (Phase 4)
 │       ├── logic/               # Datalog model, worlds, validation, evaluation, queries
 │       ├── narrative/           # Registry, sessions, templates, persistence, analysis
-│       ├── lib/                 # Standard libraries, including logic
+│       ├── services/            # Checker, index, LSP, playtest, localization, scene host
+│       ├── workbench/           # Native HTTP server and browser UI
+│       ├── lib/                 # Standard libraries, including logic, narrative, quality
 │       └── cli.d                # Standalone varis CLI / REPL (Phase 5)
 └── tests/
     ├── unit/                    # D unit tests
@@ -213,6 +220,23 @@ make varis
 ./bin/varis -e 'print("Hello from varis!")'
 ```
 
+### Authoring and presentation tools
+
+From a project directory, use `varis check`, `varis play`, `varis test`,
+`varis lsp`, `varis l10n` and `varis serve`. The [interpreter guide](docs/compatibility.md#83--the-project-manifest-and-varis-check)
+documents the manifest, checks, language server and localization commands.
+The [workbench status](WORKBENCH_PLAN.md#1a-what-exists-today) lists debugger and editor limits.
+
+The graphical scene sample is optional:
+
+```sh
+make varis-sdl       # requires SDL3, SDL3_image, SDL3_ttf, SDL3_mixer and pkg-config
+bin/varis-sdl sample-vn/presentation.json
+make test-sdl       # headless rendering/integration checks
+```
+
+See [SDL3 presentation](docs/presentation.md) for dependencies and controls.
+
 ### Running Benchmarks
 
 ```bash
@@ -258,9 +282,8 @@ second is not yet):
    semi-naive, derived relations are cached, and storylets whose required fact is absent are
    skipped. Peak memory on that game is 53 MB (was 76–94 MB).
 2. **Lua core: never slower than C Lua 5.4, then faster.** Measured against stock C Lua 5.4.9
-   (`-O2`) in the same session, the core workloads are at 0.6–2.3× today (function calls and
-   string operations are the slowest; caught errors went from 37× to 1.3× and deep recursion from
-   8× to 2.7×).
+   (`-O2`) in the same session, the core workloads are at 0.62–2.67× in the October 12 run
+   (caught errors 1.22×, deep recursion 2.67×, function calls 2.28×).
    Every workload with a C Lua comparator has `goal.clua = 1.0` in `benchmarks/targets.toml`.
 
 Current per-workload ratios are in the generated [docs/STATUS.md](docs/STATUS.md).
@@ -284,7 +307,7 @@ no work is planned on the remaining differences, and deliberate divergences are 
 when recorded (see the policy in [ROADMAP.md](ROADMAP.md)). The record as it stands:
 
 - Conformance scope (owner decision): the official suite as a stock Lua 5.4 binary runs it (no internal `T` library), with `gc.lua` excluded; an ltests-style `T` for `api.lua`/`code.lua` is out of scope. The official Lua 5.4.9 suite runs clean: the October 9, 2026 release-build run reports **31 pass, 1 partial, 1 skipped, 0 fail, 0 timeout** across 33 files (240 seconds per file, C Lua as reference). `gc.lua` is the one skip, excluded by decision because exact collector reachability conflicts with keeping Varis objects directly accessible from D. The one partial is the suite driver `all.lua`, which the runner executes with `gc.lua` stubbed (it ends with `final OK !!!` and also pushes each file through `string.dump`/`load`). The suite's C test modules are compiled and loaded through the exported C API subset (`source/varis/capi.d`), and `files.lua` runs against an `sh` wrapper because macOS `sh` reports a signal for the nested-shell check where the suite expects an exit status. `api` and `code` pass because, as with stock C Lua, they return immediately when the internal `T` library is absent. See the [recorded results and remaining issues](tests/official/README.md); a file pass means the process exited successfully.
-- `python3 tools/suite test --suite official` fails on interpreter failures or timeouts. The runner captures both output streams without pipe deadlocks and retains exit codes and diagnostics. Weak tables and `__gc`/`__close` finalizers are emulated on D's conservative GC (`source/varis/gc.d`), so `collectgarbage` modes/step are bookkeeping-level rather than a Lua collector. Native stack use (~5 KB per Lua call frame) and slow deep-recursion unwinding (D exceptions through the platform unwinder) remain known performance issues.
+- `python3 tools/suite test --suite official` fails on interpreter failures or timeouts. The runner captures both output streams without pipe deadlocks and retains exit codes and diagnostics. Weak tables and `__gc`/`__close` finalizers are emulated on D's conservative GC (`source/varis/gc.d`), so `collectgarbage` modes/step are bookkeeping-level rather than a Lua collector. Native recursion and a separate executor beyond 150 nested Lua frames remain; return-based propagation reduces error unwinding, while some runtime paths still use D exceptions. Core parity remains unfinished.
 - Implemented conformance work includes luac-style compiler output (RK operands, condition jumps, line attribution, strip semantics), lvm.c-style loops and error messages with variable info, ports of lstrlib/ltablib/lmathlib/loslib/liolib/loadlib/lcorolib/lua.c, binary chunks (`string.dump`/`load`, private body behind a standard header), debug hooks/getinfo/locals/upvalues, coroutine close/wrap semantics, tracebacks and C-call depth limits. The explicit skips and partial exclusions above are the only recorded gaps.
 - `python3 tools/suite test --suite core` compares a deterministic core fixture against bundled C Lua. `make test` includes runner regression tests, while the official suite and differential target remain separate gates.
 - Preserve the base and companion requirement mappings, intended rejection
@@ -299,7 +322,7 @@ known unsupported cases remain visible rather than being counted as successes.
 
 ## Roadmap
 
-- [x] **Phase 1: Foundation**: Core values (`LuaValue` sumtype), dual-storage table (`LuaTable`), state management (`LuaState`), exceptions (`LuaException`), build system, and unit tests.
+- [x] **Phase 1: Foundation**: Core values (`LuaValue`), dual-storage table (`LuaTable`), state management (`LuaState`), exceptions (`LuaException`), build system, and unit tests.
 - [x] **Phase 2: Frontend**: Lexer, typed AST, and recursive descent parser.
 - [x] **Phase 3: VM & Execution**: Typed instruction set, AST-to-bytecode compiler, VM execution engine, upvalues/closures, and fiber coroutines.
 - [x] **Phase 4: Standard Libraries**: Base, math, string (with Lua pattern engine), table, coroutine, io, os, utf8, package, and debug libraries.
@@ -312,7 +335,12 @@ known unsupported cases remain visible rather than being counted as successes.
 - [ ] **Phase 11: Fast Runtime & Host Interface**: The sample game and a reference game as enforced checks, the seam between the Lua core and the world model, indexed semi-naive cached inference, the Lua core at parity with C Lua and then beyond, a documented D host API and a standard SDL3 presentation layer, builds for Windows, macOS and Linux (Android as a stretch).
 - [ ] **Phase 12: Ergonomics**: Undo and persistent data, localization tooling and a publisher handoff kit, Twine-class conveniences, writer documentation.
 
-Phases 9–12 are defined in [ROADMAP.md](ROADMAP.md) and are planned, not implemented.
+Phases 9–12 are partially implemented; see [ROADMAP.md](ROADMAP.md) for each milestone.
+Current additions include declarative scenes/characters and scene saves, static content-tier
+checks and manifest symbol declarations, authoring stages A0–A6, localization T1–T4,
+the workbench and its initial debugger, the world-model rewrite, and an optional SDL3 scene
+player. Syntax freeze, complete runtime tier enforcement, core parity, full presentation
+parity, undo, and cross-platform validation remain work to do.
 
 Phase 6 follows the milestones in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md):
 
@@ -328,9 +356,9 @@ Phase 6 follows the milestones in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSI
 | 7 | Guard captures, errors, and coroutine yield restrictions |
 | 8 | Acceptance tests, full conformance coverage, and documentation |
 
-The engine keeps logic variables separate from Lua values, uses raw equality for tuple sets, and initially recomputes derived results from base facts after mutations. Query snapshots capture relational state at construction, with evaluation deferred until the first iterator call. World defaults follow lexical closure capture, and rule guards capture ordinary Lua values by value at registration.
+The engine keeps logic variables separate from Lua values and uses raw equality for tuple sets. Shared immutable fact tables, indexed slot plans, semi-naive recursion and dependency-based derived caches implement inference; the original naive evaluator remains a test oracle. Query snapshots capture relational state at construction, with evaluation deferred until the first iterator call. World defaults follow lexical closure capture, and rule guards capture ordinary Lua values by value at registration.
 
-Compound terms, Prolog cuts/backtracking, aggregation, non-stratified negation, cross-world rule dependencies, and individual rule deletion are outside the base v0.1. Optional aggregates are implemented under the companion reference. Indexing, semi-naive evaluation, and structural sharing follow correctness and measurement.
+Compound terms, Prolog cuts/backtracking, aggregation, non-stratified negation, cross-world rule dependencies, and individual rule deletion are outside the base v0.1. Optional aggregates are implemented under the companion reference. Indexing, semi-naive evaluation, and structural sharing are implemented and checked against the naive oracle.
 
 ### Companion implementation status
 

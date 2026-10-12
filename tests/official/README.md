@@ -30,9 +30,11 @@ the nested-shell status check runs against an `sh` shim (see below).
 Run `python3 tools/suite test --suite official` (strict exit codes; 120 s default timeout, use `--timeout 240` for the
 slow all.lua driver) or, for a JSON report,
 `./bin/test_runner --strict --timeout 240 --reference c-implementation/src/lua --json /tmp/varis-official.json`.
-`python3 tools/suite test --suite core` compares the deterministic core fixture with C Lua. `make test`
-includes the runner's regression tests but not the official suite itself (`errors.lua` alone
-takes ~30 s, `all.lua` ~70 s).
+`python3 tools/suite test --suite core` compares the deterministic core fixture with C Lua.
+`make test` includes the official suite in the full tier, as well as runner self-tests.
+The October 12, 2026 release-tier run retained **31 pass / 1 partial / 1 skip / 0 fail**;
+[the generated project status](../../docs/STATUS.md) records current timings and counts.
+Historical runtimes above predate return-based error propagation.
 
 ## Runner statuses
 
@@ -86,7 +88,7 @@ $ bin/varis                 code.lua   >>> testC not active: skipping opcode tes
 
 Running them *with* `T` would not test Lua 5.4 language or library behaviour; it would test that
 Varis reproduces C Lua's bytecode listings (Varis uses its own typed instruction set by design,
-AGENTS.md section 2.7) and a complete C API with its yield/error continuation semantics (Varis
+AGENTS.md §4.8) and a complete C API with its yield/error continuation semantics (Varis
 exposes a D API instead; the C API subset in `capi.d` exists to load simple C modules). That
 would be a different project (an ltests-compatible C Lua clone), so it is documented as out of
 scope rather than as a conformance failure.

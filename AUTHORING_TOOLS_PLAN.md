@@ -1,8 +1,11 @@
 # Authoring tools plan: project model, checker, language services, writer workflow
 
-Status: **proposed**, October 12, 2026; stage A0 implemented the same day (see §4). It details milestones 30, 31, 32 and 33 of
-[ROADMAP.md](ROADMAP.md) Phase 10. Section 2 says what exists; everything else is a plan. Command
-names, file names and formats below are proposals. Language behaviour is defined only by the
+Status: **A0–A6 implemented**, audited October 12, 2026. This records the design and
+implementation of milestones 30–33 of [ROADMAP.md](ROADMAP.md). Section 2 describes
+what exists now; the stage table records the original deliverables and exit tests.
+Static content-tier enforcement, manifest symbol declarations and literal scene/character
+indexing have also landed. Compiler/runtime file-tier enforcement, a formatter and the
+complete workbench UI remain unfinished. Language semantics are defined by the
 [manual](docs/README.md).
 
 Neighbouring documents:
@@ -21,25 +24,28 @@ mistake in words that name their storylet and line, playtest it, and hand it in.
 able to check a contractor's submission mechanically. A translator's tools (the localization plan)
 must be able to find every piece of display text without running the game.
 
-All three need the same thing: **a description of the project read from its source files, without
-executing them**. Today each tool improvises its own (§2). The plan is to build that description
-once and put every tool on it.
+All three use **a description of the project read from its source files, without
+executing them**: the shared project index in `services/index.d`. The workbench's
+workspace and command completion still inspect live state; static diagnostics and
+source completion, navigation, hover and rename use the frontend/index, including unsaved drafts.
 
 ## 2. What exists today
 
 | Piece | Today | Where |
 | --- | --- | --- |
-| `varis check [--json] [files]` | Compiles each file. Reports the **first** error of a file, with a line but no column or range. One lint: a symbol written exactly once in the project. JSON fields: `file`, `line`, `severity`, `code`, `message`. | `source/varis/workbench/check.d` |
-| Symbol lint | Scans lexer tokens; does not use the AST. | same |
-| Go to definition | Scans source **lines** for `storylet NAME`, `relation NAME`, `quality.define(:NAME` and similar prefixes. | `definitionsJson` in `workbench/server.d` |
-| Completion | Reads the **live state**, so it knows only what has been loaded and run. | `W.complete` in `workbench/server.d` |
-| Parser | Stops at the first error by throwing `LuaException`. | `parser.d` |
-| Source positions | `SourceLoc` has a start line and column. Few nodes record where they end. | `ast.d` |
-| Narrative definitions in the AST | `NarrativeDefinitionStmt` keeps the kind, name, parameters, goals, field names with their value expressions (so `title` and `text` literals are visible), choices and the effect block. | `ast.d` |
-| Templates | Parsed when content is registered, by throwing code that keeps no positions inside the string. | `narrative/templates.d` |
-| Registered content | `ContentDefinition` has no source file or line, so a load-time validation error cannot point at source. | `narrative/registry.d` |
-| What a project is | Nothing declares it. `varis serve` takes a directory; `varis check` takes every `.lua` file under the current directory; *Saltmarsh Light* is loaded by `game.lua` through `require`. | |
-| Playtest and author tests | Hand-written per game: `sample-game/main.lua` and `sample-game/tools/check.lua`. | |
+| Project model | Literal `project.lua` manifest; indexed declarations, references, messages and source ranges; scene and character records included. | `services/manifest.d`, `index.d` |
+| `varis check` | Recovering parse, compile/static checks, content-tier and optional strict-symbol checks; load pass by default for a manifest entry; optional bounded analysis and locale checks. `--no-load`, `--index`, `--symbols`, `--json` are available. | `services/check.d`, `checks.d`, `tier.d`, `loadpass.d` |
+| Diagnostics | Stable codes, severity and source ranges, with subjects/suggestions where known. Loading code still stops at the first error. | `services/diagnostic.d`, `parser.d`, `ast.d` |
+| Language services | Static diagnostics, completion, definition, references, hover, outline and rename; `varis lsp` exposes them over standard input/output. | `services/lang.d`, `lsp.d`, `editors/` |
+| Workbench integration | Project-wide static/compile diagnostics, indexed source completion/definitions, hover and rename preview over unsaved drafts; vendored CodeMirror with inline diagnostics and breakpoint gutters, retained buffers/undo, resizable panels and persistent command history. Command completion reads live state. | `workbench/server.d`, `page.d` |
+| Load-time definition locations | Registry errors carry definition kind/id; the checker resolves the source location through the index, without adding location data to content identity. | `narrative/registry.d`, `services/loadpass.d` |
+| Localization | Source catalogs, CSV/JSON/XLIFF kits, review, packs, language selection and translation editing. Scene line extraction/rendering is partial; see the localization plan. | `services/{catalog,xliff,l10n}.d`, `narrative/translation.d` |
+| Playtest and author tests | `varis play`, `varis test`, `require("varis.test")`, CI script; sample author checks use this library. | `services/play.d`, `tools/project_ci.sh`, `sample-game/tests/` |
+
+These tools understand literal declarations; dynamically constructed definitions cannot all be
+resolved statically. Content-tier checking is a tool policy, not a runtime sandbox. Template
+parsing still uses legacy throwing code; the index separately scans templates and maps
+references to source ranges. A unified runtime template diagnostic interface remains work.
 
 ## 3. Design
 
@@ -60,13 +66,13 @@ once and put every tool on it.
 5. **Nothing here enters fingerprints or saves.** Source locations added to registered content are
    kept out of `contentFingerprint`.
 6. **Layer and style.** All of this is the tools layer (AGENTS §4.1) and new code, so it follows
-   AGENTS §3: return values, no `throw`, explicit loops, little Phobos. Proposed home:
-   `source/varis/services/`, added to the tools layer in `tools/check_sources.py` and to the
-   Makefile list. `workbench/check.d` moves there in its own commit.
+   AGENTS §3: return values, no `throw`, explicit loops, little Phobos. Implemented home:
+   `source/varis/services/`, included in the tools layer in `tools/check_sources.py` and the
+   Makefile list. The former `workbench/check.d` has moved there.
 
 ### 3.2 The project manifest
 
-One file at the project root says what the project is. Proposed name `project.lua`; it is a single
+One file at the project root says what the project is. Implemented name `project.lua`; it is a single
 table of literals and is **read with the Varis parser, never executed**, so it needs no new parser
 and cannot do anything.
 
@@ -85,7 +91,7 @@ return {
 - Without a manifest every tool behaves as it does today.
 - File lists are patterns, so the tools do not depend on the `.lua` extension (ROADMAP open
   decision 2).
-- `content` only records the author's intent until milestone 26 enforces the tier.
+- `content` enables static tier checking in `check` and LSP; compiler/runtime enforcement remains milestone 26 work.
 - This is not the mod packaging design (ROADMAP open decision 5). It reserves only an id and a
   source language, which is what the localization plan already reserved.
 
@@ -128,7 +134,7 @@ changes to what compiles.
 
 | Pass | Runs project code | Finds |
 | --- | --- | --- |
-| **Static** (always) | No | Everything derivable from the index: §4 stage A3. |
+| **Static** (always) | No | Checks implemented over the index: §4 stage A3; computed/dynamic cases remain limited. |
 | **Load** (default when the manifest has an `entry`; `--no-load` skips it) | Yes: the entry module, in a fresh state, up to `narrative.seal`. No session is created. | The validation the engine already performs when content is registered and rules are published (arity, variable safety, stratification, ungrounded parameters, unknown decks and placeholders), now reported with the source location of the definition. |
 | **Analysis** (`--analyze`, off by default) | Yes: creates a session through the manifest's `session` function, in isolation | Storylets that bounded exploration never reaches, through `narrative.analyze`, which reports its own bounds and incompleteness. |
 
@@ -148,7 +154,7 @@ Stage letters are `A` (authoring tools). Do them in this order. Each stage passe
 | A3 (done) | 30, 31 | **Static checks with writer-facing messages.** See the list below. | A1, A2 | One fixture per code, each with the expected record. The sample game reports nothing new except findings reviewed and recorded in the change. |
 | A4 (done) | 30 | **Load and analysis passes** (§3.5). `ContentDefinition` gains a source location that is kept out of fingerprints. | A1 | A project with an unstratifiable rule and one with an ungrounded parameter each get a diagnostic on the right line. The sample game's golden save is byte-identical. |
 | A5 (done) | 32 | **Language services.** One D library over the index: diagnostics on change, completion, definition, references, hover (a relation's columns and keys, a quality's bounds, a storylet's deck and conditions), document outline, rename returning a set of edits. The workbench calls it in process; `varis lsp` exposes it on standard input and output; one syntax-highlighting grammar serves the workbench editor and external editors. | A1–A3 | Protocol tests without a browser or editor: scripted requests, golden responses. Renaming a relation in the sample game and running its check passes. Re-indexing one edited file and re-running the static checks is measured on the reference-scale game and given a budget then. |
-| A6 (done) | 33 | **Writer workflow.** `varis play` (text playtest: seed, save and load of the replay log, "why" for a missing storylet), `varis test` (author tests), a CI recipe, optionally a formatter. | A4; `session:choose_by` from milestone 28 | The sample game's `tools/check.lua` is rewritten as author tests and passes. The CI recipe rejects a seeded bad submission with a diagnostic naming the storylet. |
+| A6 (done) | 33 | **Writer workflow.** `varis play` (text playtest: seed, save and load of the replay log, "why" for a missing storylet), `varis test` (author tests), a CI recipe, optionally a formatter. | A4; wrapper resolves choice ids from presentations | The sample game's `tools/check.lua` is rewritten as author tests and passes. The CI recipe rejects a seeded bad submission with a diagnostic naming the storylet. |
 
 Implementation note for A4: the source location of a rejected definition is found by looking its
 kind and id up in the project index, not by storing a location in `ContentDefinition`. That keeps
@@ -157,11 +163,12 @@ kind and id up in the project index, not by storing a location in `ContentDefini
 
 ### Static checks of stage A3
 
-Each is a code, a fixture and a message. Add them one per change if convenient.
+Each check has a stable code, fixtures and messages. The table records the implemented
+checks and remaining strictness proposals.
 
-| Code (proposed) | Finds | Severity |
+| Code (implemented) | Finds | Severity |
 | --- | --- | --- |
-| `duplicate-id` | Two storylets, actions or decks with one name; two choices with one name in a storylet. | error |
+| `duplicate-id` | Two storylets, actions, decks, scenes or characters with one name; two choices with one name in a storylet. | error |
 | `unknown-deck` | `deck :x` where no deck `x` is declared. | error |
 | `unknown-placeholder` | `{name}` in a title or text that is not a parameter of the definition. | error |
 | `relation-arity` | One relation name used with two arities in the same world scope. | error |
@@ -170,6 +177,7 @@ Each is a code, a fixture and a message. Add them one per change if convenient.
 | `symbol-once` | Exists today. Gains the nearest known symbol as a suggestion. | warning |
 | `computed-text` | A `title`, `text` or label that is not a string literal (it cannot be extracted for translation). | warning now; error in content files once milestone 26 lands |
 | `tier` | A content file using something outside the content tier (**done**, default list of ROADMAP decision 1; static only). | error |
+| `unknown-scene`, `unknown-character`, `unknown-character-attribute` | Unresolved literal scene targets, characters or allowed attribute values. | error |
 | `undeclared-symbol` | Replaces `symbol-once` when the manifest declares `symbols` (**done** in its smallest reversible form: a manifest list, no new syntax). | error |
 
 Rule for all of them: when a check cannot be sure (a relation created by a computed name, a deck
@@ -179,10 +187,10 @@ ignore the checker.
 ### What does and does not wait for the syntax freeze
 
 A0, A1, A2, A4, A5 and `varis play` need no owner decision on syntax. Scenes, characters, declared
-symbols and the content tier each add rows to the index and checks to A3 when their milestone
-lands; the tables of §3.3 are meant to take new kinds without redesign.
+symbols and the content tier have initial index/check support. Further syntax can extend
+the tables of §3.3 without redesign; a complete syntax freeze remains pending.
 
-## 5. Author tests (proposal for stage A6)
+## 5. Author tests (implemented stage A6)
 
 `sample-game/tools/check.lua` was a scripted playthrough with assertions, written against session
 internals. The general form is an engine-tier script using a small library, so that a writer can
@@ -198,7 +206,8 @@ t:expect_hidden "topic_lamp"
 
 `varis test` runs every file under the manifest's test pattern, each in a fresh state, and reports
 failures as diagnostics on the failing line. A failing test can print `narrative.explain` for the
-storylet it expected. This needs `session:choose_by` (`needed_extensions.md` §1.9).
+storylet it expected. The author-test wrapper resolves exact choices from a presentation; a public runtime
+`session:choose_by` remains proposed (`needed_extensions.md` §1.9).
 
 ## 6. Combined order with the localization plan
 
@@ -228,4 +237,4 @@ Use the default until decided, and say so in the change.
 | Whether `varis check` runs the load pass by default | Yes when the manifest names an entry | The engine's own validation is the most valuable set of diagnostics. |
 | Author-test form | A Lua script using a `test` library (§5) | Writers copy examples; programmers get the full language. A purely declarative transcript format is the alternative. |
 | Formatter | Deferred | Not needed for the exit of Phase 10. |
-| Diagnostic codes | Short words (`unknown-deck`) | Matches the two codes that exist; readable in a problems list. |
+| Diagnostic codes | Short words (`unknown-deck`) | Matches the implemented code vocabulary; readable in a problems list. |

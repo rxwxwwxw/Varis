@@ -15,6 +15,13 @@
 > `history/2026-10-09-perf/`, where the raw results now live; other mentions of `results/` in the
 > text refer to the same directory.
 
+Current-state note (October 12, 2026): this remains the Phase 8 measurement history.
+The 16-byte value, return-based Lua-frame errors, shared opcode handlers, indexed
+world model and later call/cache changes are recorded in [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md).
+Use [the generated status](../docs/STATUS.md) for current ratios; historical
+37× caught-error and 8× deep-recursion ratios below are not current results.
+
+
 # Performance work — October 9, 2026
 
 ## Stage 2 (target ≈ 2× C Lua)

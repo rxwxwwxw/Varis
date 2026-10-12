@@ -1,9 +1,9 @@
 # Lua 5.4 declarative extension — untyped conformance examples
 
 This package contains **15 self-contained Lua programs** targeting the untyped
-`fact` / `rule` / `query` extension described in the proposed v0.1 language
-reference. The syntax is **not valid in stock Lua 5.4**; execute it with your
-D-based extended Lua interpreter once the respective features are implemented.
+`fact` / `rule` / `query` facilities in the current [Varis relational reference](../../../docs/relations.md).
+The syntax is **not valid in stock Lua 5.4**; these implemented examples run with
+`bin/varis` and are included in `make test`.
 
 ## Running
 

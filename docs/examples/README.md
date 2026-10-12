@@ -19,7 +19,11 @@ bin/varis docs/examples/narrative.lua
   effects, sticky display order, optional choice titles, quality constraints, event
   turns, consumed tokens, canonical save/load.
 
-Each prints its filename category followed by `: ok` only after its assertions
+The separate [Harbour Window scene sample](../../sample-vn/README.md) demonstrates
+characters, stage state, input, scene calls and mid-scene saves. Its optional
+[SDL3 player](../presentation.md) adds graphical presentation.
+
+Each reference example above prints its filename category followed by `: ok` only after its assertions
 pass. All examples use the current `bin/varis` command and `.lua` suffix; their
 language is Varis. Smaller fragments in the manual can depend on the surrounding
 schema/context and are not advertised as standalone programs.

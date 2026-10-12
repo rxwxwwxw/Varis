@@ -11,6 +11,8 @@ import pathlib
 import re
 import subprocess
 import sys
+import tempfile
+import shutil
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -20,7 +22,10 @@ ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 def main():
     binary = str(pathlib.Path(sys.argv[1]).resolve())
-    server = subprocess.Popen([binary, "serve", "--port", "0", str(ROOT / "sample-game")], stdout=subprocess.PIPE, text=True)
+    scratch = tempfile.TemporaryDirectory(prefix="varis-workbench-")
+    project_root = pathlib.Path(scratch.name) / "game"
+    shutil.copytree(ROOT / "sample-game", project_root)
+    server = subprocess.Popen([binary, "serve", "--port", "0", str(project_root)], stdout=subprocess.PIPE, text=True)
     try:
         line = server.stdout.readline()
         match = re.search(r"(http://127\.0\.0\.1:\d+)/\?token=([0-9a-f]+)", line)
@@ -55,6 +60,42 @@ def main():
         names = [v["name"] for v in call("/api/workspace")["variables"]]
         assert names == ["x"], names
 
+        # Editor services work before loading the game and include unsaved files.
+        lamp = (ROOT / "sample-game/content/lamp.lua").read_text()
+
+        def editor(operation, text=lamp, needle="at(:player, :lamp_room)", offset=0, **extra):
+            at = text.index(needle) + offset
+            before = text[:at]
+            payload = dict(path="content/lamp.lua", text=text, line=before.count("\n") + 1,
+                           column=len(before.rsplit("\n", 1)[-1].encode()) + 1, **extra)
+            return call("/api/editor/" + operation, body=json.dumps(payload))
+
+        assert "relation at(entity, room) key(entity)" in editor("hover")["text"]
+        assert editor("definition")["definitions"][0]["file"] == "world.lua"
+        draft = lamp + "\nwhen { new_"
+        completion = editor("complete", draft, "new_", 4,
+                            buffers={"draft.lua": "relation new_relation(x)\n"})
+        assert "new_relation" in [i["label"] for i in completion["items"]], completion
+        rename = editor("rename", needle="carries(:player, :matches)", newName="holds")
+        assert rename["ok"] and {"world.lua", "content/lamp.lua", "content/explore.lua"} <= {e["file"] for e in rename["edits"]}, rename
+        assert not editor("rename", needle="carries(:player, :matches)", newName="at")["ok"]
+        catalog = '\n{"key":"lamp.light.title","owner":"choice lamp.light"}\n'
+        choice_rename = editor("rename", needle="choice light", offset=8, newName="ignite",
+                               buffers={"l10n/source.json": catalog})
+        assert choice_rename["ok"]
+        catalog_edits = [e for e in choice_rename["edits"] if e["file"] == "l10n/source.json"]
+        assert len(catalog_edits) == 2 and all(e["range"]["line"] == 2 for e in catalog_edits), choice_rename
+        assert not any(d["file"].endswith(".json") for d in editor("check", buffers={"l10n/source.json": catalog})["diagnostics"])
+        # Rename only describes edits; neither disk nor the runtime changes.
+        assert call("/api/file", {"path": "content/lamp.lua"}, raw=True) == lamp
+        assert call("/api/workspace")["variables"] == [{"name": "x", "preview": "41", "type": "number", "world": False, "table": False, "session": False}]
+        unicode_draft = lamp.replace("at(:player, :lamp_room)", 'at(:player, :lamp_room)', 1)
+        unicode_draft += '\nlocal caption = "日本語 🐈"; local rows = query at(?who, ?where)\n'
+        assert editor("hover", unicode_draft, "at(?who")["text"].startswith("relation at(")
+        report = editor("check", buffers={"broken.lua": "local x = "})
+        assert any(d["file"] == "broken.lua" and d["code"] == "syntax" for d in report["diagnostics"]), report
+        assert call("/api/editor/hover", body=json.dumps({"path": "../README.md"}))["error"] == "bad path"
+
         # Load the sample game, register a session, browse its world.
         loaded = call("/api/eval", body='G = require("game"); s = story(G.new_session(42)); w = s:world()')
         assert loaded["ok"], loaded
@@ -64,6 +105,25 @@ def main():
         assert "at" in relations and relations["at"]["arity"] == 2
         facts = call("/api/facts", {"world": "w", "name": "at", "start": 0, "count": 5})
         assert facts["total"] >= 1 and len(facts["rows"][0]) == 2
+
+        # Derived relation browsing uses snapshot queries and leaves saved state unchanged.
+        before_inspection = call("/api/eval", body="s:save()")["output"]
+        derived = call("/api/facts", {"world": "w", "name": "open_exit", "derived": "true"})
+        assert derived["total"] > 0 and len(derived["rows"][0]) == 2, derived
+        assert call("/api/facts", {"world": "w", "name": "open_exit"})["total"] == 0
+        assert call("/api/eval", body="s:save()")["output"] == before_inspection
+        summary = call("/api/session")
+        assert summary["turn"] == 0 and summary["deck"] == "default" and summary["periods"], summary
+        # Raw table browsing is paged and never invokes user-defined metamethods.
+        assert call("/api/eval", body='inspect_table = setmetatable({child={value=7}, answer=42}, '
+                    '{__pairs=function() error("pairs ran") end, __tostring=function() error("tostring ran") end})')["ok"]
+        table_page = call("/api/table", {"name": "inspect_table", "count": 1})
+        assert table_page["total"] == 2 and len(table_page["rows"]) == 1, table_page
+        rows = call("/api/table", {"name": "inspect_table"})["rows"]
+        child = next(r for r in rows if r["key"] == "child")
+        assert call("/api/table", {"ref": child["ref"]})["rows"][0]["preview"] == "7"
+        assert call("/api/workspace")["variables"]
+        assert call("/api/table", {"ref": 999999})["error"]
 
         # Story panel: present, then choose the first choice; the turn advances.
         first = call("/api/present")
@@ -89,8 +149,9 @@ def main():
         sel = call("/api/branches", {"lang": "fr"}, body="{#select k}{#case m}Il{#case f}Elle{#default}Iel{/select}")
         assert [r["text"] for r in sel["previews"][0]["rows"]] == ["Il", "Elle", "Iel"], sel
         assert call("/api/branches", {"lang": "fr"}, body="{#if broken")["error"]
-        # The page highlights the editor's text.
-        assert 'id="hl"' in page and "function highlight" in page
+        # The editor bundle is embedded: no CDN or separate installation is required.
+        assert "VarisEditor" in page and "cm-breakpoints" in page
+        assert 'id="edwrap"' in page and 'id="source"' not in page
 
         # Story-level debugging: what the turn changed, the storylet list, and "why".
         changes = call("/api/changes")["changes"]
@@ -101,15 +162,33 @@ def main():
         assert "lamp" in ids and "walk" in ids, ids
         why = call("/api/why", {"id": "lamp"})
         assert why["id"] == "lamp" and why["eligible"] is False and why["goals"], why
-        assert call("/api/why", {"id": "walk"})["eligible"] is True
+        walk_why = call("/api/why", {"id": "walk"})
+        assert walk_why["eligible"] is True
+        assert all(i["choices"][0]["id"] == ":go" and i["choices"][0]["eligible"] for i in walk_why["instances"]), walk_why
+        before_tools = call("/api/eval", body="s:save()")["output"]
+        bounded = call("/api/analyze", {"depth": 0, "max_nodes": 1}, body="")
+        assert bounded["scope"] == "seeded_presentation_tree_without_external_inputs", bounded
+        assert bounded["nodes"] == 1 and bounded["complete"] is False and bounded["frontier"], bounded
+        assert bounded["frontier"][0]["reason"] == "depth_limit", bounded
+        assert ":walk" not in bounded["reached_content"] and "walk" in bounded["reached_content"], bounded
+        assert all(row["status"] == "not_reached_within_scope" for row in bounded["unreachable_content"])
+        assert call("/api/eval", body="s:save()")["output"] == before_tools
+        for params in ({"depth": -1}, {"depth": 33}, {"max_nodes": 0}, {"max_nodes": 10001},
+                       {"max_steps": 0}, {"max_objects": 0}, {"depth": "1.5"}, {"max_nodes": "x"}):
+            assert call("/api/analyze", params, body="")["error"], params
 
         # Source-level debugging: a breakpoint stops the evaluation with its frames alive.
         program = "local a = 1\nlocal b = a + 1\nc = a + b\nprint(c)\n"
         assert call("/api/breakpoints", body="command:3")["breakpoints"] == [{"file": "command", "line": 3}]
         stop = call("/api/eval", body=program)
         assert stop == {"stopped": True, "file": "command", "line": 3}, stop
+        assert "resume" in call("/api/analyze", body="")["error"]
         local_values = {v["name"]: v["value"] for v in call("/api/locals")["locals"]}
         assert local_values == {"a": "1", "b": "2"}, local_values
+        assert call("/api/inspect", body="a + b")["output"] == "3\n"
+        assert not call("/api/inspect", body="a = 9")["ok"]
+        assert not call("/api/inspect", body="error('must not run')")["ok"]
+        assert call("/api/inspect", body="a")["output"] == "1\n"
         frames = call("/api/stack")
         assert frames["stopped"] and frames["frames"][0]["line"] == 3, frames
         # Evaluating while stopped works and does not disturb the stopped program.
@@ -122,6 +201,78 @@ def main():
         assert call("/api/breakpoints", body="")["breakpoints"] == []
         assert call("/api/eval", body=program)["output"] == "3\n"
         assert call("/api/continue", body="")["error"] == "not stopped"
+
+        # Select outer frames; reads resolve locals before captured values and globals.
+        nested = ('local outside = 17\nlocal function child()\n'
+                  '  local inside = 23\n  return outside + inside\nend\nprint(child())\n')
+        call("/api/breakpoints", body="command:4")
+        assert call("/api/eval", body=nested)["stopped"]
+        nested_frames = call("/api/stack")["frames"]
+        assert len(nested_frames) >= 2
+        assert call("/api/inspect", {"frame": nested_frames[0]["frame"]}, body="inside + outside")["output"] == "40\n"
+        assert call("/api/inspect", {"frame": nested_frames[1]["frame"]}, body="outside")["output"] == "17\n"
+        assert call("/api/inspect", {"frame": 99999}, body="outside")["error"]
+        assert call("/api/continue", body="")["output"] == "40\n"
+        # Raw table inspection never invokes __index, __add or __tostring.
+        dangerous = ('trap = setmetatable({}, {__index=function() error("index ran") end, '
+                     '__add=function() error("add ran") end, __tostring=function() error("tostring ran") end})\n'
+                     'local held = trap\nprint("done")\n')
+        call("/api/breakpoints", body="command:3")
+        assert call("/api/eval", body=dangerous)["stopped"]
+        assert call("/api/inspect", body="held.missing")["output"] == "nil\n"
+        assert not call("/api/inspect", body="held + 1")["ok"]
+        assert call("/api/inspect", body="held")["ok"]
+        assert call("/api/continue", body="")["output"] == "done\n"
+
+        # Story-panel choices stop inside effects, exposing tentative writes. Continuing
+        # produces the same world as a fresh playtest without a debugger.
+        assert call("/api/breakpoints", body="")["breakpoints"] == []
+        initial = call("/api/start", {"seed": 42}, body="")
+        assert initial["session"] and initial["turn"] == 0, initial
+        walk = next(i + 1 for i, st in enumerate(initial["storylets"]) if st["id"] == ":walk")
+        effect = (project_root / "content/explore.lua").read_text().splitlines()
+        effect_line = next(i + 1 for i, line in enumerate(effect) if "narrative.emit(:moved" in line)
+        call("/api/breakpoints", body=f"content/explore.lua:{effect_line}")
+        stop = call("/api/choose", {"s": walk, "c": 1}, body="")
+        assert stop == {"stopped": True, "file": "content/explore.lua", "line": effect_line}, stop
+        frames = call("/api/stack")["frames"]
+        assert frames and call("/api/locals", {"frame": frames[0]["frame"]})["locals"]
+        # Inspection sees the effect's tentative relocation before commit.
+        during = call("/api/facts", {"world": "w", "name": "at"})
+        player = next(row for row in during["rows"] if row[0] == ":player")
+        assert player[1] != ":cottage", during
+        assert "resume" in call("/api/present")["error"]
+        assert "resume" in call("/api/reload", body="")["error"]
+        continued = call("/api/continue", body="")
+        assert continued["session"] and continued["turn"] == 1, continued
+        call("/api/breakpoints", body="")
+        save_with_debug = call("/api/eval", body="s:save()")["output"]
+        history = call("/api/history")
+        assert history["replayable"] and history["seed"] == 42
+        assert [c["kind"] for c in history["commands"]] == ["present", "choose", "present"], history
+        # Reload reconstructs and replays by stable instance keys, preserving RNG and saves.
+        reloaded = call("/api/reload", body="")
+        assert reloaded["turn"] == 1 and reloaded["storylets"] == continued["storylets"], reloaded
+        saved_again = call("/api/eval", body="s:save()")["output"]
+        assert saved_again == save_with_debug, [(k, json.loads(save_with_debug).get(k), json.loads(saved_again).get(k))
+                                              for k in json.loads(save_with_debug) if json.loads(save_with_debug).get(k) != json.loads(saved_again).get(k)]
+        rewind = call("/api/rewind", {"turn": 0}, body="")
+        assert rewind["turn"] == 0 and rewind["storylets"] == initial["storylets"], rewind
+        plain = call("/api/choose", {"s": walk, "c": 1}, body="")
+        assert plain["storylets"] == continued["storylets"]
+        saved_again = call("/api/eval", body="s:save()")["output"]
+        assert saved_again == save_with_debug, [(k, json.loads(save_with_debug).get(k), json.loads(saved_again).get(k))
+                                              for k in json.loads(save_with_debug) if json.loads(save_with_debug).get(k) != json.loads(saved_again).get(k)]
+        # A failed reload keeps the current session usable.
+        source = project_root / "content/explore.lua"
+        original = source.read_text()
+        source.write_text("local = broken")
+        assert call("/api/reload", body="")["error"]
+        assert call("/api/eval", body="s:turn()")["output"] == "1\n"
+        source.write_text(original)
+        assert call("/api/rewind", {"turn": -1}, body="")["error"]
+        # Restore globals used by the existing completion assertions after fresh-state reload.
+        assert call("/api/eval", body='G = require("game")')["ok"]
 
         # Completion: globals and keywords, table fields, and symbols (storylets and relations).
         def names(text):
@@ -157,9 +308,152 @@ def main():
             raise AssertionError("path outside the project was served")
         except urllib.error.HTTPError as error:
             assert error.code == 400
+
+        # A fresh manifest-backed scene project exercises the same beat protocol as SceneHost.
+        (project_root / "project.lua").write_text('return {id="scenes", entry="scene_game", session="scene_game.new_session", language="en", scripts={"scene_game.lua"}}')
+        (project_root / "scene_game.lua").write_text("""
+character mira {name="Mira", attributes={expression={:quiet,:smile}}, defaults={expression=:quiet}}
+scene finish {{kind=:say, character=:mira, attributes={expression=:smile}, id="finish.hello", text="Hello {visitor}."},
+              {kind=:hide, character=:mira}, {kind=:ended}}
+scene start {
+ {kind=:background,tag=:harbour},
+ {kind=:show,character=:mira,slot=:left},
+ {kind=:input,["local"]="visitor",text="Name?"},
+ {kind=:menu,choices={{id=:yes,text="Continue",target=:finish}}}
+}
+relation open()
+relation shut()
+storylet hub()
+ when { open() }
+ title "Scene entrance"
+ choice enter title "Enter" effect do narrative.play(:start) end end
+ choice locked when { shut() } title "Locked" effect do end end
+end
+narrative.seal("workbench-scenes")
+return {new_session=function(seed)
+ local w = logic.emptyworld()
+ logic (w) do
+  relation open()
+  relation shut()
+  fact open()
+ end
+ local s = narrative.new(w)
+ s:seed(seed)
+ return s
+end}
+""")
+        start_scene_project = call("/api/start", {"seed": 19}, body="")
+        assert start_scene_project["session"]
+        hub_why = call("/api/why", {"id": "hub"})
+        choice_traces = {c["id"]: c for c in hub_why["instances"][0]["choices"]}
+        assert choice_traces[":enter"]["eligible"] is True and choice_traces[":locked"]["eligible"] is False, choice_traces
+        assert choice_traces[":locked"]["goals"][0]["outcome"] == "failure", choice_traces
+        assert call("/api/content")["scenes"] == ["finish", "start"]
+        scene = call("/api/choose", {"s": 1, "c": 1}, body="")["sceneView"]
+        assert scene["scene"] == "start" and scene["beats"][0]["kind"] == "background", scene
+        assert scene["stage"]["background"] == "harbour" and scene["token"] is None
+        scene_saved = call("/api/eval", body="s:save()")["output"]
+        assert call("/api/present")["sceneView"] == scene
+        assert call("/api/eval", body="s:save()")["output"] == scene_saved
+        assert call("/api/advance", body='"invalid on background"')["error"]
+        assert call("/api/eval", body="s:save()")["output"] == scene_saved
+        scene = call("/api/advance", body="")["sceneView"]
+        assert scene["beats"][0]["kind"] == "show" and scene["stage"]["characters"]["mira"]["slot"] == "left", scene
+        scene = call("/api/advance", body="")["sceneView"]
+        assert scene["beats"][0]["kind"] == "input"
+        for invalid in ('[]', '{"wrong":"shape"}', 'not JSON', '01', '1e', '1.2.3', '1e999', '--1'):
+            assert call("/api/advance", body=invalid).get("error"), f"accepted invalid input {invalid!r}"
+        scene = call("/api/advance", body=json.dumps("日本語 🐈"))["sceneView"]
+        assert scene["beats"][0]["kind"] == "menu" and scene["locals"]["visitor"] == "日本語 🐈"
+        menu_save = call("/api/eval", body="s:save()")["output"]
+        assert call("/api/advance", {"choice": 2}, body="")["error"]
+        assert call("/api/eval", body="s:save()")["output"] == menu_save
+        scene = call("/api/advance", {"choice": 1}, body="")["sceneView"]
+        assert scene["beats"][0]["text"] == "Hello 日本語 🐈." and scene["beats"][0]["speaker"]["name"] == "Mira", scene
+        assert scene["stage"]["characters"]["mira"]["attributes"]["expression"] == "smile"
+        saved_scene = call("/api/eval", body="s:save()")["output"]
+        translated_response = call("/api/language", {"lang": "x-pseudo"}, body="")
+        assert "sceneView" in translated_response, translated_response
+        translated = translated_response["sceneView"]
+        assert translated["beats"][0]["text"] != scene["beats"][0]["text"]
+        assert call("/api/eval", body="s:save()")["output"] == saved_scene
+        assert call("/api/messages")["messages"][0]["key"] == "scene.finish.hello.text"
+        assert call("/api/reload", body="")["sceneView"] == translated
+        assert call("/api/eval", body="s:save()")["output"] == saved_scene
+        assert call("/api/language", {"lang": ""}, body="")["sceneView"] == scene
+        history = call("/api/history")["commands"]
+        before_input = next(i + 1 for i, row in enumerate(history)
+                            if row["kind"] == "present" and i > 0 and history[i-1].get("beat") == 2)
+        rewind_scene = call("/api/rewind", {"command": before_input}, body="")["sceneView"]
+        assert rewind_scene["beats"][0]["kind"] == "input" and rewind_scene["locals"] == {}
+        # Portable scalar inputs retain exact integers and symbols during reconstruction.
+        for scalar in (" 9223372036854775807 ", '{"symbol":"guest"}', "false", "1.5", "null"):
+            assert call("/api/play", {"id": "start"}, body="")["sceneView"]
+            call("/api/advance", body="")
+            call("/api/advance", body="")
+            assert call("/api/advance", body=scalar)["sceneView"]["beats"][0]["kind"] == "menu"
+            exact_save = call("/api/eval", body="s:save()")["output"]
+            assert call("/api/reload", body="")["sceneView"]["beats"][0]["kind"] == "menu"
+            assert call("/api/eval", body="s:save()")["output"] == exact_save
+        assert call("/api/advance", {"choice": 1}, body="")["sceneView"]["beats"][0]["kind"] == "say"
+        assert call("/api/advance", body="")["sceneView"]["beats"][0]["kind"] == "hide"
+        assert call("/api/advance", body="")["sceneView"]["beats"][0]["kind"] == "ended"
+        assert "sceneView" not in call("/api/advance", body="")
+        assert call("/api/advance", body="")["error"]
+
+        # Asynchronous Pause and Stop reach an interpreter that is busy running Lua.
+        assert call("/api/pause", body="") == {"ok": False, "error": "nothing is running"}
+        assert call("/api/interrupt", body="") == {"ok": False, "error": "nothing is running"}
+        import threading
+        import time
+
+        def background(path, params, body):
+            box = {}
+            worker = threading.Thread(target=lambda: box.update(call(path, params, body=body)))
+            worker.start()
+            return worker, box
+
+        def when_running(action):
+            for _ in range(100):
+                reply = action()
+                if reply.get("ok"):
+                    return reply
+                time.sleep(0.05)
+            raise AssertionError("nothing started running")
+
+        # Pause stops a loop with its frames alive; Continue-style resumption goes through Stop.
+        worker, box = background("/api/eval", {}, "local n = 0; while true do n = n + 1 end")
+        time.sleep(0.5)  # inside the loop, where `n` is live
+        assert call("/api/pause", body="")["ok"]
+        worker.join(30)
+        assert box.get("stopped") is True and box["line"] == 1, box
+        assert call("/api/stack")["stopped"] is True
+        paused_locals = call("/api/locals")["locals"]
+        assert any(row["name"] == "n" for row in paused_locals), paused_locals
+        assert call("/api/pause", body="") == {"ok": True, "stopped": True}
+        stopped_worker, stopped_box = background("/api/interrupt", {}, "")
+        stopped_worker.join(30)
+        assert not stopped_box["ok"] and "interrupted" in stopped_box["error"], stopped_box
+        assert call("/api/stack")["stopped"] is False
+
+        # Stop aborts a running command without a pause; the next command runs normally.
+        worker, box = background("/api/eval", {}, "while true do end")
+        when_running(lambda: call("/api/interrupt", body=""))
+        worker.join(30)
+        assert not box["ok"] and "interrupted" in box["error"], box
+        assert call("/api/eval", body="1 + 1")["output"] == "2\n"
+
+        # A pause is still honoured when a breakpoint is set, and execution may resume after it.
+        worker, box = background("/api/eval", {}, "local t = os.clock(); while os.clock() - t < 1.5 do end; print('done')")
+        when_running(lambda: call("/api/pause", body=""))
+        worker.join(30)
+        assert box.get("stopped") is True, box
+        resumed = call("/api/continue", body="")
+        assert resumed["ok"] and resumed["output"] == "done\n", resumed
     finally:
         server.kill()
         server.wait()
+        scratch.cleanup()
     return 0
 
 

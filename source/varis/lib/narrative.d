@@ -14,6 +14,7 @@ import varis.types;
 import varis.table;
 import varis.state;
 import varis.narrative.registry;
+import varis.narrative.scenes;
 import varis.narrative.codec;
 import varis.narrative.templates;
 import varis.narrative.session;
@@ -40,6 +41,41 @@ void openNarrativeLib(LuaState state) {
         library.rawset(LuaValue(name), LuaValue(new LuaNativeFunction(function_, "narrative." ~ name)));
     }
 
+    void addSceneRegistration(string registrationKind) {
+        add(registrationKind, (void* pointer, LuaValue[] arguments) {
+            if (arguments.length != 2 || !arguments[0].isSymbol)
+                throw new LuaException(registrationKind ~ " requires an identifier and a table");
+            auto registry = (cast(LuaState) pointer).narrativeRegistry;
+            registry.requireOpen();
+            auto id = nameOf(arguments[0]);
+            LuaValue frozen;
+            auto error = freeze(arguments[1], frozen);
+            if (error.length)
+                throw new LuaException(registrationKind ~ " '" ~ id ~ "': " ~ error);
+            if (registrationKind == "character") {
+                if (registry.character(id) !is null)
+                    throw new LuaException("duplicate character '" ~ id ~ "'");
+                registry.characters ~= CharacterDefinition(id, frozen);
+            } else {
+                if (registry.scene(id) !is null)
+                    throw new LuaException("duplicate scene '" ~ id ~ "'");
+                auto beats = sequence(frozen);
+                if (!beats.length)
+                    throw new LuaException("scene '" ~ id ~ "' requires beats");
+                registry.scenes ~= SceneDefinition(id, beats);
+            }
+            return cast(LuaValue[])[];
+        });
+    }
+
+    addSceneRegistration("scene");
+    addSceneRegistration("character");
+    add("play", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1 || !arguments[0].isSymbol)
+            throw new LuaException("play requires a scene symbol");
+        requireEffectSession().playScene(nameOf(arguments[0]));
+        return cast(LuaValue[])[];
+    });
     add("analyze", (void* pointer, LuaValue[] arguments) {
         if (arguments.length < 1 || arguments.length > 2)
             throw new LuaException("analyze requires session and optional options table");

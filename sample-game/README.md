@@ -11,10 +11,17 @@ cd sample-game
 ../bin/varis test              # the author tests of tests/ as well
 ```
 
+The manifest also supports `varis check`, `varis play`, `varis lsp`, `varis l10n`
+and `varis serve`; author tests live in `tests/` and the CI recipe is
+[`tools/project_ci.sh`](../tools/project_ci.sh). The [Harbour Window sample](../sample-vn/README.md)
+covers the separate linear-scene and SDL3 presentation workflow.
+
 ## Files
 
 | File | Contents |
 | --- | --- |
+| `project.lua` | Literal project manifest: entry/session hooks, file tiers, tests and locales |
+| `tests/` | Author-test cases run by `varis test` |
 | `world.lua` | `build_world()`: schemas, keys, rules, starting facts. Also used as the `narrative.load` world factory |
 | `qualities.lua` | `quality.define` metadata, display names, nil formatter |
 | `content/decks.lua` | `:default`, `:market`, `:talk`, `:ending` deck configuration |

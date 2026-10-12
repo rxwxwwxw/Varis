@@ -1,6 +1,6 @@
 # Varis Reference Manual
 
-**Current interpreter edition · October 11, 2026**
+**Current interpreter edition · October 12, 2026**
 
 Varis is a language for authoring visual novels and story games. It is dynamically
 typed and combines procedural programming, finite relational inference,
@@ -11,8 +11,7 @@ this repository, including the facilities previously described as Lua extensions
 The implementation is built as `bin/varis`, uses `.lua` source files, and reports a
 Lua compatibility version. This manual describes **only what is implemented**. The
 project's goals and planned changes, including a restricted tier for content
-files, a distinct source extension, scenes, a project checker, language services
-and a web workbench with a debugger, are in the [roadmap](../ROADMAP.md) and are not
+files and a distinct source extension, are in the [roadmap](../ROADMAP.md) and are not
 part of the language until they appear here. The procedural core stays a complete
 Lua-derived language so that games can be modded with all of it; passing more of
 the official Lua 5.4 test suite is not a goal of Varis. Section 9 states the
@@ -27,7 +26,7 @@ relationship.
 5. [Keyed state and transactions](relations.md#5--state-and-transactions)
 6. [Narrative definitions and execution](narrative.md#6--narrative-programming)
 7. [The standard libraries](libraries.md#7--standard-libraries)
-8. [The interpreter and host interfaces](compatibility.md#8--the-interpreter-and-host-interfaces)
+8. [The interpreter, project tools, workbench and host interfaces](compatibility.md#8--the-interpreter-and-host-interfaces)
 9. [Compatibility and implementation limits](compatibility.md#9--compatibility-and-implementation-limits)
 10. [Complete syntax](syntax.md#10--complete-syntax)
 
@@ -71,3 +70,6 @@ credited to Lua.org and PUC-Rio; see the repository [license](../LICENSE). This
 manual uses original explanatory prose and repository specifications; the Lua
 manual remains an upstream compatibility reference, not a prerequisite for
 understanding Varis relations or narrative behavior.
+
+The optional native scene player and D scene-host adapter are documented in
+[SDL3 presentation](presentation.md).

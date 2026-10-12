@@ -20,7 +20,12 @@
 
 This plan records implementation of the relational and narrative facilities now defined in the [Varis reference](docs/README.md). Milestones 0–8 describe the existing Phase 6 implementation sequence; milestones 9–18 below track Phase 7. Milestones 9–18 are fully implemented, including aggregates, sessions/scheduling, portable persistence/replay, explanations, subscriptions, bounded analysis, custom display formatters, and deterministic weighted text variants in templates. The final requirement/error matrix and support limits are in [tests/narrative/README.md](tests/narrative/README.md).
 
-[Phase 8](#phase-8--performance-and-remaining-lua-conformance), milestones 19–25, covers remaining Lua conformance work, benchmark hardening and measured optimization toward ≤2× C Lua. Milestone 20's conformance gate is met (31 pass / 1 partial / 1 skipped / 0 fail); remaining skips and partial exclusions are documented in [the official audit](tests/official/README.md), so performance optimization may now be targeted.
+[Phase 8](#phase-8--performance-and-remaining-lua-conformance), milestones 19–25,
+records the former conformance and ≤2× C Lua effort. It is closed; its wording and
+retired Make targets below are historical. Current tests use `tools/suite` and the
+Make targets in [README.md](README.md). Later implemented additions—authoring tools,
+localization, world-model restructuring, declarative scenes and SDL3 presentation—
+are tracked by the roadmap and their dedicated plans, not this historical sequence.
 
 ## Scope and current state
 

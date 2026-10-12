@@ -82,6 +82,29 @@ private Diagnostic at(string severity, string code, string file, Range r, string
 
 /// Appends the findings to `found`.
 void staticChecks(ref const ProjectIndex index, ref Diagnostic[] found) {
+    bool[string] sceneNames, characterNames, attributeNames;
+    foreach (ref file; index.files)
+        foreach (ref declaration; file.declarations) {
+            if (declaration.kind == "scene")
+                sceneNames[declaration.name] = true;
+            if (declaration.kind == "character")
+                characterNames[declaration.name] = true;
+            if (declaration.kind == "character-attribute")
+                attributeNames[declaration.owner ~ "." ~ declaration.name] = true;
+        }
+    foreach (ref file; index.files)
+        foreach (ref reference; file.references) {
+            bool missing;
+            if (reference.kind == "scene")
+                missing = reference.name !in sceneNames;
+            if (reference.kind == "character")
+                missing = reference.name !in characterNames;
+            if (reference.kind == "character-attribute" && reference.qualifier in characterNames)
+                missing = (reference.qualifier ~ "." ~ reference.name) !in attributeNames;
+            if (missing)
+                found ~= at("error", "unknown-" ~ reference.kind, reference.file, reference.range,
+                        "unknown " ~ reference.kind ~ " '" ~ reference.name ~ "'", reference.inside);
+        }
     // Pools of what the project declares.
     bool[string] decks = ["default": true];
     bool[string] qualities;
@@ -141,7 +164,7 @@ void staticChecks(ref const ProjectIndex index, ref Diagnostic[] found) {
             if (d.computed || d.name.length == 0)
                 continue;
             string key;
-            if (d.kind == "storylet" || d.kind == "action" || d.kind == "deck")
+            if (d.kind == "storylet" || d.kind == "action" || d.kind == "deck" || d.kind == "scene" || d.kind == "character")
                 key = d.kind ~ " " ~ d.name;
             else if (d.kind == "choice")
                 key = "choice " ~ d.owner ~ "." ~ d.name;
@@ -160,7 +183,7 @@ void staticChecks(ref const ProjectIndex index, ref Diagnostic[] found) {
     string[][string] parameters; // subject -> names
     foreach (ref f; index.files)
         foreach (ref d; f.declarations)
-            if (d.kind == "storylet" || d.kind == "action")
+            if (d.kind == "storylet" || d.kind == "action" || d.kind == "scene")
                 parameters[d.subject] ~= d.parameters;
     foreach (ref f; index.files)
         foreach (ref d; f.declarations)

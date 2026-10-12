@@ -1,9 +1,18 @@
 # Scenes, lines and the stage: a proposal for milestone 29
 
-Status: **proposal**, October 12, 2026. Nothing here is implemented, and it is not language
-semantics until the owner accepts it and it moves into the manual. It exists so that the open
-items of the localization plan (§3.2 line ids, §7 context from scene order) and the authoring
-plan (`scene` in the index) have a concrete syntax to build on.
+Status: **historical syntax proposal**, October 12, 2026. A first declarative scene
+implementation now exists; [manual §6.11](docs/narrative.md#611--scenes-beats-and-stage-state)
+defines its actual syntax and semantics. The compact speaker/menu syntax below is still a
+proposal and is not accepted by the parser.
+
+Current scenes use `scene Name { ... }` tables of immutable beat records, `character`
+declarations, scalar locals, jump/call/return, menu/input boundaries, authored line `id`
+fields, and saved engine stage. `session:play`, `present` and `advance` drive them;
+format 3 saves restore the scene stack and stage. The index, checker and localization
+catalog recognize literal scene declarations and lines. The [linear sample](sample-vn/README.md)
+and [SDL3 player](docs/presentation.md) demonstrate this slice. Procedural statements
+between beats, compact syntax, beat undo and full presentation parity remain planned.
+The rest of this file preserves the original design for future syntax discussion.
 
 ## 1. What a writer types
 
@@ -34,7 +43,7 @@ end
 - `menu`/`option`, `jump`, `call`/`return`, `if`/`else` over a query, and `fact`/`retract`/
   `set`/`adjust` statements are the only other things in a scene body. No Lua blocks.
 
-## 2. Line ids (localization plan §3.2)
+## 2. Original line-id proposal (not implemented; localization plan §3.2)
 
 Default of the localization plan (§12), taken until decided otherwise: **a short tag written
 onto the line by a tool the first time the line is extracted**:

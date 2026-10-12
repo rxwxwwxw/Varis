@@ -83,10 +83,10 @@ change is noticed and the program is moved into the numbered suite.
 
 ## Performance notes
 
-The large scale is sized so the whole suite takes ~18 s. Two behaviours dominate:
-every query recomputes its dependency closure (nothing is reused between
-queries), and a right-recursive closure over a chain costs far more than linear
-per doubling of the chain (a 80-node chain: 0.19 s per query; 160 nodes: 2.4 s,
-a 13x increase). The `03`, `06`, `08` and `18` programs are the ones that expose
-this; see [benchmarks/README.md](../../benchmarks/README.md) for how regressions
-are enforced.
+The current engine shares immutable fact tables, joins through indexes, evaluates
+recursive strata semi-naively and caches eligible dependency closures. The original
+naive evaluator is retained as an oracle (`VARIS_LOGIC_ORACLE=1`, suite `logic-oracle`).
+Earlier multi-second chain-closure timings described the pre-rewrite engine and are
+not current performance. [Project status](../../docs/STATUS.md) records fresh large-scale
+measurements; [the performance plan](../../benchmarks/PERFORMANCE_PLAN.md) preserves
+before/after evidence and cache restrictions. Regression gates remain enforced.

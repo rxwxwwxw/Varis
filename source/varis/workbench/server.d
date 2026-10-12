@@ -13,13 +13,16 @@
 /// One thread owns the project's Lua state and answers HTTP requests on the loopback interface,
 /// one at a time, so nothing ever touches the state concurrently. Requests carry a token printed
 /// at start-up, because the command window runs arbitrary code. This first version speaks plain
-/// request/response HTTP (text bodies, JSON replies); server-pushed events and the debugger
-/// protocol of the plan are not implemented yet.
+/// request/response HTTP (text bodies, JSON editor requests/replies); server-pushed events
+/// and the WebSocket transport of the plan remain to be implemented.
 ///
 /// Tools layer: nothing in the runtime imports this module.
 module varis.workbench.server;
 
 import core.stdc.stdio;
+import core.sync.condition : Condition;
+import core.sync.mutex : Mutex;
+import core.thread : Thread;
 import core.stdc.stdlib : getenv;
 import core.stdc.string : strlen;
 import core.sys.posix.unistd : close, dup, dup2, read, write, chdir;
@@ -83,15 +86,7 @@ end
 W.encode = encode
 
 local function preview(value)
-    local kind = type(value)
-    if kind == "table" then
-        local count = 0
-        for _ in pairs(value) do count = count + 1 end
-        return "table (" .. count .. (count == 1 and " entry)" or " entries)")
-    end
-    local text = tostring(value)
-    if #text > 80 then text = text:sub(1, 77) .. "..." end
-    return text
+    return W.preview(value)
 end
 
 -- Workspace: the globals the user created, like MATLAB's variable list.
@@ -110,7 +105,7 @@ function W.workspace()
             local ok, list = pcall(W.relations, value)
             world = ok and list ~= nil
         end
-        rows[i] = { name = name, type = world and "world" or kind, preview = preview(value), world = world }
+        rows[i] = { name = name, type = world and "world" or kind, preview = preview(value), world = world, table = kind == "table", session = W.isSession(value) }
     end
     return encode({ variables = rows, session = W.session ~= nil })
 end
@@ -121,10 +116,10 @@ function W.relationList(name)
     return encode({ world = name, relations = list })
 end
 
-function W.factPage(name, relation, start, count)
-    local rows, total, columns = W.facts(_G[name], relation, start, count)
+function W.factPage(name, relation, start, count, derived)
+    local rows, total, columns = W.facts(_G[name], relation, start, count, derived)
     for _, row in ipairs(rows) do
-        for i = 1, #row do row[i] = tostring(row[i]) end
+        for i = 1, #row do row[i] = W.preview(row[i]) end
     end
     return encode({ world = name, relation = relation, start = start, total = total, columns = columns, rows = rows })
 end
@@ -133,6 +128,8 @@ end
 function story(session)
     W.session = session
     W.presentation = nil
+    W.history = {}
+    W.lastChanges = nil
     return session
 end
 
@@ -140,6 +137,7 @@ function W.present()
     if not W.session then return encode({ session = false }) end
     local p = W.session:present()
     W.presentation = p
+    W.history[#W.history + 1] = { kind = "present", turn = W.session:turn() }
     return W.show(p)
 end
 
@@ -171,6 +169,14 @@ function W.messages()
     local function add(key, source_text, shown)
         if source_text ~= "" then rows[#rows + 1] = { key = key, source = source_text, shown = shown } end
     end
+    if source.scene then
+        local beat = source.beats[1]
+        if beat.id and beat.text then
+            local id = tostring(beat.id):gsub("^:", "")
+            add("scene." .. id .. ".text", beat.text, p.beats[1].text)
+        end
+        return encode({ language = W.language, messages = rows })
+    end
     for i, st in ipairs(source.storylets) do
         local shown = p.storylets[i]
         local id = tostring(st.id)
@@ -186,6 +192,10 @@ function W.messages()
 end
 
 function W.show(p)
+    if p.scene then
+        return '{"session":true,"turn":' .. tostring(W.session:turn()) .. ',"language":' .. encode(W.language) ..
+            ',"storylets":[],"sceneView":' .. W.reportJson(p) .. '}'
+    end
     local storylets = {}
     for i, st in ipairs(p.storylets) do
         local choices = {}
@@ -196,7 +206,7 @@ function W.show(p)
 end
 
 -- Choosing reports what the turn changed: the facts added and removed, per relation.
-function W.choose(storylet, choice)
+function W.choose(storylet, choice, deferPresent)
     local p = W.presentation
     if not p then error("present the story first") end
     local st = p.storylets[storylet]
@@ -205,44 +215,136 @@ function W.choose(storylet, choice)
     local world = W.session:world()
     local before = W.snapshot(world)
     W.session:choose(c.token)
+    W.history[#W.history + 1] = { kind = "choose", turn = W.session:turn(), story = st.instance_key, choice = c.instance_key }
+    if W.afterChoose then W.afterChoose(W.session) end
     W.presentation = nil
     local changes = W.changes(before, world)
     for _, change in ipairs(changes) do
         for _, rows in ipairs({ change.added, change.removed }) do
             for _, row in ipairs(rows) do
-                for i = 1, #row do row[i] = tostring(row[i]) end
+                for i = 1, #row do row[i] = W.preview(row[i]) end
             end
         end
     end
     W.lastChanges = changes
-    return W.present()
+    if not deferPresent then return W.present() end
+end
+
+-- Scene tokens stay on the server. Menu indexes resolve to exact authored ids.
+function W.play(id, deferPresent)
+    if not W.session then error("no session; call story(session) first") end
+    W.session:play(logic.symbol(id))
+    W.history[#W.history + 1] = { kind = "play", turn = W.session:turn(), scene = id }
+    W.presentation = nil
+    if not deferPresent then return W.present() end
+end
+function W.advance(input, choice, deferPresent)
+    local p = W.presentation
+    if not p or not p.scene then error("present a scene first") end
+    if choice and choice ~= 0 then
+        local c = p.beats[1].choices and p.beats[1].choices[choice]
+        if not c then error("no such scene menu choice") end
+        input = c.id
+    end
+    local scene, index = tostring(p.scene), p.beat_index
+    W.session:advance(p.token, input)
+    W.history[#W.history + 1] = { kind = "advance", turn = W.session:turn(), scene = scene, beat = index, input = input }
+    W.presentation = nil
+    if not deferPresent then return W.present() end
+end
+
+-- A manifest-backed project has a reproducible session factory. Replays match stable
+-- instance keys, never presentation indexes or tokens from an earlier state.
+local function resolve(path)
+    if not path or path == "" then return nil end
+    local module, name = path:match("^(.*)%.([^.]+)$")
+    assert(module, "manifest: expected module.function")
+    return require(module)[name]
+end
+function W.start(entry, factory, afterChoose, seed, records, turn, language, commandLimit)
+    require(entry)
+    if language and language ~= "" then narrative.source_language(language) end
+    local create = assert(resolve(factory), "manifest has no session factory")
+    W.afterChoose = resolve(afterChoose)
+    story(create(seed))
+    W.seed = seed
+    s = W.session
+    w = s:world()
+    if records then
+        for index, record in ipairs(records) do
+            if record.turn > turn or index > commandLimit then break end
+            if record.kind == "present" then
+                W.present()
+            elseif record.kind == "play" then
+                W.play(record.scene, true)
+            elseif record.kind == "advance" then
+                assert(W.presentation and tostring(W.presentation.scene) == record.scene and W.presentation.beat_index == record.beat,
+                    "replay diverged: scene position changed")
+                W.advance(record.input, 0, true)
+            else
+                local found = false
+                for i, st in ipairs(W.presentation.storylets) do
+                    for j, c in ipairs(st.choices) do
+                        if st.instance_key == record.story and c.instance_key == record.choice then
+                            W.choose(i, j, true)
+                            found = true
+                            break
+                        end
+                    end
+                    if found then break end
+                end
+                assert(found, "replay diverged: choice is no longer available at turn " .. record.turn)
+            end
+        end
+    end
+    if not W.presentation then return W.present() end
+    return W.show(W.presentation)
+end
+function W.historyView()
+    return encode({ seed = W.seed, turn = W.session and W.session:turn(), commands = W.history or {},
+        replayable = W.seed ~= nil })
 end
 
 function W.turnChanges()
     return encode({ changes = W.lastChanges or {} })
 end
 
--- "Why is this storylet (not) showing?": narrative.explain, flattened for display.
-function W.why(id)
-    if not W.session then error("no session; call story(session) first") end
-    local e = narrative.explain(W.session, logic.symbol(id))
+-- Explanations are snapshot views. Choice traces retain their correlated parent instance.
+local function traceView(trace)
     local goals = {}
-    local trace = e.availability
     if trace and trace.goals then
         for i = 1, #trace.goals do
             local g = trace.goals[i]
             goals[i] = { index = g.index, kind = tostring(g.kind), outcome = tostring(g.outcome), before = g.before, after = g.after }
         end
     end
-    local instances = {}
+    return { success = trace and trace.success, error = trace and trace.error and tostring(trace.error) or "", goals = goals }
+end
+function W.why(id)
+    if not W.session then error("no session; call story(session) first") end
+    local e = narrative.explain(W.session, logic.symbol(id))
+    local result = traceView(e.availability)
+    result.id, result.kind, result.eligible = id, tostring(e.kind), e.eligible
+    result.instances = {}
     for i = 1, #e.instances do
         local inst = e.instances[i]
-        local exclusions = {}
+        local exclusions, choices = {}, {}
         for j = 1, #inst.exclusions do exclusions[j] = tostring(inst.exclusions[j].reason or inst.exclusions[j]) end
-        instances[i] = { key = tostring(inst.instance_key), eligible = inst.eligible, exclusions = exclusions }
+        for j = 1, #inst.choices do
+            local c = inst.choices[j]
+            local trace = traceView(c.availability)
+            trace.id, trace.eligible = tostring(c.id), inst.eligible and trace.success
+            choices[j] = trace
+        end
+        result.instances[i] = { key = tostring(inst.instance_key), eligible = inst.eligible, exclusions = exclusions, choices = choices }
     end
-    return encode({ id = id, kind = tostring(e.kind), eligible = e.eligible, success = trace and trace.success,
-        error = trace and trace.error and tostring(trace.error) or "", goals = goals, instances = instances })
+    return encode(result)
+end
+
+function W.analyze(depth, nodes, steps, objects)
+    if not W.session then error("no session; call story(session) first") end
+    return W.reportJson(narrative.analyze(W.session, { depth = depth, max_nodes = nodes,
+        max_steps = steps, max_objects = objects }))
 end
 
 -- Completion for the command window and editor: names reachable from the text before the cursor.
@@ -311,7 +413,7 @@ function W.worldRelationNames()
 end
 
 function W.contentList()
-    return encode({ storylets = W.storyletIds() })
+    return encode({ storylets = W.storyletIds(), scenes = W.sceneIds() })
 end
 LUA";
 
@@ -653,8 +755,130 @@ public void sortStrings(string[] items) {
 }
 
 /// Read-only helpers the Lua side cannot express: the relations of a world and a page of facts.
+private __gshared LuaTable[] inspectedTables;
+
+private string valuePreview(LuaValue value) {
+    if (value.isTable)
+        return "table (" ~ numberJson(cast(long) value.asTable.count()) ~ " entries)";
+    auto text = toLuaString(value);
+    return text.length > 120 ? text[0 .. 117] ~ "..." : text;
+}
+
+private string tableJson(LuaState state, string name, long reference, long start, long count) {
+    auto value = name.length ? state.globals.rawget(LuaValue(name)) : (reference >= 0 && reference < inspectedTables
+            .length ? LuaValue(inspectedTables[cast(size_t) reference]) : LuaValue.init);
+    if (!value.isTable)
+        return `{"error":"table is no longer available"}`;
+    start = start < 0 ? 0 : start;
+    count = count < 1 ? 100 : (count > 1000 ? 1000 : count);
+    auto table = value.asTable;
+    LuaValue key, nextKey, item;
+    long at;
+    string json = `{"total":` ~ numberJson(cast(long) table.count()) ~ `,"rows":[`;
+    bool first = true;
+    while (table.next(key, nextKey, item)) {
+        key = nextKey;
+        if (at++ < start)
+            continue;
+        if (at > start + count)
+            break;
+        long child = -1;
+        if (item.isTable) {
+            child = cast(long) inspectedTables.length;
+            inspectedTables ~= item.asTable;
+        }
+        json ~= (first ? "" : ",") ~ `{"key":` ~ jsonQuote(valuePreview(key)) ~ `,"type":` ~ jsonQuote(
+                item.typeName())
+            ~ `,"preview":` ~ jsonQuote(valuePreview(item)) ~ `,"ref":` ~ numberJson(child) ~ `}`;
+        first = false;
+    }
+    return json ~ `]}`;
+}
+
+private string sessionJson(LuaState state) {
+    import varis.narrative.session : Session;
+
+    auto value = state.getGlobal("__workbench").asTable.rawget(LuaValue("session"));
+    auto session = value.data.tag == TagUserData ? cast(Session) value.asUserData.payload : null;
+    if (session is null)
+        return `{"error":"no session"}`;
+    auto data = session.view();
+    string json = `{"turn":` ~ numberJson(cast(long) data.turn) ~ `,"deck":` ~ jsonQuote(
+            session.activeDeck()) ~ `,"periods":[`;
+    string[] names;
+    foreach (name; data.periods.byKey)
+        names ~= name;
+    sortStrings(names);
+    foreach (i, name; names)
+        json ~= (i ? "," : "") ~ `{"name":` ~ jsonQuote(name) ~ `,"value":` ~ jsonQuote(
+                valuePreview(data.periods[name])) ~ `}`;
+    json ~= `],"decks":[`;
+    foreach (i, deck; data.decks)
+        json ~= (i ? "," : "") ~ `{"name":` ~ jsonQuote(deck.name) ~ `,"drawn":` ~ numberJson(
+                cast(long) deck.drawn.length) ~ `}`;
+    json ~= `],"completed":[`;
+    names = null;
+    foreach (name; data.completed.byKey)
+        names ~= name;
+    sortStrings(names);
+    foreach (i, name; names)
+        json ~= (i ? "," : "") ~ `{"instance":` ~ jsonQuote(name) ~ `,"turn":` ~ numberJson(
+                cast(long) data.completed[name]) ~ `}`;
+    return json ~ `]}`;
+}
+
+/// Serialize engine-owned immutable reports without indexing author objects or invoking hooks.
+private string reportJson(LuaValue value, size_t depth = 0) {
+    import varis.narrative.codec : ImmutableRecord, ImmutableSequence;
+
+    if (value.isNil || depth > 64)
+        return "null";
+    if (value.isString)
+        return jsonQuote(value.asString);
+    if (value.isSymbol)
+        return jsonQuote(value.asSymbol.name);
+    if (value.isInteger)
+        return numberJson(value.asInteger);
+    if (value.isBoolean)
+        return value.asBool ? "true" : "false";
+    if (value.isFloat)
+        return toLuaString(value);
+    if (value.data.tag == TagUserData) {
+        auto payload = value.asUserData.payload;
+        if (auto sequence = cast(ImmutableSequence) payload) {
+            string json = "[";
+            foreach (i, element; sequence.values)
+                json ~= (i ? "," : "") ~ reportJson(element, depth + 1);
+            return json ~ "]";
+        }
+        if (auto record = cast(ImmutableRecord) payload) {
+            auto keys = record.fields.keys;
+            sortStrings(keys);
+            string json = "{";
+            foreach (i, key; keys)
+                json ~= (i ? "," : "") ~ jsonQuote(key) ~ ":" ~ reportJson(record.fields[key], depth + 1);
+            return json ~ "}";
+        }
+    }
+    return "null";
+}
+
 private void installNatives(LuaState state) {
     auto table = state.getGlobal("__workbench").asTable;
+    table.rawset(LuaValue("reportJson"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] args) {
+                return [LuaValue(reportJson(args.length ? args[0] : LuaValue.init))];
+            }, "workbench.reportJson")));
+    table.rawset(LuaValue("preview"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] args) {
+                return [LuaValue(valuePreview(args.length ? args[0] : LuaValue.init))];
+            }, "workbench.preview")));
+    table.rawset(LuaValue("isSession"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] args) {
+                import varis.narrative.session : Session;
+
+                return [
+                    LuaValue(args.length && args[0].data.tag == TagUserData && cast(Session) args[0]
+                    .asUserData.payload !is null)
+                ];
+            }, "workbench.isSession")));
     table.rawset(LuaValue("relations"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] args) {
                 auto world = args.length ? unwrapWorld(args[0]) : null;
                 if (world is null)
@@ -681,6 +905,39 @@ private void installNatives(LuaState state) {
                 if (relation is null)
                     throw new LuaException("unknown relation '" ~ args[1].asString ~ "'");
                 auto facts = visibleRelation(relation).factTable().rows;
+                if (args.length > 4 && args[4].isTruthy()) {
+                    import varis.logic.model : Term, Goal, RelationRef, Rule, RelTuple;
+                    import varis.logic.world : collectRuleDependencies;
+                    import varis.logic.query : QueryIterator;
+                    import varis.fiber : beginReadOnlyEvaluation, endReadOnlyEvaluation;
+
+                    Term[] terms;
+                    string[] names;
+                    foreach (i; 0 .. relation.arity) {
+                        auto name = "column" ~ numberJson(cast(long) i);
+                        names ~= name;
+                        terms ~= Term.makeVariable(name, cast(int) i);
+                    }
+                    Relation[size_t] closure;
+                    Rule[] rules;
+                    collectRuleDependencies(relation, closure, rules);
+                    auto reference = new RelationRef(relation.name, relation.arity, "", relation.id);
+                    reference.resolvedRelation = relation;
+                    auto iterator = new QueryIterator(cast(LuaState) pointer, [
+                        Goal.makePositiveAtom(reference, terms)
+                    ], names, closure, rules);
+                    beginReadOnlyEvaluation();
+                    scope (exit)
+                        endReadOnlyEvaluation();
+                    iterator.next();
+                    facts = null;
+                    foreach (record; iterator.resultRecords) {
+                        LuaValue[] values;
+                        foreach (name; names)
+                            values ~= record.getBinding(name);
+                        facts ~= RelTuple(values);
+                    }
+                }
                 long start = args.length > 2 && args[2].isInteger ? args[2].asInteger : 0;
                 long count = args.length > 3 && args[3].isInteger ? args[3].asInteger : 100;
                 if (start < 0)
@@ -767,6 +1024,17 @@ private void installStoryNatives(LuaState state) {
                 }
                 return [LuaValue(list)];
             }, "workbench.changes")));
+    table.rawset(LuaValue("sceneIds"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] args) {
+                auto owner = cast(LuaState) pointer;
+                string[] ids;
+                foreach (definition; owner.narrativeRegistry.scenes)
+                    ids ~= definition.id;
+                sortStrings(ids);
+                auto list = new LuaTable();
+                foreach (i, id; ids)
+                    list.rawset(LuaValue(cast(long) i + 1), LuaValue(id));
+                return [LuaValue(list)];
+            }, "workbench.sceneIds")));
     table.rawset(LuaValue("storyletIds"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] args) {
                 auto owner = cast(LuaState) pointer;
                 string[] ids;
@@ -782,6 +1050,117 @@ private void installStoryNatives(LuaState state) {
 }
 
 // ---------------------------------------------------------------------------------------------
+// Connections are accepted on their own thread so that Pause and Stop reach an interpreter that is
+// busy running Lua. That thread only reads requests. Pause and Stop it answers itself, touching
+// nothing but the flags the executor already polls (`vmInterrupt`, the line hook mask); every other
+// request is queued for the interpreter thread, which serves them one at a time as before.
+
+private struct PendingConnection {
+    int socket;
+    Request request;
+}
+
+private __gshared PendingConnection[] pendingConnections;
+private __gshared Mutex pendingLock;
+private __gshared Condition pendingReady;
+// Requests the interpreter thread has taken and not finished (a stopped program keeps its request
+// open while serving others, so this can exceed one). Read and written under `pendingLock`, which
+// is what makes "is the interpreter busy" and "queue this request" a single decision.
+private __gshared int activeRequests;
+// Pause and Stop apply to the request running now, or to the next one if they arrive while it is
+// still queued. `requestSerial` numbers outermost requests; `stopSerial` is the one flagged.
+private __gshared long requestSerial;
+private __gshared long topSerial;
+private __gshared long stopSerial = -1;
+
+/// Blocks until a request is waiting for the interpreter thread.
+private void nextConnection(out int connection, out Request request) {
+    pendingLock.lock();
+    scope (exit)
+        pendingLock.unlock();
+    while (pendingConnections.length == 0)
+        pendingReady.wait();
+    connection = pendingConnections[0].socket;
+    request = pendingConnections[0].request;
+    pendingConnections = pendingConnections[1 .. $];
+    if (activeRequests++ == 0)
+        topSerial = ++requestSerial;
+}
+
+/// The interpreter thread is done with a request. A Pause or Stop that arrived during a request
+/// which never ran Lua must not strike the next one.
+private void requestFinished() {
+    pendingLock.lock();
+    scope (exit)
+        pendingLock.unlock();
+    if (--activeRequests == 0 && topSerial >= stopSerial) {
+        debugger.pauseRequested = false;
+        vmInterrupt = false;
+    }
+}
+
+/// Pause and Stop are answered here, on the accept thread, while the interpreter is busy and not
+/// stopped at a breakpoint. They only set flags the executor polls. Any other request, and these two
+/// when nothing is running or the program is stopped, go to the interpreter thread.
+private bool answeredAsynchronously(ref Request request) {
+    import core.atomic : atomicFence;
+
+    auto given = "token" in request.query;
+    if (given is null || *given != debugger.token)
+        return false;
+    bool pause = request.path == "/api/pause";
+    if (!pause && request.path != "/api/interrupt")
+        return false;
+    if ((activeRequests == 0 && pendingConnections.length == 0) || debugger.stopped || debugger.thread is null)
+        return false;
+    stopSerial = activeRequests > 0 ? topSerial : requestSerial + 1;
+    if (pause) {
+        debugger.pauseRequested = true;
+        debugger.thread.hookFunction = debugger.hook;
+        debugger.thread.hookMask = 4;
+        atomicFence();
+        vmSlowMode = true;
+        vmAttention = true;
+    } else {
+        vmInterrupt = true;
+        atomicFence();
+        vmAttention = true;
+    }
+    return true;
+}
+
+private void acceptLoop() {
+    while (true) {
+        int connection = accept(debugger.listener, null, null);
+        if (connection < 0)
+            continue;
+        Request request;
+        if (!readRequest(connection, request)) {
+            close(connection);
+            continue;
+        }
+        bool answered;
+        pendingLock.lock();
+        answered = answeredAsynchronously(request);
+        if (!answered)
+            pendingConnections ~= PendingConnection(connection, request);
+        pendingLock.unlock();
+        if (answered) {
+            respond(connection, 200, "application/json", `{"ok":true,"running":true}`);
+            close(connection);
+        } else
+            pendingReady.notify();
+    }
+}
+
+private void startAcceptThread() {
+    pendingLock = new Mutex;
+    pendingReady = new Condition(pendingLock);
+    auto thread = new Thread(&acceptLoop);
+    thread.isDaemon = true;
+    thread.start();
+}
+
 // Source-level debugging (WORKBENCH_PLAN.md section 5.2)
 //
 // Breakpoints and stepping use the executor's per-line slow path (the mechanism behind line hooks):
@@ -812,6 +1191,8 @@ private struct Debugger {
     long stoppedLine;
     size_t stoppedDepth;
     int resultSocket = -1; // the connection waiting for the running evaluation's outcome
+    bool pauseRequested; // set from the accept thread; consumed by the line hook
+    LuaThread thread; // the interpreter thread whose hook the accept thread may install
     int listener = -1;
     string token;
     LuaNativeFunction hook;
@@ -848,7 +1229,9 @@ private void syncHook(LuaState state) {
     import varis.state : vmAttention, vmSlowMode;
 
     auto thread = state.mainThread;
-    bool wanted = debugger.breakpoints.length != 0 || debugger.step != StepMode.run;
+    debugger.thread = thread; // a reload replaces the state, and with it the thread
+    bool wanted = debugger.breakpoints.length != 0 || debugger.step != StepMode.run
+        || debugger.pauseRequested;
     if (wanted) {
         thread.hookFunction = debugger.hook;
         thread.hookMask = 4; // line events
@@ -888,6 +1271,11 @@ private LuaValue[] debuggerHook(LuaState state, long line) {
         stop = depth < debugger.stepDepth;
         break;
     }
+    // A pause waits for author code: the workbench's own prelude is not something to stop in.
+    if (debugger.pauseRequested && file != "workbench") {
+        debugger.pauseRequested = false;
+        stop = true;
+    }
     if (!stop)
         foreach (ref breakpoint; debugger.breakpoints)
             if (breakpoint.line == line && breakpoint.file == file) {
@@ -906,15 +1294,13 @@ private LuaValue[] debuggerHook(LuaState state, long line) {
     close(debugger.resultSocket);
     debugger.resultSocket = -1;
     while (debugger.stopped) {
-        int connection = accept(debugger.listener, null, null);
-        if (connection < 0)
-            continue;
+        int connection;
         Request request;
-        auto disposition = Disposition.done;
-        if (readRequest(connection, request))
-            disposition = handle(state, connection, request, debugger.token);
+        nextConnection(connection, request);
+        auto disposition = handle(state, connection, request, debugger.token);
         if (disposition == Disposition.done)
             close(connection);
+        requestFinished();
     }
     syncHook(state);
     return null;
@@ -1032,6 +1418,123 @@ private string definitionsJson(string name) {
     return json ~ "]}";
 }
 
+/// Editor services share the frontend index used by the language server. Drafts are
+/// request-local: inspecting unsaved text never writes a file or executes project code.
+private string editorJson(LuaState state, string operation, string body) {
+    import varis.services.json : JsonValue, parseJson;
+    import varis.services.lang : Workspace;
+    import varis.services.index : Range;
+    import varis.services.diagnostic : Diagnostic, diagnosticJson, sortDiagnostics;
+
+    JsonValue input;
+    string error;
+    if (!parseJson(body, input, error) || input.kind != JsonValue.Kind.object)
+        return `{"ok":false,"error":"expected an editor request object"}`;
+    auto path = input.stringOr("path");
+    if (!safePath(path))
+        return `{"ok":false,"error":"bad path"}`;
+    auto workspace = new Workspace();
+    workspace.load();
+    auto drafts = input.get("buffers");
+    if (drafts !is null && drafts.kind == JsonValue.Kind.object)
+        foreach (i, file; drafts.keys) {
+            if (!safePath(file) || drafts.items[i].kind != JsonValue.Kind.string_)
+                return `{"ok":false,"error":"invalid draft"}`;
+            if (file.length >= 4 && file[$ - 4 .. $] == ".lua")
+                workspace.setContent(file, drafts.items[i].text);
+            else
+                workspace.contents[file] = drafts.items[i].text;
+        }
+    auto text = input.get("text");
+    if (text !is null && text.kind == JsonValue.Kind.string_) {
+        if (path.length >= 4 && path[$ - 4 .. $] == ".lua")
+            workspace.setContent(path, text.text);
+        else
+            workspace.contents[path] = text.text;
+    }
+    int line = cast(int) input.integerOr("line", 1);
+    int column = cast(int) input.integerOr("column", 1);
+    string rangeJson(Range r) {
+        return `{"line":` ~ numberJson(r.line) ~ `,"column":` ~ numberJson(
+                r.column)
+            ~ `,"endLine":` ~ numberJson(r.endLine) ~ `,"endColumn":` ~ numberJson(r.endColumn) ~ `}`;
+    }
+
+    switch (operation) {
+    case "complete": {
+            string json = `{"items":[`;
+            foreach (i, item; workspace.complete(path, line, column))
+                json ~= (i ? "," : "") ~ `{"label":` ~ jsonQuote(item.label) ~ `,"kind":` ~ jsonQuote(
+                        item.kind)
+                    ~ `,"detail":` ~ jsonQuote(item.detail) ~ `}`;
+            return json ~ `]}`;
+        }
+    case "definition": {
+            string json = `{"definitions":[`;
+            foreach (i, location; workspace.definition(path, line, column))
+                json ~= (i ? "," : "") ~ `{"file":` ~ jsonQuote(
+                        location.file) ~ `,"range":` ~ rangeJson(location.range) ~ `}`;
+            return json ~ `]}`;
+        }
+    case "hover":
+        return `{"text":` ~ jsonQuote(workspace.hover(path, line, column)) ~ `}`;
+    case "rename": {
+            auto result = workspace.rename(path, line, column, input.stringOr("newName"));
+            string json = `{"ok":` ~ (result.ok ? "true" : "false") ~ `,"error":` ~ jsonQuote(
+                    result.error) ~ `,"edits":[`;
+            foreach (i, edit; result.edits)
+                json ~= (i ? "," : "") ~ `{"file":` ~ jsonQuote(edit.file) ~ `,"range":` ~ rangeJson(
+                        edit.range)
+                    ~ `,"newText":` ~ jsonQuote(edit.newText) ~ `}`;
+            json ~= `],"notes":[`;
+            foreach (i, note; result.notes)
+                json ~= (i ? "," : "") ~ jsonQuote(note);
+            json ~= `],"originals":{`;
+            string[] originals;
+            foreach (edit; result.edits) {
+                bool known;
+                foreach (file; originals)
+                    known = known || file == edit.file;
+                if (known)
+                    continue;
+                string original;
+                if (auto draft = edit.file in workspace.contents)
+                    original = *draft;
+                else
+                    readFile(edit.file, original);
+                json ~= (originals.length ? "," : "") ~ jsonQuote(edit.file) ~ ":" ~ jsonQuote(original);
+                originals ~= edit.file;
+            }
+            return json ~ `}}`;
+        }
+    case "check": {
+            auto all = workspace.diagnostics();
+            foreach (file; workspace.order) {
+                auto indexed = workspace.indexes[file];
+                if (!indexed.parsed)
+                    continue;
+                try {
+                    state.loadString(workspace.contents[file], "@" ~ file);
+                } catch (LuaException failure) {
+                    all[file] ~= Diagnostic("compile", "error", file, 0, 0, 0, 0, "", errorText(failure.errorObject));
+                    sortDiagnostics(all[file]);
+                }
+            }
+            string json = `{"diagnostics":[`;
+            bool first = true;
+            foreach (file; workspace.order)
+                if (auto list = file in all)
+                    foreach (ref diagnostic; *list) {
+                        json ~= (first ? "" : ",") ~ diagnosticJson(diagnostic);
+                        first = false;
+                    }
+            return json ~ `]}`;
+        }
+    default:
+        return `{"ok":false,"error":"unknown editor operation"}`;
+    }
+}
+
 private string makeToken() {
     ubyte[16] bytes;
     auto source = fopen("/dev/urandom", "rb");
@@ -1047,12 +1550,33 @@ private string makeToken() {
     return cast(string) text;
 }
 
+private bool signedNumber(string text, out long result) {
+    if (text.length == 0)
+        return false;
+    bool negative = text[0] == '-';
+    if (negative)
+        text = text[1 .. $];
+    if (text.length == 0)
+        return false;
+    ulong value;
+    ulong limit = cast(ulong) long.max + (negative ? 1UL : 0UL);
+    foreach (c; text) {
+        if (c < '0' || c > '9' || value > (limit - (c - '0')) / 10)
+            return false;
+        value = value * 10 + (c - '0');
+    }
+    result = cast(long)(negative ? 0UL - value : value);
+    return true;
+}
+
 private long numberOf(string text, long fallback) {
     if (text.length == 0)
         return fallback;
     long value;
     foreach (char c; text) {
         if (c < '0' || c > '9')
+            return fallback;
+        if (value > (long.max - (c - '0')) / 10)
             return fallback;
         value = value * 10 + (c - '0');
     }
@@ -1084,7 +1608,144 @@ private Disposition finishEvaluation(LuaState state, int socket, scope Evaluatio
     return Disposition.closed;
 }
 
-private Disposition handle(LuaState state, int socket, ref Request request, string token) {
+/// Story operations use the same suspended-request lifetime as command evaluations, so
+/// effect breakpoints retain the open transaction until the user explicitly resumes.
+private Disposition finishStory(LuaState state, int socket, string name, LuaValue[] arguments) {
+    if (debugger.stopped || debugger.resultSocket >= 0) {
+        respond(socket, 200, "application/json", `{"error":"resume the stopped program before changing the story"}`);
+        return Disposition.done;
+    }
+    debugger.resultSocket = socket;
+    syncHook(state);
+    bool ok;
+    string result;
+    auto output = captureOutput({ result = callView(state, name, arguments, ok); });
+    int target = debugger.resultSocket;
+    debugger.resultSocket = -1;
+    debugger.step = StepMode.run;
+    syncHook(state);
+    if (target < 0)
+        return Disposition.closed;
+    // Preserve the story response shape and any output printed by effects.
+    if (result.length && result[$ - 1] == '}')
+        result = result[0 .. $ - 1] ~ `,"output":` ~ jsonQuote(output) ~ `}`;
+    respond(target, 200, "application/json", result);
+    if (target == socket)
+        return Disposition.done;
+    close(target);
+    return Disposition.closed;
+}
+
+/// Build and replay in a fresh state; publish it only when reconstruction succeeds.
+private string reloadProject(ref LuaState state, bool replay, long turn, long seed, long commandLimit) {
+    import varis.lib : openLibs;
+    import varis.services.manifest : loadManifest;
+
+    auto manifest = loadManifest(".");
+    if (!manifest.present || manifest.entry.length == 0 || manifest.session.length == 0)
+        return `{"error":"project.lua must name an entry and a session factory"}`;
+    auto previous = state.getGlobal("__workbench").asTable;
+    auto records = replay ? previous.rawget(LuaValue("history")) : luaNil();
+    if (replay && previous.rawget(LuaValue("seed")).isNil)
+        return `{"error":"start a manifest-backed playtest before reloading or rewinding"}`;
+    if (replay)
+        seed = previous.rawget(LuaValue("seed")).asInteger;
+    auto fresh = new LuaState();
+    openLibs(fresh);
+    auto setup = evaluate(fresh, prelude, "=workbench");
+    if (!setup.ok)
+        return `{"error":` ~ jsonQuote(setup.error) ~ `}`;
+    installNatives(fresh);
+    installStoryNatives(fresh);
+    evaluate(fresh, `package.path = "./?.lua;./?/init.lua;" .. package.path`, "=workbench");
+    bool ok;
+    string result;
+    auto output = captureOutput({
+        result = callView(fresh, "start", [
+            LuaValue(manifest.entry), LuaValue(manifest.session),
+            LuaValue(manifest.afterChoose), LuaValue(seed), records, LuaValue(turn),
+            LuaValue(manifest.language), LuaValue(commandLimit)
+        ], ok);
+    });
+    if (ok && replay) {
+        auto language = previous.rawget(LuaValue("language"));
+        if (language.isString && language.asString.length) {
+            import varis.services.l10n : localeMessages;
+
+            string[string] messages;
+            string problem;
+            if (!localeMessages(language.asString, messages, problem))
+                return `{"error":` ~ jsonQuote(problem) ~ `}`;
+            auto pack = new LuaTable();
+            foreach (key, text; messages)
+                pack.rawset(LuaValue(key), LuaValue(text));
+            result = callView(fresh, "setLanguage", [language, LuaValue(pack)], ok);
+        }
+    }
+    if (ok) {
+        if (replay) {
+            import varis.narrative.session : unwrapSession;
+
+            auto original = unwrapSession(previous.rawget(LuaValue("session"))).world;
+            auto restored = unwrapSession(fresh.getGlobal("__workbench").asTable.rawget(LuaValue("session"))).world;
+            restored.persistentIdentity = original.persistentIdentity.length ? original.persistentIdentity
+                : numberJson(cast(long) original.id);
+        }
+        state = fresh;
+        inspectedTables = null;
+        syncHook(state);
+    }
+    if (result.length && result[$ - 1] == '}')
+        result = result[0 .. $ - 1] ~ `,"output":` ~ jsonQuote(output) ~ `}`;
+    return result;
+}
+
+/// Validate numeric scene inputs independently of the catalog reader's permissive number token.
+private bool sceneNumberToken(ref string text) @nogc nothrow {
+    bool space(char c) {
+        return c == ' ' || c == '\t' || c == '\r' || c == '\n';
+    }
+
+    bool digit(char c) {
+        return c >= '0' && c <= '9';
+    }
+
+    while (text.length && space(text[0]))
+        text = text[1 .. $];
+    while (text.length && space(text[$ - 1]))
+        text = text[0 .. $ - 1];
+    size_t at;
+    if (at < text.length && text[at] == '-')
+        ++at;
+    if (at == text.length || !digit(text[at]))
+        return false;
+    if (text[at] == '0')
+        ++at;
+    else
+        while (at < text.length && digit(text[at]))
+            ++at;
+    if (at < text.length && text[at] == '.') {
+        ++at;
+        auto start = at;
+        while (at < text.length && digit(text[at]))
+            ++at;
+        if (at == start)
+            return false;
+    }
+    if (at < text.length && (text[at] == 'e' || text[at] == 'E')) {
+        ++at;
+        if (at < text.length && (text[at] == '+' || text[at] == '-'))
+            ++at;
+        auto start = at;
+        while (at < text.length && digit(text[at]))
+            ++at;
+        if (at == start)
+            return false;
+    }
+    return at == text.length;
+}
+
+private Disposition handle(ref LuaState state, int socket, ref Request request, string token) {
     auto given = "token" in request.query;
     if (given is null || *given != token) {
         respond(socket, 403, "text/plain", "missing or wrong token; use the address printed by varis serve\n");
@@ -1099,6 +1760,9 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
     switch (request.path) {
     case "/":
         respond(socket, 200, "text/html; charset=utf-8", workbenchPage);
+        return Disposition.done;
+    case "/api/editor/complete", "/api/editor/definition", "/api/editor/hover", "/api/editor/rename", "/api/editor/check":
+        respond(socket, 200, "application/json", editorJson(state, request.path[12 .. $], request.body_));
         return Disposition.done;
     case "/api/eval":
         return finishEvaluation(state, socket, () => evaluate(state, request.body_, "=command"));
@@ -1132,6 +1796,24 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
             respond(socket, 200, "application/json", json ~ "]}");
             return Disposition.done;
         }
+    case "/api/inspect": {
+            import varis.workbench.inspect : inspectExpression;
+
+            LuaValue value;
+            string error;
+            auto frame = parameter("frame").length ? numberOf(parameter("frame"), -1) : innermostLuaFrame(state);
+            bool inspected = debugger.stopped && inspectExpression(state, frame, request.body_, value, error);
+            if (!debugger.stopped)
+                error = "not stopped";
+            Evaluation result;
+            result.ok = inspected;
+            result.error = error;
+            // toLuaString does not invoke __tostring; inspection must never call author code.
+            if (inspected)
+                result.output = toLuaString(value) ~ "\n";
+            respond(socket, 200, "application/json", evaluationJson(result));
+            return Disposition.done;
+        }
     case "/api/stack":
         respond(socket, 200, "application/json", stackJson(state));
         return Disposition.done;
@@ -1149,10 +1831,25 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
                 : mode == "out"
                 ? StepMode.out_ : StepMode.run;
             debugger.stepDepth = debugger.stoppedDepth;
+            debugger.pauseRequested = false;
             debugger.stopped = false;
             debugger.resultSocket = socket; // answered when execution stops again or finishes
             return Disposition.deferred;
         }
+    case "/api/pause", "/api/interrupt":
+        // Reaching this thread means nothing was running to pause (a running program is answered
+        // by the accept thread), or the program is stopped at a breakpoint.
+        if (request.path == "/api/interrupt" && debugger.stopped) {
+            vmInterrupt = true;
+            vmAttention = true;
+            debugger.step = StepMode.run;
+            debugger.stopped = false;
+            debugger.resultSocket = socket; // answered with the interrupted evaluation's error
+            return Disposition.deferred;
+        }
+        respond(socket, 200, "application/json", debugger.stopped ? `{"ok":true,"stopped":true}`
+                : `{"ok":false,"error":"nothing is running"}`);
+        return Disposition.done;
     case "/api/run": {
             auto path = parameter("path");
             string content;
@@ -1226,6 +1923,32 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
             respond(socket, 200, "application/json", `{"problems":` ~ problems ~ `],"diagnostics":` ~ objects ~ `]}`);
             return Disposition.done;
         }
+    case "/api/start", "/api/reload", "/api/rewind": {
+            if (debugger.stopped) {
+                respond(socket, 200, "application/json", `{"error":"resume the stopped program before reloading"}`);
+                return Disposition.done;
+            }
+            auto turn = parameter("turn").length ? numberOf(parameter("turn"), -1) : long.max;
+            if (turn < 0) {
+                respond(socket, 200, "application/json", `{"error":"turn must be nonnegative"}`);
+                return Disposition.done;
+            }
+            long seed = 1;
+            if (parameter("seed").length && !signedNumber(parameter("seed"), seed)) {
+                respond(socket, 200, "application/json", `{"error":"seed must be an integer"}`);
+                return Disposition.done;
+            }
+            long commandLimit = long.max;
+            if (parameter("command").length && (!signedNumber(parameter("command"), commandLimit) || commandLimit < 0)) {
+                respond(socket, 200, "application/json", `{"error":"command must be a nonnegative integer"}`);
+                return Disposition.done;
+            }
+            respond(socket, 200, "application/json", reloadProject(state, request.path != "/api/start", turn, seed, commandLimit));
+            return Disposition.done;
+        }
+    case "/api/history":
+        respond(socket, 200, "application/json", callView(state, "historyView", [], ok));
+        return Disposition.done;
     case "/api/project": {
             import varis.services.manifest : loadManifest, manifestJson;
 
@@ -1236,6 +1959,13 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
     case "/api/workspace":
         respond(socket, 200, "application/json", callView(state, "workspace", [], ok));
         return Disposition.done;
+    case "/api/table":
+        respond(socket, 200, "application/json", tableJson(state, parameter("name"), numberOf(parameter("ref"), -1),
+                numberOf(parameter("start"), 0), numberOf(parameter("count"), 100)));
+        return Disposition.done;
+    case "/api/session":
+        respond(socket, 200, "application/json", sessionJson(state));
+        return Disposition.done;
     case "/api/relations":
         respond(socket, 200, "application/json", callView(state, "relationList", [
             LuaValue(parameter("world"))
@@ -1245,7 +1975,7 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
         respond(socket, 200, "application/json", callView(state, "factPage", [
             LuaValue(parameter("world")), LuaValue(parameter("name")),
             LuaValue(numberOf(parameter("start"), 0)),
-            LuaValue(numberOf(parameter("count"), 100))
+            LuaValue(numberOf(parameter("count"), 100)), LuaValue(parameter("derived") == "true")
         ], ok));
         return Disposition.done;
     case "/api/language": {
@@ -1296,16 +2026,89 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
             return Disposition.done;
         }
     case "/api/present":
-        respond(socket, 200, "application/json", callView(state, "present", [], ok));
-        return Disposition.done;
+        return finishStory(state, socket, "present", []);
+    case "/api/play":
+        return finishStory(state, socket, "play", [LuaValue(parameter("id"))]);
+    case "/api/advance": {
+            import varis.services.json : JsonValue, parseJson;
+
+            LuaValue input;
+            if (request.body_.length) {
+                JsonValue parsed;
+                string error;
+                if (!parseJson(request.body_, parsed, error)) {
+                    respond(socket, 200, "application/json", `{"error":"scene input must be JSON"}`);
+                    return Disposition.done;
+                }
+                bool valid = true;
+                final switch (parsed.kind) {
+                case JsonValue.Kind.null_:
+                    break;
+                case JsonValue.Kind.bool_:
+                    input = LuaValue(parsed.boolean);
+                    break;
+                case JsonValue.Kind.string_:
+                    input = LuaValue(parsed.text);
+                    break;
+                case JsonValue.Kind.number: {
+                        long integer;
+                        auto numberText = request.body_;
+                        if (!sceneNumberToken(numberText) || (!signedNumber(numberText, integer)
+                                && !(parsed.number - parsed.number == 0)))
+                            valid = false;
+                        else if (signedNumber(numberText, integer))
+                            input = LuaValue(integer);
+                        else
+                            input = LuaValue(parsed.number);
+                        break;
+                    }
+                case JsonValue.Kind.object:
+                    if (parsed.keys.length == 1 && parsed.keys[0] == "symbol" && parsed.items[0].kind == JsonValue
+                            .Kind.string_)
+                        input = state.getSymbol(parsed.items[0].text);
+                    else
+                        valid = false;
+                    break;
+                case JsonValue.Kind.array:
+                    valid = false;
+                    break;
+                }
+                if (!valid) {
+                    respond(socket, 200, "application/json", `{"error":"scene input must be a scalar or a symbol object"}`);
+                    return Disposition.done;
+                }
+            }
+            return finishStory(state, socket, "advance", [
+                input, LuaValue(numberOf(parameter("choice"), 0))
+            ]);
+        }
     case "/api/choose":
-        respond(socket, 200, "application/json", callView(state, "choose", [
+        return finishStory(state, socket, "choose", [
             LuaValue(numberOf(parameter("s"), 0)), LuaValue(numberOf(parameter("c"), 0))
-        ], ok));
-        return Disposition.done;
+        ]);
     case "/api/changes":
         respond(socket, 200, "application/json", callView(state, "turnChanges", [], ok));
         return Disposition.done;
+    case "/api/analyze": {
+            if (debugger.stopped) {
+                respond(socket, 200, "application/json", `{"error":"resume the stopped program before analysis"}`);
+                return Disposition.done;
+            }
+            string[4] names = ["depth", "max_nodes", "max_steps", "max_objects"];
+            long[4] counts = [3, 100, 1_000_000, 200_000];
+            LuaValue[] arguments;
+            foreach (i, name; names) {
+                if (parameter(name).length && !signedNumber(parameter(name), counts[i])) {
+                    respond(socket, 200, "application/json", `{"error":` ~ jsonQuote(
+                            "analysis option must be an integer: " ~ name) ~ `}`);
+                    return Disposition.done;
+                }
+                arguments ~= LuaValue(counts[i]);
+            }
+            respond(socket, 200, "application/json", callView(state, "analyze", arguments, ok));
+            syncHook(state);
+            return Disposition.done;
+        }
     case "/api/why":
         respond(socket, 200, "application/json", callView(state, "why", [LuaValue(parameter("id"))], ok));
         return Disposition.done;
@@ -1401,15 +2204,15 @@ int serveWorkbench(LuaState state, string directory, ushort port) {
     printf("Loopback only. The command window runs code with your permissions; keep the address private.\n");
     fflush(stdout);
 
+    debugger.thread = state.mainThread;
+    startAcceptThread();
     while (true) {
-        int connection = accept(listener, null, null);
-        if (connection < 0)
-            continue;
+        int connection;
         Request request;
-        auto disposition = Disposition.done;
-        if (readRequest(connection, request))
-            disposition = handle(state, connection, request, token);
+        nextConnection(connection, request);
+        auto disposition = handle(state, connection, request, token);
         if (disposition == Disposition.done)
             close(connection);
+        requestFinished();
     }
 }

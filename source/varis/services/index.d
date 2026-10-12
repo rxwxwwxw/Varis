@@ -775,9 +775,120 @@ private final class Builder {
             return qualityDefine(n);
         if (library !is null && library.name == "narrative" && callee.field == "name" && n.args.length >= 2)
             return narrativeName(n);
+        if (library !is null && library.name == "narrative" &&
+                (callee.field == "scene" || callee.field == "character") && n.args.length == 2)
+            return sceneContent(n, callee.field);
         expr(n.callee);
         foreach (a; n.args)
             expr(a);
+    }
+
+    Expr tableValue(TableConstructorExpr table, string key) {
+        if (table !is null)
+            foreach (f; table.fields) {
+                auto name = as!LiteralStringExpr(f.key);
+                if (name !is null && name.value == key)
+                    return f.value;
+            }
+        return null;
+    }
+
+    string literalName(Expr value) {
+        if (auto symbol = as!SymbolLiteralExpr(value))
+            return symbol.name;
+        if (auto text = as!LiteralStringExpr(value))
+            return text.value;
+        return "";
+    }
+
+    void sceneContent(CallExpr call, string kind) {
+        auto symbol = as!SymbolLiteralExpr(call.args[0]);
+        auto body = as!TableConstructorExpr(call.args[1]);
+        if (symbol is null || body is null) {
+            foreach (argument; call.args)
+                expr(argument);
+            return;
+        }
+        Declaration definition;
+        definition.kind = kind;
+        definition.name = symbol.name;
+        definition.range = rangeOf(symbol.loc, symbol.end);
+        definition.extent = rangeOf(call.loc, call.end);
+        auto saved = inside;
+        inside = definition.subject;
+        if (kind == "character") {
+            auto attributes = as!TableConstructorExpr(tableValue(body, "attributes"));
+            if (attributes !is null)
+                foreach (attribute; attributes.fields) {
+                    auto key = literalName(attribute.key);
+                    auto options = as!TableConstructorExpr(attribute.value);
+                    if (options !is null)
+                        foreach (option; options.fields) {
+                            Declaration allowed;
+                            allowed.kind = "character-attribute";
+                            allowed.owner = symbol.name;
+                            allowed.name = key ~ "=" ~ literalName(option.value);
+                            allowed.range = rangeOf(option.value.loc, option.value.end);
+                            declare(allowed);
+                        }
+                }
+            if (auto name = tableValue(body, "name")) {
+                auto start = file.messages.length;
+                message(definition, "name", name);
+                file.messages[start].key = "character." ~ definition.name ~ ".name";
+            }
+        } else {
+            // Collect every portable local name for template validation, including branch inputs.
+            foreach (entry; body.fields)
+                if (auto beat = as!TableConstructorExpr(entry.value)) {
+                    auto localName = literalName(tableValue(beat, "local"));
+                    if (localName.length)
+                        definition.parameters ~= localName;
+                }
+            foreach (i, entry; body.fields)
+                if (auto beat = as!TableConstructorExpr(entry.value)) {
+                    auto character = tableValue(beat, "character");
+                    auto characterName = literalName(character);
+                    if (character !is null && characterName.length)
+                        refer("character", characterName, "read", -1, rangeOf(character.loc, character.end));
+                    auto target = tableValue(beat, "target");
+                    if (target !is null && literalName(target) != "hub")
+                        refer("scene", literalName(target), "read", -1, rangeOf(target.loc, target.end));
+                    auto attributes = as!TableConstructorExpr(tableValue(beat, "attributes"));
+                    if (attributes !is null)
+                        foreach (attribute; attributes.fields)
+                            refer("character-attribute", literalName(attribute.key) ~ "=" ~ literalName(attribute.value),
+                                    "read", -1, rangeOf(attribute.value.loc, attribute.value.end), characterName);
+                    if (auto text = tableValue(beat, "text")) {
+                        auto start = file.messages.length;
+                        message(definition, "text", text);
+                        import std.conv : to;
+
+                        auto id = literalName(tableValue(beat, "id"));
+                        if (!id.length)
+                            id = definition.name ~ "." ~ (i + 1).to!string;
+                        file.messages[start].key = "scene." ~ id ~ ".text";
+                    }
+                    auto choices = as!TableConstructorExpr(tableValue(beat, "choices"));
+                    if (choices !is null)
+                        foreach (option; choices.fields)
+                            if (auto choice = as!TableConstructorExpr(option.value)) {
+                                auto target_ = tableValue(choice, "target");
+                                if (target_ !is null)
+                                    refer("scene", literalName(target_), "read", -1, rangeOf(target_.loc, target_.end));
+                            }
+                }
+        }
+        declare(definition);
+        mention(definition.name);
+        auto referenceStart = file.references.length;
+        foreach (entry; body.fields)
+            expr(entry.value);
+        // Scene vocabulary and asset tags have their own validation; they are not world symbols.
+        foreach (ref reference; file.references[referenceStart .. $])
+            if (reference.kind == "symbol")
+                reference.role = "engine";
+        inside = saved;
     }
 
     void qualityDefine(CallExpr n) {

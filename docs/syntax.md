@@ -38,7 +38,7 @@ stat           ::= ';'
                  | factstat | retractstat | relationstat | localrelstat
                  | rulestat | worldstat | setstat | deletestat | adjuststat
                  | transactionstat | rollbackstat
-                 | storyletdef | actiondef | deckdef
+                 | storyletdef | actiondef | deckdef | scenedef | characterdef
 
 attnamelist    ::= Name [ attrib ] { ',' Name [ attrib ] }
 attrib         ::= '<' Name '>'
@@ -144,6 +144,8 @@ actiondef      ::= 'action' Name '(' [ params ] ')' whenclause
                    { actionfield } 'effect' 'do' block 'end' 'end'
 actionfield    ::= 'phase' exp | 'priority' exp | 'once_per' exp
 deckdef        ::= 'deck' symbol tableconstructor
+scenedef       ::= 'scene' Name tableconstructor
+characterdef   ::= 'character' Name tableconstructor
 ```
 
 Required fields, field uniqueness, scalar parameter identity, and binding safety
@@ -165,7 +167,12 @@ fields and explicit template calls. It does not extend ordinary string escapes.
 | `{#variant [weight]}a{#variant [weight]}b{/variant}` | Weighted alternatives; brackets here mean optional numeric weight. |
 | `{#variant [weight]}a{#else}b{/variant}` | Alternative b has default weight one. |
 | `{#variants}{#variant [weight]}a{/variant}...{/variants}` | Explicit grouped alternatives. |
+| `{#variant 3 wind}a{#variant gulls}b{/variant}` | Named weighted alternatives; names preserve translated/replayed selection identity. |
+| `{#plural n}{#one}a{#other}b{/plural}` | Select a locale plural category; `other` is required. |
+| `{#select v}{#case value}a{#default}b{/select}` | Select by parameter value; `default` is required. |
 
-Weights can also use `weight=number`. Conditional/variant groups may nest;
+Weights can also use `weight=number`. Plural categories include `zero`, `one`, `two`,
+`few`, `many`, and `other`; applicable rules depend on the message language (§6.6).
+Conditional, variant, plural and select groups may nest;
 placeholders and query scopes are validated. Explicit selection indexes are zero
 based; immutable sequence indexes and source string/table indexes are one based.

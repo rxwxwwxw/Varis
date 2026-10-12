@@ -8,6 +8,14 @@ This file lists the language and runtime changes that *Saltmarsh Light* (this fo
 
 The game itself uses only current-spec features. Where it has to work around a gap, the code points here, and [`extensions/proposed.lua`](extensions/proposed.lua) sketches the proposed syntax. Section numbers below (§1.1 and so on) are the ones the code comments cite.
 
+Current status (October 12, 2026): declarative scenes, characters, stage state, scene
+input/menu beats, format 3 mid-scene saves, scene-line localization and an initial SDL3
+player are implemented; see [manual §6.11](../docs/narrative.md#611--scenes-beats-and-stage-state)
+and [Harbour Window](../sample-vn/README.md). Procedural scene bodies, beat undo, persistent
+data and full presentation parity remain proposed. `varis test` supplies a choice-by-name
+wrapper; a public `session:choose_by` method remains proposed. Localization catalogs,
+packs and language switching also exist; see manual §§8.4–8.7.
+
 Priority key: **P0** means the game needs a workaround today. **P1** is needed for Twine/Ren'Py-class games. **P2** is quality of life.
 
 ---
@@ -107,7 +115,8 @@ Twine is passage-and-link based: one "current passage", inline links, `$variable
 Ren'Py is mostly linear: `say` lines, `menu`, `jump`/`call`/`return`, `show`/`hide`/`scene`, rollback, read-text skipping, persistent data.
 
 ### 3.1 Scenes: linear scripts with menus, jump/call/return (P1)
-Storylets are the right *hub* model but the wrong tool for twenty lines of dialogue. Today each line would have to be its own storylet. Effects can't yield, so a coroutine-based script is forbidden.
+Storylets are the right *hub* model but the wrong tool for twenty lines of dialogue. The first scene implementation now represents lines as declarative beat records; arbitrary
+procedural statements between them remain unsupported. Effects can't yield, so a coroutine-based script is forbidden.
 
 **Proposal:** a `scene` content kind, run by the session as a resumable script:
 - **Beats:** each `say`, `menu`, `pause`, `input` or media directive is a *beat* that suspends the scene and returns a presentation.
@@ -138,15 +147,18 @@ The engine stays turn-based. Hosts report timeouts as `session:record_input(:tim
 
 These change what the engine hands to the host, not how it's drawn.
 
-1. **Beat-stream presentations.** `present()` returns an ordered list of beats: `say`, `narration`, `show`, `menu`/storylets, `input`, `pause`, `ended`. Today it returns only a flat storylet list. Hosts would render beats; choice tokens would stay opaque.
+1. **Beat-stream presentations.** `present()` returns an ordered list of beats: `say`, `narration`, `show`, `menu`/storylets, `input`, `pause`, `ended`. Active scenes now return one current beat plus stage and an advance token; storylet hubs
+still return storylets. A general mixed beat stream remains proposed. Hosts would render beats; choice tokens would stay opaque.
 2. **Events in the presentation.** Committed events since the last presentation, so hosts don't poll `narrative_event` (§1.4).
 3. **Disabled choices with reasons.** Twine and Ren'Py often show unaffordable options greyed out. Proposal: a choice `require { ... } because "..."` clause. Choices that pass `when` but fail `require` are presented with `enabled = false` and a reason string, and no usable token. `narrative.explain` already computes most of this.
 4. **Arbitrary portable metadata on content.** `tags`, `icon`, `shortcut`, `style`: frozen at registration and passed through to the presentation. Today only the fixed fields exist.
 5. **Rich text.** A small, portable markup (emphasis, strong, speaker colour, line break, link regions with ids) parsed with templates. Hosts would get spans, not ad hoc strings, which avoids format injection from bound values.
-6. **Text input.** An `input` beat with a prompt, default value and validation. The reply comes back through `session:respond(token, value)`, is recorded for replay, and is portable-validated.
+6. **Text input.** An `input` beat with a prompt, default value and validation. The current scene input beat uses `session:advance(token, value)` and scalar portable
+locals. The proposed `respond` API, general validation and replay-input policy remain design work.
 7. **Status / HUD data.** `session:status()` returns the visible qualities with labels and bounds, using the `visible`/`label` metadata `quality.define` already stores. The sample host builds its status line by hand.
 8. **Save metadata and slots.** `session:save({label=..., meta=...})` returns a header the host can show (turn, day, label, timestamp supplied by the host) without restoring the save. Autosave hooks at idle boundaries.
 9. **Undo/back** (§2, §3.4).
 10. **Parser-style input (optional, P2).** For classic IF: `session:choose_by_text("take rope")`, matching against choice titles or authored `verbs`. Not needed for VN/Twine.
-11. **Embedding API.** A documented D-side host API: create state, load content, run session commands, receive presentations as D structs. This lets a Qt or HTML/JS front end, or a WASM build, drive the engine without going through Lua tables.
+11. **Embedding API.** A documented D-side host API: create state, load content, run session commands, receive presentations as D structs. An initial status-returning `SceneHost` adapter and SDL3 player exist; a general embedding
+API remains work. WebAssembly is not planned (ROADMAP D13).
 12. **Localization.** Templates looked up by stable ids (§3.2) from per-language string tables, with `narrative.name` labels per locale. Content fingerprints should exclude translations, so a language pack doesn't invalidate saves.

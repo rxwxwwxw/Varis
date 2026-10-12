@@ -88,7 +88,8 @@ private immutable string[] reservedWords = [
 ];
 
 private immutable string[] contentKeywords = [
-    "storylet", "action", "choice", "deck", "relation", "rule", "fact", "retract", "set", "delete",
+    "storylet", "action", "choice", "deck", "scene", "character", "relation", "rule", "fact",
+    "retract", "set", "delete",
     "adjust", "when",
     "title", "text", "effect", "priority", "weight", "cooldown", "repeatable", "sticky", "order",
     "phase", "once_per",
@@ -587,7 +588,7 @@ final class Workspace {
                 foreach (ref d; indexes[p].declarations) {
                     if (d.name != target.name)
                         continue;
-                    if (d.kind == "quality" || d.kind == "name") {
+                    if (d.kind == "quality" || d.kind == "name" || d.kind == "scene" || d.kind == "character") {
                         Range r = d.range;
                         if (r.line == r.endLine && r.column + 1 + cast(int) d.name.length == r.endColumn)
                             r.column += 1;
@@ -641,7 +642,9 @@ final class Workspace {
             paths ~= "l10n/" ~ locale ~ ".json";
         foreach (file; paths) {
             string text;
-            if (!readFile(file, text))
+            if (auto draft = file in contents)
+                text = *draft;
+            else if (!readFile(file, text))
                 continue;
             int line = 1;
             size_t lineStart;

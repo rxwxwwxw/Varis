@@ -87,6 +87,8 @@ class Compiler {
         if (parent !is null)
             groundedLogicParameters = parent.groundedLogicParameters.dup;
         this.proto = new Prototype();
+        if (parent !is null)
+            this.proto.sourceName = parent.proto.sourceName;
         this.proto.functionName = functionName;
         this.freeReg = 0;
         this.currentScopeDepth = 0;

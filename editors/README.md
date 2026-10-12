@@ -18,4 +18,7 @@ It never runs project code.
 - **VS Code:** use a generic LSP client extension with command `varis` and arguments `["lsp"]`,
   and associate the grammar with the project's files.
 
-The workbench (`varis serve`) uses the same services in process; see WORKBENCH_PLAN.md.
+The workbench (`varis serve`) uses static diagnostics and indexed definitions in process;
+its completion still reads live state and its UI has no hover/rename. The LSP exposes
+the fuller static service set, including literal scenes/characters. See
+[workbench status](../WORKBENCH_PLAN.md#1a-what-exists-today).

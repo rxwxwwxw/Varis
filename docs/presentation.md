@@ -1,0 +1,135 @@
+# SDL3 scene player and D host adapter
+
+Varis has an optional native visual-novel player. It presents the engine's declarative
+scenes with backgrounds, transparent character sprites in named slots, expression/outfit
+variants, side portraits, dialogue, menus, text input and independent audio channels.
+The engine owns the story position and stage; the presentation manifest owns media paths
+and layout. Asset edits do not change the content fingerprint or save format.
+
+Build and run from the repository root:
+
+```sh
+# macOS dependencies (other platforms need equivalent development packages)
+brew install sdl3 sdl3_image sdl3_ttf sdl3_mixer pkgconf
+make varis-sdl
+bin/varis-sdl sample-vn/presentation.json
+```
+
+The normal `varis` CLI and its tests do not require SDL. The optional player uses a small C
+bridge compiled against the installed SDL headers, avoiding handwritten SDL event layouts
+and dependency bindings inside the language runtime. SDL3_ttf supplies UTF-8 text shaping
+and wrapping; SDL3_image supplies image decoding; SDL3_mixer supplies audio tracks. The
+player runs SDL on the main OS thread. This build has been tested on macOS arm64;
+Windows/Linux packaging is not yet verified.
+
+## Author a scene
+
+Use the [scene syntax](narrative.md#611--scenes-beats-and-stage-state) and keep file paths in
+the manifest. For example:
+
+```lua
+character mira {
+    name = "Mira",
+    attributes = { expression = {:quiet, :smile} },
+    defaults = { expression = :quiet }
+}
+scene greeting {
+    {kind=:background, tag=:harbour},
+    {kind=:show, character=:mira, slot=:left},
+    {kind=:say, character=:mira, attributes={expression=:smile},
+     id="greeting.hello", text="Welcome back."},
+    {kind=:hide, character=:mira},
+    {kind=:ended}
+}
+```
+
+A line changes the character's attributes in the engine stage. The player selects a matching
+image at the next beat boundary. `hide`, `background`, scene calls, jumps and menus use the
+existing engine semantics. The player automatically acknowledges background/show/hide/audio
+beats, so readers click through dialogue rather than each media directive.
+
+## Manifest
+
+[The sample manifest](../sample-vn/presentation.json) is a complete example. Paths are relative
+to the manifest; content module `require` paths still follow the process working directory.
+
+| Field | Meaning |
+| --- | --- |
+| `content`, `scene` | Content entry file to execute, then initial scene id (required). The player creates an empty session world. |
+| `title` | Window title. |
+| `font` | TTF/OTF font file, relative or absolute. Omission tries Arial on macOS/Windows or DejaVu Sans on Linux. Supply a font covering the language's characters for released games. |
+| `font_size` | Text size, 8–96, default 28. |
+| `save` | Quicksave path, default `quicksave.json` beside the manifest. |
+| `panel_color`, `accent_color` | Decimal unsigned RGBA colors (`0xRRGGBBAA` represented as a JSON number). |
+| `backgrounds` | Array of `{ "id": "harbour", "file": "assets/harbour.png" }`. Backgrounds fill the logical canvas. |
+| `sprites`, `portraits` | Arrays with `character`, `file`, and optional `attributes` object. Attribute values are symbol/string names. |
+| `slots` | Ordered array of `{ "id": "left", "x": 80, "y": 0, "width": 400, "height": 670 }`. |
+| `audio` | Array of `{ "id": "theme", "file": "assets/theme.wav" }`. |
+| `channels` | Array of `{ "id": "music", "loop": 1 }`. `loop: 0` plays once. |
+
+Sprites match all listed attributes; the most specific match wins, with manifest order breaking
+ties. An entry without attributes is a fallback. Sprite art preserves aspect ratio and anchors
+to the bottom center of its slot. Slots draw in manifest order, later slots on top. Default
+slots are `left`, `center`, `right` on a letterboxed 1280×720 canvas. Portraits are optional and
+appear beside the speaker's text. All images/audio load once at startup; text textures rebuild
+at beat or UI boundaries. Rendering between boundaries does not call the engine.
+
+Unmapped active backgrounds, slots, characters and audio produce explicit errors. The sample
+SVG artwork and synthesized WAV are original project assets under the repository license.
+PNG with alpha is suitable for finished sprite and portrait artwork.
+
+## Controls and current limits
+
+- Enter, Space or left click advances dialogue; Escape closes the window.
+- Up/Down selects a menu item; Enter or a click chooses it. Menus page in groups of six.
+- Type a name and press Enter at an input beat. Backspace removes a UTF-8 code point.
+- Up/Down scrolls long dialogue. H shows the five most recent lines.
+- A toggles automatic dialogue advancement; S toggles skipping. Neither chooses menus nor
+  submits text input. H pauses both modes.
+- F5 saves; F9 loads and reconstructs the complete stage from the engine save.
+
+`transition` currently fades in from black over 300 ms and `pause` waits 300 ms. These are
+player defaults; authored timing/effect parameters are not implemented. `picture` and `screen`
+beats fail explicitly. Storylet hub presentation, typewriter effects, arbitrary transforms,
+advanced transitions, voice synchronization, ruby, per-locale font switching, IME composition
+feedback and full history navigation remain future work. SDL3_ttf renders UTF-8 but the supplied
+font must cover the script; full CJK typography/localization stage T5 is not claimed. This is
+an initial usable scene player, not completion of the entire milestone 36 parity checklist.
+
+## D embedding boundary
+
+`varis.services.presentation.SceneHost` adapts the existing scene runtime to return statuses:
+
+```d
+auto host = new SceneHost;
+if (!host.loadContent(source, filename, "greeting")) {
+    // Show host.error.
+}
+auto view = host.view; // SceneView: text, speaker, background, characters, choices, audio.
+// Draw without engine calls, then acknowledge a user action:
+bool ok = host.advance();
+// Menus pass view.choices[index].id; input beats pass LuaValue(userText).
+string bytes;
+ok = host.save(bytes);
+ok = host.restore(bytes);
+```
+
+`refresh()` produces a read-only view without advancing or consuming randomness. The adapter
+retains the exact presentation token; callers do not construct tokens. Failed menu choices and
+invalid saves leave the session intact. `view.finished` marks return to the hub or scene end;
+this player closes there. The adapter catches legacy runtime exceptions at the boundary and
+reports `false` plus `error`. It does not change VM error handling. The current convenience
+loader serves scene-only games with an empty world; hosts requiring authored relational worlds
+should use the underlying `Session`/world APIs and persistence factory protocol.
+
+## Validation
+
+```sh
+make test                    # includes host status/atomicity/save tests, no SDL needed
+make test-sdl                # optional software-rendered integration checks
+```
+
+`test-sdl` exercises the illustrated sample, input/menu flow, asset failure diagnostics,
+UTF-8 rendering, and byte-identical mid-scene save/load. It writes `build/sdl/harbour.bmp`
+using SDL's dummy video/audio drivers and software renderer. The screenshot is captured
+from the actual SDL render target. No display or audio hardware is required.

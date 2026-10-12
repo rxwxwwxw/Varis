@@ -301,6 +301,11 @@ effect functions require an active narrative effect.
 | `narrative.program(world, version)` | Records a nonempty authored rule-program version/fingerprint for reconstruction. |
 | `narrative.new(world)` | Seals registry if needed and returns an independent session owning this world. |
 
+`narrative.scene(symbol, beats)` and `narrative.character(symbol, metadata)` register
+immutable scene programs and characters. The contextual declarations are sugar for
+these calls. `narrative.play(scene_symbol)` starts a scene inside the active effect.
+See [6.11](narrative.md#611--scenes-beats-and-stage-state).
+
 #### `narrative.display(value)`
 
 Returns display text. Formatter functions receive the value; their first string
@@ -348,6 +353,8 @@ and consumes no RNG. This function returns one string.
 
 | Entry | Contract |
 | --- | --- |
+| `session:play(scene_symbol)` | Start or replace a declarative scene; retain stage. |
+| `session:advance(beat_token [, input])` | Consume exact scene boundary; validate menu/scalar input. |
 | `session:world()` | Owning world. |
 | `session:turn()` | Current visible turn. |
 | `session:active_deck()` | Top deck symbol. |

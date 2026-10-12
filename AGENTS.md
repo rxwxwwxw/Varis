@@ -37,8 +37,8 @@ Varis Reference Manual linked below, not here.
 
 ### 1.3 The rules that matter most
 
-1. **Planned is not implemented.** Most of the ROADMAP and both plans describe the future. §5 of
-   this file says what is true today. Do not write code against a design that has not landed.
+1. **Planned is not implemented.** The roadmap and plans mix completed stages with future work. §5 of
+   this file and each plan's status notes say what is true today. Do not write code against a design that has not landed.
 2. **Never change behaviour by accident.** Every change passes `make test`; interpreter and engine
    changes also pass `make bench-check` and the sample-game check (§8, guideline 15).
 3. **Never weaken a test, a gate or a ledger entry to make a change pass.**
@@ -75,8 +75,9 @@ Varis Reference Manual linked below, not here.
    and semantics. Passing more of the official Lua suite is **not** a goal (D3); the Lua suites
    are a regression net that protects modders.
 5. **Fast in two ways.** The world model answers a turn within a budget on low-end hardware (D5).
-   The Lua core is never slower than C Lua and should become faster (D4). Both are planned work;
-   see the performance plan.
+   The Lua core must become no slower than C Lua and then faster (D4); parity has not been
+   reached. Stand-in world-model budgets have recorded passing measurements; real low-end
+   validation remains. See the performance plan.
 6. **Tooling is part of the language.** A project checker, language services built on the Varis
    frontend, and a web workbench served by the Varis executable (command window, editor,
    workspace, in the manner of MATLAB) are deliverables (D10). Debugging is offered at the level
@@ -123,8 +124,9 @@ grown or an object is created with the collector. `@nogc` code cannot call the c
 
 ### 3.3 Existing code
 
-Most existing code does not follow §3.1 yet: it has about 570 `throw` sites, 281 `match!` uses and
-many associative arrays. Rules:
+Much existing code does not follow §3.1 yet: it still uses exceptions, `match!` and
+associative arrays. Counts change as stages land; inspect the source rather than treating
+historical profile counts as current. Rules:
 
 - **Do not convert code opportunistically.** Conversion is planned work with its own stages
   (performance plan, tracks W and L). A drive-by conversion in an unrelated change is unwanted.
@@ -147,7 +149,7 @@ note names the stage. Until that stage lands, today's description is the one to 
 ### 4.1 Layers (ROADMAP D9)
 
 ```
-  tools        cli.d, (planned) workbench server, language services
+  tools        cli.d, services/*.d, workbench/*.d, optional tools/sdl host
      |
   narrative    narrative/*.d, lib/narrative.d, lib/quality.d
      |
@@ -211,7 +213,7 @@ How the core reaches the layers above it without importing them (the seam, stage
 - **Invalid Keys**: Setting a table index to `nil` or `NaN` raises a Lua error.
 - **Length Operator (`#t`)**: Border search finding $n$ where $t[n] \neq \text{nil} \land t[n+1] = \text{nil}$.
 - **Metatables**: `__index`, `__newindex`, `__len`, `__eq`, `__lt`, `__le`, etc.
-- String-key lookups compare pointer first, then length and bytes (`findStringHinted`, `findStringHashed`). Equal constants in different functions are different pointers today; stage L2 interns constants.
+- String-key lookups compare pointer first, then length and bytes (`findStringHinted`, `findStringHashed`). `VM.prepareForExecution` interns compile-time string constants across functions; runtime strings remain uninterned.
 
 ### 4.5 Control flow & errors (`source/varis/exception.d` & `state.d`)
 
@@ -226,7 +228,7 @@ How the core reaches the layers above it without importing them (the seam, stage
 - Ordinary coroutines may mutate worlds and consume iterators between calls; each iterator retains its construction-time snapshot.
 - Unprotected Lua coroutine errors retain frames and close handlers until explicit close; protected errors unwind at their handler. Closing must bypass protected calls, prohibit yielding/reentrant close, preserve error objects, and clear the error after the first close. Keep debug call stacks isolated per Fiber. Standard sort/gsub callbacks remain non-yieldable.
 - Guards must not yield during inference, including through helper functions or native callbacks. Enforce this at the Fiber yield boundary with restoration of yieldability on every exit.
-- Coroutines are part of the full language (D2) and must keep working. They are not a performance target: content does not use them, and planned scenes compile to resumable positions instead (ROADMAP milestone 29).
+- Coroutines are part of the full language (D2) and must keep working. They are not a performance target: content does not use them, and implemented declarative scenes retain resumable positions instead (ROADMAP milestone 29).
 
 ### 4.7 Frontend: typed AST intermediate representation
 
@@ -274,14 +276,22 @@ How the core reaches the layers above it without importing them (the seam, stage
 - **Choices and actions**: Immutable presentation tokens; revalidate exact bindings and policies inside the effect transaction. Failed choices produce no turn advancement. Actions run outside inference in canonical priority order, reevaluating after each commit; enforce once-per policies and phase budgets, retaining prior successful commits on `ACTION_LIMIT`.
 - **Decks and templates**: Canonical weighted draws with explicit seeding and versioned algorithms; per-entry no-replacement history. Render templates read-only from the presentation snapshot, with existence tests rather than iterator truthiness, and no RNG consumption during rendering.
 - **Qualities and events**: Quality metadata constrains the keyed extensional relation across all mutation paths. Explicit initialization, no implicit defaults/clamping. Transactional events have commit-time sequence numbers and immutable read-only relation access; schedules run before actions with bounded immediate chains. Deferred external callbacks run only after commit.
-- **Save format and wording**: format 2 (`varis-session-2`, October 12, 2026) keeps wording (titles, texts, names, quality labels) out of the content identity: `contentFingerprint` includes only the structure of a template (conditions, variant weights and names, plural/select parameters). Format 1 is read with `legacyContentFingerprint` / `legacyContentVersion` and written back as 2. Translations (`narrative.translate`, `varis l10n build` packs) are presentation data: never fingerprinted, never saved. Do not put wording back into the identity.
+- **Save format and wording**: formats 2/3 (`varis-session-2` and scene-aware `varis-session-3`, October 12, 2026) keep wording (titles, texts, names, quality labels) out of the content identity: `contentFingerprint` includes only the structure of a template (conditions, variant weights and names, plural/select parameters). Format 1 is read with `legacyContentFingerprint` / `legacyContentVersion` and written back as 2. Translations (`narrative.translate`, `varis l10n build` packs) are presentation data: never fingerprinted, never saved. Do not put wording back into the identity.
 - **Persistence and diagnostics**: Save only at quiescent boundaries; validate serializable values and schema/content versions, reconstruct authored rules, and reject unsupported closures/local relations absent a host protocol. Explanations are read-only; subscriptions/analysis are optional, post-commit/isolated facilities.
 - **Recorded decisions**: Preserve the plan's control-flow, local-relation, token, event timing, handler, serialization and migration interfaces. Quality defaults inside effects follow lexical call-world metadata (including captured helper worlds); outside effects they use global. Nonyield scopes include synchronously resumed children. Do not claim broader Lua compatibility or analysis completeness than the audit supports.
 - The lexical call world is carried in `state.callWorld`, set at call sites from `proto.callSites[pc].world`. Its only reader outside the VM is `lib/quality.d`. Stage S1 moves this off the plain Lua call path; the rule above must still hold afterwards.
 
-### 4.12 Debugging and the workbench (planned; ROADMAP D10, D11)
+### SDL3 presentation (initial milestone 36 slice)
 
-A first version exists (`varis serve` and `varis check`, `source/varis/workbench/`; WORKBENCH_PLAN §1a lists what works), including story-level debugging and a source-level debugger with line breakpoints, stepping, stack and locals. Language services and pushed events do not exist. The design is in [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md).
+`make varis-sdl` builds the optional `bin/varis-sdl` scene player in `tools/sdl/`.
+`varis.services.presentation` is the status-returning scene-host adapter. Media paths,
+fonts and slot layout live in a JSON manifest, outside engine stage and save identity.
+See [docs/presentation.md](docs/presentation.md) for the implemented surface and limits.
+The CLI has no SDL dependency; `make test-sdl` runs optional headless rendering checks.
+
+### 4.12 Debugging and the workbench (partial; ROADMAP D10, D11)
+
+A first version exists (`varis serve` and `varis check`, `source/varis/workbench/`; WORKBENCH_PLAN §1a lists what works), including story-level debugging and a source-level debugger with line breakpoints, stepping, stack and locals. Language services, LSP and the editor's static diagnostics exist; the editor embeds vendored CodeMirror with inline diagnostics, breakpoint gutters and retained undo. Panels resize and command history persists in browser storage. Pushed events and the complete debugger do not. The design is in [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md).
 
 - The tool is a web workbench served by `varis serve`: command window on the left, editor on the right, a workspace browser (MATLAB's model). The engine runs natively; the browser is only the user interface. No WebAssembly.
 - Debugging is at two levels. **Story level** (step a turn, rewind by replay, what changed, why a choice is missing) is built on the existing `narrative.explain`, `narrative.observe`, `narrative.analyze` and replay logs. **Source level** (line breakpoints, stepping, call stack, locals) is built on the instrumented executor from stage S1.
@@ -304,11 +314,13 @@ Use this table to avoid coding against a design that has not landed.
 | Executors | `executeFrame` and `executeDeepFrame`; 40 of 43 handlers shared through `sharedOpcodeCases*` mixins, calls and returns still per executor | One executor with frames as records; fast and instrumented variants | S1 (first step done) |
 | Core and world model | No core module imports `logic` or `narrative` (enforced by `make check-sources`); the world model plugs in through hooks (`narrative/vmops.d`). The executor still carries an opaque call world on every Lua call | Same, with the call world resolved only for natives that ask | S1 (boundary done) |
 | Fact storage | `bool[RelTuple]` per relation for writes, plus a shared immutable `FactTable` with indexes for reads (`logic/store.d`); cloned worlds share fact sets copy-on-write | Same | W1 (done) |
-| Query evaluation | Compiled slot plans, index probes, semi-naive recursion, derived relations cached per closure (`logic/evaluate.d`); the naive evaluator is the oracle (`logic/naive.d`, `VARIS_LOGIC_ORACLE=1`) | Same, plus storylet indexing | W2–W4 (done), W5 |
+| Query evaluation | Compiled slot plans, index probes, semi-naive recursion, derived relations cached per closure; naive oracle; required-constant-fact storylet prefilter | Remaining W5 indexing only if measurements justify it | W2–W4 and W5(a) done |
+| Scenes and stage | Declarative scene/character declarations, scalar locals, jump/call/return, beat tokens and engine-owned stage; format 3 mid-scene saves; `sample-vn/` | Procedural code between beats, full presentation parity, beat rollback | 29 (first version done) |
+| SDL3 presentation | Optional `varis-sdl` scene player: backgrounds, expression sprites, portraits, dialogue/menu/input, audio, quicksave/load, recent history, auto/skip; asset manifest and status-returning scene host | Full stage parity and typography; general embedding API | 36 (initial slice done) |
 | Sample game | In `make test` (suite `sample-game`: its check plus a golden transcript and save, `tests/sample_game/`) | Same | S0 (done) |
-| Debugging | Lua `debug` library; `narrative.explain`/`observe`/`analyze` from scripts | Workbench debugger at source and story level | Milestone 44 |
-| Tools | CLI and REPL (`cli.d`); project manifest (`project.lua`), project index, `varis check` (every syntax error, static checks, load and analysis passes, `--locale`), `varis lsp` language server, `varis play`, `varis test`, `varis l10n` (extract, status, kits, XLIFF/CSV, review, packs); `varis serve` first version (command window, workspace, story panel with why/changes and a language switch, editor with the services' problems list, breakpoints and stepping) | Content-tier enforcement (needs milestone 26), complete debugger and workbench | Milestones 26, 42–44 |
-| Core speed | 0.5–2.3× C Lua on core workloads (`fib` 2.28×, `string_ops` 2.13×, `closures` 1.95×, loops 1.2–1.5×); `pcall_error` 1.3× (was 37×), `deep_recursion` 2.7× (was 8×) | ≤ 1.0×, then below | L, X |
+| Debugging | Workbench line breakpoints and stepping for Run/commands and story effects, selectable frame locals and read-only frame expressions; asynchronous Pause and Stop; story explanations/deltas and seeded replay/rewind; Lua `debug` library remains frozen | Error stops and separate fast/instrumented executors | Milestone 44 incomplete |
+| Tools | CLI and REPL (`cli.d`); project manifest (`project.lua`), project index, `varis check` (every syntax error, static checks, load and analysis passes, `--locale`), `varis lsp` language server, static content-tier and manifest-symbol checks, `varis play`, `varis test`, `varis l10n` (extract, status, kits, XLIFF/CSV, review, packs); `varis serve` first version (command window, workspace, story panel with why/changes and a language switch, editor with shared source services, retained drafts and rename preview, project problems, breakpoints and stepping) | Runtime tier enforcement and file identity (milestone 26), complete debugger and workbench | Milestones 26, 42–44 |
+| Core speed | 0.62–2.67× C Lua on core workloads in the October 12 run (`fib` 2.28×, `string_ops` 1.72×, `closures` 1.93×, loops 1.1–1.5×); `pcall_error` 1.22× (was 37×), `deep_recursion` 2.67× (was 8×); see generated `docs/STATUS.md` for the latest full run | ≤ 1.0×, then below | L, X |
 | Turn latency (reference-scale game, M1) | 0.3 ms with or without a recursive rule (was 15 ms and 840 ms); peak memory 53 MB | 5 ms and 64 MB on the stand-in; real hardware unmeasured | W, M |
 
 ---
@@ -352,10 +364,13 @@ Use this table to avoid coding against a design that has not landed.
 | `sample-game/` | | ✅ | *Saltmarsh Light*, the complete sample game; must keep working (D12) |
 | `benchmarks/` | | ✅ | Workloads, `targets.toml` (goals and gates), plans and history |
 | `docs/` | | Current reference | The Varis language definition, libraries, grammar, compatibility, runnable examples |
-| `source/varis/workbench/server.d`, `page.d` | tools | ✅ first version (milestone 42) | `varis serve`: loopback HTTP server owning the project state, and the workbench page |
+| `source/varis/workbench/server.d`, `page.d`, `inspect.d` | tools | ✅ first version (milestone 42) | `varis serve`: loopback HTTP server owning the project state, and the workbench page |
 | `source/varis/services/{diagnostic,manifest,index,checks,check,loadpass,lang,lsp,play,json,catalog,xliff,l10n}.d` | tools | ✅ authoring plan A0–A6, localization plan T1/T3/T4 | Diagnostic record, manifest reader, project index, static checks, `varis check`, language services and server, playtest and author tests, catalogs and the `l10n` commands. Read the AST; never run content to understand it (§4.12). |
 | `source/varis/narrative/translation.d` | narrative | ✅ localization plan T3 | Translated message templates, render traces; translations are presentation data, never fingerprinted or saved |
-| The debugger | tools | Planned | Milestone 44; see WORKBENCH_PLAN.md |
+| The debugger | tools | ✅ initial slice, milestone 44 incomplete | Line breakpoints, stack/locals and stepping for command-window/Run code; story explanations and turn changes. See WORKBENCH_PLAN §1a for remaining limits. |
+| `source/varis/narrative/{scenes,plural,text}.d` | narrative | ✅ initial scenes and text support | Portable beat programs, stage state, plural rules and Unicode/text helpers |
+| `source/varis/services/{tier,presentation}.d`, `tools/sdl/` | tools | ✅ initial slices | Static content restrictions, status-returning scene adapter and optional SDL3 player |
+| `sample-vn/` | | ✅ | *Harbour Window*: scene saves and graphical presentation sample |
 
 Keep all source modules listed explicitly in the `Makefile` (`make check-sources`).
 
@@ -409,9 +424,11 @@ State at closure: core workloads at about 0.6–2.4× C Lua, with `core.pcall_er
 
 Core performance is a goal again with a stricter target (≤ 1.0×, ROADMAP D4) and a different method (restructuring). That work is Phase 11, milestones 45–47. Phase 8 is not reopened, and its conformance half stays closed (D3).
 
-### Phases 9–12 (planned)
+### Phases 9–12 (partially implemented)
 
-Defined in [ROADMAP.md](ROADMAP.md); none of this exists yet, and proposals there are not language semantics. Milestone numbers are identifiers, not an order; the order is in ROADMAP "Order of work".
+Defined in [ROADMAP.md](ROADMAP.md). Implemented slices include static content-tier/manifest-symbol checks, declarative
+scenes/stage (29), authoring A0–A6, localization T1–T4, the workbench/debugger,
+world-model restructuring and the SDL3 scene player; the remaining proposals are not language semantics. Milestone numbers are identifiers, not an order; the order is in ROADMAP "Order of work".
 
 | Phase | Milestones | Planned deliverable |
 | --- | --- | --- |
@@ -447,7 +464,7 @@ Defined in [ROADMAP.md](ROADMAP.md); none of this exists yet, and proposals ther
 10. **Performance changes**: There are two targets (performance plan §1): turn latency, load time and memory on the reference game for the world model, and the ratio against C Lua for the Lua core. Follow the stage order in [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md); do not skip ahead. Profile before choosing an optimization inside a stage. Land small changes with targeted semantic tests, full `make test`, optimized assertion-enabled validation (`make varis-checked`), actual release CLI fixtures, and before/after timing and memory evidence from the same session. Report measurements, not estimates. Never trade correctness for benchmark scores or silently weaken failure/skip accounting. A file passing with protected errors or internally disabled tests is not proof of feature completeness.
 11. **Runtime restructuring boundaries**: The value representation, the execution encoding, error handling and the executor structure are planned to change (stages L1–L4), each in its own stage with its own exit test. Outside those stages, do not change them. Inside them, preserve: upvalue locations and lifetimes, GC roots, native reentry, suspended coroutines, cleanup order on errors, lexical worlds, aliases and Fiber isolation, analysis budgets, debug attribution, transaction exit boundaries. The canonical bytecode `proto.code` is not changed for speed, because fingerprints and saves read it (§4.8). The single D collector is permanent (§4.3).
 12. **Lua compatibility policy**: The full language stays (D2). The official suite, the core differential fixture and the regression programs are a regression net: a new failure there is still a failure, and is never fixed by weakening a test. Do not spend effort closing the remaining Lua-fidelity gaps (D3). A deliberate divergence (for authoring, saves/replay, portability or performance) is allowed with a `[[ledger]]` entry, a `Skip-Accepted:` trailer and a line in `docs/compatibility.md` §9. The frozen features listed in ROADMAP (C API subset and `dlopen` modules, binary chunks, weak-table/finalizer emulation, `debug.sethook` fidelity, exact PUC-Rio error text) get no new work but must keep passing while they exist; removing one is the owner's decision, so ask first.
-13. **Planned is not implemented**: The content/engine tier split, scenes, declared symbols, `varis check`, the language services, the workbench, the seam, and every stage of the performance plan are plans. The manual in `docs/` describes only implemented behaviour; proposals live in `ROADMAP.md`, the plan documents and `sample-game/needed_extensions.md`. Move a construct into the manual in the same change that implements and tests it, and update §5 of this file when a stage lands.
+13. **Planned is not implemented**: The full content/engine tier split, procedural scene bodies, declared-symbol syntax and unfinished performance stages remain plans. Declarative scenes/stage, the checker, language services, the workbench and the seam have implemented slices described above. The manual in `docs/` describes only implemented behaviour; proposals live in `ROADMAP.md`, the plan documents and `sample-game/needed_extensions.md`. Move a construct into the manual in the same change that implements and tests it, and update §5 of this file when a stage lands.
 14. **Writer-facing quality**: New content syntax must not require understanding closures, coroutines, iterators or metatables. Diagnostics for content name the storylet, choice or field and carry a source location; prefer rejecting a likely mistake (an unknown symbol, a storylet that can never appear) over accepting it silently.
 15. **The sample game keeps working** (D12): `sample-game/tools/check.lua` must pass after every change. Run it with the working directory set to `sample-game` (§9); it prints `checks passed`. `make test-fast` runs it together with a golden transcript and save comparison (`python3 tools/suite test --suite sample-game`). If the golden comparison fails, the change altered behaviour, fingerprints or the save format: fix the change. Regenerate `tests/sample_game/golden.expected` (`check_golden.py <binary> --update`) only for an intended, reviewed change, in its own commit.
 16. **Style** (D6): new and restructured code follows §3. Do not convert old code outside a planned stage.

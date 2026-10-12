@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720">
+<defs><linearGradient id="sky" x2="0%" y2="100%"><stop stop-color="#182c4a"/><stop offset="1" stop-color="#c88c86"/></linearGradient><linearGradient id="sea" x2="0%" y2="100%"><stop stop-color="#648f9b"/><stop offset="1" stop-color="#172f49"/></linearGradient></defs>
+<path fill="url(#sky)" d="M0 0h1280v720H0z"/><circle cx="960" cy="160" r="57" fill="#f9dcaa"/>
+<path fill="#273c54" d="M0 306l100-35 130 23 100-60 130 67 120-47 140 51 80-33 100 41 120-65 160 58v414H0z"/>
+<path fill="url(#sea)" d="M0 333h1280v387H0z"/>
+<g fill="none" stroke="#b8c8be" opacity=".35" stroke-width="3"><path d="M850 370h230m-180 24h270M20 410h220m600 30h300M320 384h220M100 478h370m300 22h400M500 555h400"/></g>
+<path fill="#1d2e3b" d="M0 480l1280-60v300H0z"/><path fill="#49525a" d="M0 480l1280-60v24L0 507z"/>
+<g stroke="#172b3c" stroke-width="12"><path d="M30 430v160m190-169v160m190-169v160m190-169v160m190-169v160m190-169v160m190-169v160M0 456l1280-58"/></g>
+<g transform="translate(1080 200)"><path stroke="#172b3c" stroke-width="13" d="M0 0v320"/><path fill="#172b3c" d="M-38 0h76l-8-64h-60z"/><path fill="#ffdd94" d="M-25-12h50l-5-40h-40z"/></g>
+<text x="56" y="74" fill="#e3e4dc" font-family="sans-serif" font-size="18" letter-spacing="5">HARBOUR WINDOW</text>
+</svg>

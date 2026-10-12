@@ -9,8 +9,9 @@ connects them to current reference sections. The implementation plan records
 engineering history; language semantics are maintained in `docs/`.
 
 Run `make test DC=/opt/homebrew/bin/ldc2`. Stateful and narrative unit executables,
-54 Lua extension cases, the 15 base Datalog cases and existing base unit suites
-are included. Each executable/case has a 300-second timeout; Lua rejection
+the extension cases, the 15 base Datalog cases and existing base unit suites
+are included. Current counts/results are in [generated status](../../docs/STATUS.md);
+timeouts are defined per suite in `tests/manifest.toml`. Lua rejection
 assertions inspect the intended diagnostic, and successful cases must reach the
 runner's completion marker. Official Lua harness coverage is a separate Phase 5
 gate. Forced-GC coverage reports a partial skip when `collectgarbage` is absent.
@@ -94,3 +95,18 @@ Each row checks the intended reason, rather than accepting arbitrary failures.
 - Existing compiler `goto` execution and the official Lua harness are outside the
   companion gate; `tests/runner.d` provides the dedicated official runner (`python3 tools/suite test --suite official`).
   Standalone labels and existing supported Lua behavior remain covered by regression tests.
+
+
+Scene coverage (manual §6.11): `extensions.narrative_scenes` covers frozen programs,
+portable locals, menu control, stale/foreign/load tokens, immutable stage, failed
+control-loop atomicity, translations and repeat presentation. `narrative_scene_rollback`
+proves effect launch/rollback and scene/hub interoperation. The `sample-game` suite's
+`linear-vn` and `scene-save` cases prove mid-dialogue and mid-call save/load, fresh-process
+restoration, wording compatibility, structural/corrupt-save rejection and static
+unknown-character/attribute diagnostics. Scene branch analysis and beat undo are
+not implemented; the RPG Maker/Ren'Py parity list remains a roadmap checklist.
+
+The status-returning `SceneHost` is covered by `tests/unit/test_presentation.d`.
+Optional `make test-sdl` checks rendering, input/menu flow, assets and scene saves;
+it requires the SDL development packages and is separate from `make test`.
+The [presentation guide](../../docs/presentation.md) records supported directives and limits.
