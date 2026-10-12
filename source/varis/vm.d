@@ -2352,6 +2352,23 @@ struct VM {
                 return;
             }
         }
+        // `text:method(...)`: look the method up in the string metatable's __index table with the
+        // constant's cached hash, instead of the generic indexing path.
+        if (instr.cIsK && proto.constants[instr.c].isString && registers[instr.b].isString && state
+                .stringMetatable !is null) {
+            static immutable size_t indexHash = hashOf("__index");
+            auto holder = state.stringMetatable.findStringHashed("__index", indexHash);
+            if (holder !is null && holder.isTable) {
+                LuaValue* found;
+                int status = lookupFieldFast(holder.asTable, proto.constants[instr.c].asString,
+                        proto.constantHashes[instr.c], proto.lookupHints[pc], found);
+                if (status == 1) {
+                    copyValue(registers[instr.a + 1], registers[instr.b]);
+                    copyValue(registers[instr.a], *found);
+                    return;
+                }
+            }
+        }
         registers[instr.a + 1] = registers[instr.b];
         auto keyVal = instr.cIsK ? proto.constants[instr.c] : registers[instr.c];
         registers[instr.a] = getTable(state, registers[instr.b], keyVal);

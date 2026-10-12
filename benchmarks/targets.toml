@@ -67,8 +67,8 @@ gate.time = 0.02
 
 [workload."core.string_ops"]
 goal.clua = 1.0
-gate.clua = 2.43
-gate.time = 0.048
+gate.clua = 2.0
+gate.time = 0.04
 
 [workload."core.table_insert_remove"]
 goal.clua = 1.0

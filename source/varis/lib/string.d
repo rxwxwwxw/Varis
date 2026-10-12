@@ -568,6 +568,13 @@ void openStringLib(LuaState state) {
         return [LuaValue(dumpFunction(L, a[0], strip))];
     });
 
+    // String functions read their arguments and neither keep nor modify the argument array, so a
+    // call passes a view of the caller's registers instead of a copy (one allocation less).
+    LuaValue key, value;
+    for (auto more = strTable.next(luaNil(), key, value); more; more = strTable.next(key, key, value))
+        if (value.isFunction && value.asFunction.isNativeFunction)
+            value.asFunction.borrowsArgs = true;
+
     // Set string metatable with __index = string table
     auto strMeta = new LuaTable();
     strMeta.rawset(LuaValue("__index"), LuaValue(strTable));
