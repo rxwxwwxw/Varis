@@ -486,7 +486,39 @@ int main(string[] argv) {
 private size_t mainStackLimit;
 private size_t mainSoftLimit;
 
+/// `varis serve [--port N] [project directory]`: the workbench (see varis.workbench.server).
+private int runServe(string[] argv, ref LuaState state) {
+    import varis.workbench.server : serveWorkbench;
+
+    string directory;
+    ushort port = 0;
+    for (size_t i = 2; i < argv.length; ++i) {
+        if (argv[i] == "--port" && i + 1 < argv.length) {
+            int value;
+            foreach (char c; argv[++i])
+                if (c >= '0' && c <= '9')
+                    value = value * 10 + (c - '0');
+            port = cast(ushort) value;
+        } else if (directory.length == 0 && argv[i].length && argv[i][0] != '-')
+            directory = argv[i];
+        else {
+            writeErr("usage: varis serve [--port N] [project directory]\n");
+            return 1;
+        }
+    }
+    state = new LuaState();
+    state.mainThread.nativeStackLimit = mainStackLimit;
+    state.mainThread.nativeSoftLimit = mainSoftLimit;
+    openLibs(state);
+    auto argTable = new LuaTable();
+    argTable.rawset(LuaValue(0L), LuaValue("serve"));
+    state.setGlobal("arg", LuaValue(argTable));
+    return serveWorkbench(state, directory, port);
+}
+
 private int runMain(string[] argv, ref LuaState state) {
+    if (argv.length > 1 && argv[1] == "serve")
+        return runServe(argv, state);
     int script;
     int args = collectArgs(argv, script);
     int optlim = script > 0 ? script : cast(int) argv.length;

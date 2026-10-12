@@ -155,6 +155,17 @@ cases = [
   { id = "naive-agrees", command = ["python3", "tests/datalog/oracle_check.py", "{candidate}"] },
 ]
 
+# The workbench server driven over HTTP, without a browser (WORKBENCH_PLAN.md §7).
+[[suite]]
+id = "workbench"
+kind = "script"
+tier = "fast"
+tags = ["tools", "workbench"]
+timeout = 120
+cases = [
+  { id = "protocol", command = ["python3", "tests/workbench/protocol_test.py", "{candidate}"] },
+]
+
 [[suite]]
 id = "selftest"
 kind = "script"

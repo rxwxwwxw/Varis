@@ -1,6 +1,7 @@
 # Workbench plan: a web editor served by the Varis executable
 
-Status: **proposal**, October 11, 2026. Nothing below is implemented. It details milestones 42,
+Status: **proposal with a first version implemented**, October 11, 2026. Section 1a says what
+exists; everything else is still the plan. It details milestones 42,
 43 and 44 of [ROADMAP.md](ROADMAP.md) Phase 10 and implements decisions D10 and D11 of the ROADMAP
 decision record. Language behaviour is defined only by the [manual](docs/README.md).
 
@@ -23,6 +24,25 @@ Users, in order of how much it must suit them:
 2. **Contracted writers**, who write storylets and need to see mistakes and playtest.
 3. **Modders**, who write full Lua against a game and need to see what the game's state looks
    like.
+
+## 1a. What exists today
+
+`varis serve [--port N] [project directory]` works (`source/varis/workbench/server.d`,
+`page.d`; test: `python3 tools/suite test --suite workbench`). It prints a loopback address with
+a token and serves one page with the layout of §3.
+
+| Panel | State |
+| --- | --- |
+| Command window | Works: expressions print, statements run, multi-line input continues, history with the arrow keys. Output of `print` and `io.write` is captured. |
+| Workspace | Works: user-created globals with type and preview. A world opens as its list of relations; a relation opens as a paged table of its base facts. Read-only. |
+| Story | Works after `story(session)` in the command window: presents on request, choices are buttons. It presents only when asked, because presenting appends to the session's replay log. |
+| Editor | A plain text area with open, save and Run (runs the file in the live state). No completion or navigation. |
+| Problems | Syntax errors of the open file only (the full checker of milestone 30 does not exist). |
+
+Differences from the rest of this plan, all deliberate for a first version: plain HTTP
+request/response instead of a WebSocket with pushed events (§6); text bodies and query parameters
+instead of JSON requests; no debugger (§5); no language services; no "why is this missing",
+rewind or history views; derived relations show only their base facts.
 
 ## 2. The model: MATLAB, with a story
 

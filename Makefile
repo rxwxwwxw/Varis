@@ -48,7 +48,8 @@ SRC_FILES = source/varis/package.d \
             source/varis/narrative/session.d source/varis/narrative/persistence.d source/varis/narrative/observe.d source/varis/narrative/diagnostics.d source/varis/narrative/analysis.d \
             source/varis/narrative/registry.d \
             source/varis/lib/narrative.d source/varis/lib/quality.d \
-            source/varis/lib/logic.d
+            source/varis/lib/logic.d \
+            source/varis/workbench/page.d source/varis/workbench/server.d
 
 # Per-test timeout for a unit executable (seconds).
 TIMEOUT ?= 300
