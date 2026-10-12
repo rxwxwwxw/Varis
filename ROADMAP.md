@@ -12,6 +12,21 @@ narrative (storylets, qualities, decks, choices) over a relational world model i
 Wordgrind, with deterministic saves and replay. A substantial share of the writing will be
 subcontracted, so the people writing content are writers first and programmers second or not at all.
 
+Targets (owner, October 11, 2026):
+
+- **Distribution:** mainly Steam.
+- **Platforms:** Windows, macOS and Linux are the primary targets. An Android build is wanted if
+  it is practical, not required.
+- **Front end:** SDL3.
+- **Languages:** a publisher may translate and localize for Simplified Chinese, Traditional
+  Chinese (Hong Kong, Taiwan), Japanese and Korean, so the project's job is tooling that makes
+  that handoff easy. French and Russian are the languages the owner can test personally. All
+  original content is authored in English and English is the first release language; mods in
+  other languages should remain possible. Translation catalog formats stay pluggable.
+- **Presentation:** parity for story presentation with Ren'Py, Twine and RPG Maker's event
+  commands (not its maps or battles), including character portraits and full-body sprites that
+  change with lines of dialogue.
+
 The project began as a D port of Lua 5.4 because a real, existing language was the quickest way to
 a working interpreter. That job is done. **Lua 5.4 conformance is no longer a project goal.**
 
@@ -73,9 +88,9 @@ section numbers), [sample-game/REVIEW.md](sample-game/REVIEW.md) and
 | Milestone | Deliverable |
 | --- | --- |
 | 26 | **Tiers and file identity.** Content/engine tiers enforced per file; a source extension and language id distinct from Lua (editors must not treat Varis files as Lua); the decisions recorded in `docs/compatibility.md`. |
-| 27 | **Syntax triage and freeze.** Every proposal in `needed_extensions.md` is accepted, deferred or rejected. Accepted constructs get grammar in `docs/syntax.md` and semantics in the manual before they are implemented. Rules of thumb: one obvious way to write a thing; new words stay contextual; nothing in content requires understanding closures, iterators or metatables. |
+| 27 | **Syntax triage and freeze.** Every proposal in `needed_extensions.md` is accepted, deferred or rejected. Accepted constructs get grammar in `docs/syntax.md` and semantics in the manual before they are implemented. Rules of thumb: one obvious way to write a thing; new words stay contextual; nothing in content requires understanding closures, iterators or metatables. The freeze includes the localization-ready decisions of [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md) §3: message keys from authored names and line ids, one template grammar with named placeholders, a select/plural construct and named variants, literal display text in content files, and wording kept out of the gameplay fingerprint. |
 | 28 | **Core authoring gaps.** Periods settable from effects (§1.1); `leads`/return sugar for decks (§1.2); clamped `adjust` and readable quality metadata (§1.3); a narration channel with events delivered in the presentation (§1.4); binding goals and `or` in rule bodies (§1.5); `expose` (§1.6); session-world binding for handlers and deferred callbacks (§1.7); terminal state (§1.8); `exists` and single-result queries (§1.9). New in this direction: **declared entities/symbols**, so a mistyped `:keepr` is an error instead of a storylet that silently never appears. |
-| 29 | **Scenes and beats.** A `scene` content kind compiled to a resumable, serializable position (scene id, beat index, portable locals) rather than a coroutine (§3.1); characters and stable line ids (§3.2); media directives as structured beats (§3.3); beat-stream presentations (§4.1); `jump`/`call`/return between scenes and back to storylet hubs. |
+| 29 | **Scenes, beats and the stage.** A `scene` content kind compiled to a resumable, serializable position (scene id, beat index, portable locals) rather than a coroutine (§3.1); characters and stable line ids (§3.2); media directives as structured beats (§3.3); beat-stream presentations (§4.1); `jump`/`call`/return between scenes and back to storylet hubs. **Stage state is engine data**: each character has a tag and a set of attributes (expression, outfit) that a dialogue line can change, plus who is on stage in which named slot, the background and named audio channels. It is carried in beats and saved in the session, so a load or rollback restores it and the checker can reject an unknown character or attribute. The engine never holds pixel positions, timing or image files. From the same state a front end can draw a face in the text box, a full-body sprite, or both. Parity checklist for this milestone: RPG Maker's story event commands (text with face/name/window position, choices with default and cancel, number and item input, pictures, screen fade/tint/flash/shake, waits, BGM/BGS/ME/SE, inline text codes for colour, size, pauses and speed, common events), Ren'Py's show/hide/scene with transitions, side images, menus and jump/call, and Twine's passages and inline links. |
 
 Exit: syntax v1 is documented as frozen; *Saltmarsh Light* runs with its workarounds removed; a
 second sample written in linear visual-novel style runs; a save taken mid-scene round-trips.
@@ -103,8 +118,8 @@ on the Phase 9 syntax, so they can be scheduled earlier if playtesting or the ch
 | --- | --- |
 | 34 | **Reference game, reference machine, budgets.** A synthetic game at realistic scale (hundreds of storylets, a map of about a hundred rooms, thousands of facts) and enforced budgets in `benchmarks/targets.toml` for turn latency, content load time, peak memory and save/load time. Provisional low-end budgets: a turn (choose → effects → actions → next presentation) within 50 ms, no engine work on the render path between turns, content load under 1 s, `save()` under 50 ms, peak engine memory under 64 MB. Measured on an Apple M1 today: a 100-room game with one recursive rule takes about 0.8 s per presentation and 171 MB. |
 | 35 | **Inference engine.** Semi-naive evaluation, argument indexes, a version-keyed materialization cache shared across one presentation snapshot, slot-based bindings (§1.11). Today every query copies the facts it depends on and recomputes with a naive fixpoint and unindexed nested-loop joins; a profile shows about half the time in the collector and a third in tuple hashing. The plan orders the work: shared snapshots, per-version caching, compiled plans with indexes, then semi-naive evaluation. Value or tuple representation changes only on profile evidence. |
-| 36 | **Host interface.** A documented D embedding API: create a state, load content, run session commands, receive presentations and beats as typed D values (§4.11); a reference graphical host. The front-end technology is an open decision. |
-| 37 | **Portability and footprint.** Builds for the platforms low-end machines actually run; development and all measurements so far are on macOS arm64, and several modules import `core.sys.posix` (`gc.d` uses `fork` for reachability probes, `package_lib.d` uses `dlopen`). Bounded GC pauses and heap, start-up time, binary size. Frozen Lua features that block portability are removed here. |
+| 36 | **Host interface and standard presentation layer.** A documented D embedding API: create a state, load content, run session commands, receive presentations and beats as typed D values (§4.11). On top of it, a standard SDL3 presentation layer that implements the stage of milestone 29 (text box, portraits, sprites in slots, transitions, screen effects, audio channels, history log, skip and auto modes), so a game supplies a skin and an asset manifest rather than a renderer. Text layout there must handle scripts written without spaces and per-language fonts (localization plan §5). Starts with a spike on SDL3 bindings and text rendering from D. |
+| 37 | **Portability and footprint.** Builds for Windows, macOS and Linux, then an Android build through SDL3 if practical; development and all measurements so far are on macOS arm64, and several modules import `core.sys.posix` (`gc.d` uses `fork` for reachability probes, `package_lib.d` uses `dlopen`). Bounded GC pauses and heap, start-up time, binary size. Frozen Lua features that block portability are removed here. |
 
 Exit: the reference game meets its budgets on the reference machine under the reference host.
 
@@ -113,7 +128,7 @@ Exit: the reference game meets its budgets on the reference machine under the re
 | Milestone | Deliverable |
 | --- | --- |
 | 38 | Undo/rollback at turn and beat granularity (§2, §3.4); persistent cross-save data (§3.5); save slots and metadata (§4.8). |
-| 39 | Localization per [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md), built on the stable line ids of milestone 29. |
+| 39 | Localization pipeline per [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): catalogs, the publisher handoff kit, loadable translation packs, per-language text features for Chinese, Japanese, Korean, French and Russian. Built on the line ids of milestone 29 and the decisions frozen in milestone 27. |
 | 40 | Twine-class conveniences: `var` sugar, `visited`/`last_chosen`, disabled choices with reasons, rich-text spans, text input, template fragments, pass-through content metadata (§2, §4.3–§4.6). |
 | 41 | Writer documentation: a tutorial and cookbook for content authors, separate from the reference manual. |
 
@@ -122,8 +137,14 @@ Exit: the reference game meets its budgets on the reference machine under the re
 1. The exact content-tier restrictions, and whether engine scripts stay a strict Lua superset.
 2. The source file extension and language name shown in editors.
 3. The reference low-end machine and the budget numbers in milestone 34.
-4. The graphical front-end technology, and whether a WebAssembly build is a target.
-5. Which frozen Lua features are removed outright, and when.
+4. Which frozen Lua features are removed outright, and when.
+5. How mods are packaged, loaded and recorded in saves (the localization plan only reserves
+   room: packages with a declared source language and package-qualified keys).
+
+Decided October 11, 2026: the front end is SDL3; primary platforms are Windows, macOS and Linux
+with Android as a stretch target. A WebAssembly build was not asked for and is not planned.
+English is the source language. Catalog formats are adapters over one model (CSV, JSON and XLIFF
+first), so no format needs to be chosen.
 
 ## Closed: Phase 8 — core-Lua performance and conformance
 

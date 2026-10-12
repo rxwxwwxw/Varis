@@ -1,337 +1,249 @@
-# Narrative localization implementation plan
+# Narrative localization plan
 
-Status: proposed, October 11, 2026. No functionality in this document is implemented
-by this change. The [Varis Reference Manual](docs/README.md) remains authoritative
-for current semantics. API names, annotations, and commands below are proposals.
+Status: **proposed**, rewritten October 11, 2026 for the project's actual targets. Nothing here
+is implemented. The [Varis Reference Manual](docs/README.md) remains authoritative for current
+semantics; API names, syntax and commands below are proposals.
 
-Sequencing: this is milestone 39 of the [roadmap](ROADMAP.md) (Phase 12). It follows the
-syntax freeze and the stable line ids of milestone 29, which its content labels should reuse.
+The first version of this plan (commit `dbb0960` and earlier) was a general design centred on an
+English/Arabic slice, MessageFormat 2 and UUID annotations. Its right-to-left, bidi and
+multi-script material is deferred, not rejected; read it there if a right-to-left language is
+ever committed.
 
-## 1. Recommended design
+## 1. Targets and what they imply
 
-Build localization as a versioned presentation layer over narrative content. Give
-authored objects permanent localization identities, extract complete messages into
-translator-facing catalogs, and render them using locale-aware formatting and
-explicit language/direction metadata. Keep eligibility, effects, choice identity,
-draws, and persistence independent of the selected language.
-
-The engine owns message selection, formatting, isolation metadata, and reproducible
-presentation inputs. Host renderers own font fallback, shaping, visual bidi layout,
-line breaking, accessibility, and interface layout. A headless engine cannot promise
-correct Arabic display in a terminal that lacks shaping or bidi support.
-
-Deliver one complete vertical slice first: an automatically labeled storylet and
-choice, English and Arabic catalogs, a mixed-direction name and plural quantity,
-language switching on an existing presentation, and identical gameplay replay.
-
-## 2. Existing integration points and constraints
-
-| Existing component | Consequence for this work |
+| Fact (owner, October 11, 2026) | Consequence |
 | --- | --- |
-| `registry.d`: named storylets/actions, nested choices, sealed content | Retain existing runtime names; add localization metadata without changing registration identity. |
-| `compiler.d`: narrative fields are expressions evaluated at registration | Static extraction cannot assume every field is a literal or safely execute arbitrary source. |
-| `templates.d`: parameters, query conditions, weighted variants | Separate executable authored conditions and random selection from translated message syntax. |
-| `session.d`: immutable records containing string title/text and opaque tokens | Preserve string fields and token behavior; add structured localized output through an opt-in interface. |
-| `session.d`: variant indices are selected and logged before rendering | Translating, reordering, or adding linguistic branches must not change RNG consumption. |
-| `fingerprint.d`, `registry.d`, `persistence.d`: text/options, labels, code and captures participate in compatibility | Splitting presentation and gameplay versions requires a deliberate save-format migration and audit. |
-| `registry.d`: symbol display names, quality labels, custom formatters | These need localization coverage as well as storylet prose. |
-| Lua strings and portable codec are binary-safe | Validate UTF-8 at the new localization boundary; preserve ordinary Lua string semantics. |
+| Distribution mainly through Steam; Windows, macOS, Linux first, Android if practical | One global build with selectable languages. No per-region editions are planned; nothing here should prevent adding a build-time content flag later. |
+| A publisher may translate and localize for Simplified Chinese, Traditional Chinese (Hong Kong, Taiwan), Japanese and Korean | Translation is done by people outside the project, without the source tree. The deliverable is a **handoff kit** and a way for them to load and check their own work. |
+| The owner can test French and Russian | These are the in-house test locales. Usefully, they exercise what Chinese, Japanese and Korean do not: plural categories, gender agreement and case. |
+| Writers are contractors and often not programmers | Localization must add nothing to what a writer types. Keys come from names writers already choose. |
+| SDL3 front end on low-end hardware | No large Unicode library in the engine. Fonts for these scripts are the main memory and packaging cost. |
+| All original content is authored in English, and English is the first release language | English is the source language of the base game. Extraction, checking and the fingerprint split (§3) come before any translation feature. |
+| There should be room for mods in other languages | The source language is a property of a content package, not of the engine. Nothing may assume that source text is English or ASCII. See §3.8. |
+| Catalog formats should be as flexible as possible, since others may use Varis | No format is privileged. One canonical model, with formats as adapters (§6.2). |
 
-## 3. Stable automatic identifiers
+## 2. Design principles (kept from the first version)
 
-Keep three identities distinct:
+1. **Language is a view.** Eligibility, effects, choice identity, draws, turns and saves never
+   depend on the selected language. One session can be rendered in several languages.
+2. **Selection is separate from rendering.** A presentation captures bindings, condition results,
+   chosen variants and tokens once. Rendering it in a language is a pure function that consumes
+   no random numbers and issues no new tokens. Switching language re-renders; it never calls
+   `present()` again.
+3. **Translations are data.** A translated message can reorder, repeat or omit its arguments and
+   choose among declared grammatical branches. It cannot add conditions, queries, effects,
+   weights or random choices.
+4. **Whole messages.** Translators get complete sentences or paragraphs, never fragments glued
+   together by code. A message with a missing translation falls back as a whole.
+5. **The engine does not lay out text.** Shaping, fonts, line breaking and text boxes belong to
+   the presentation layer. The engine hands over structured spans in logical order.
 
-| Identity | Example (abbreviated) | Lifetime |
+## 3. Decisions to freeze with the syntax (ROADMAP milestones 27 and 29)
+
+These are cheap to decide now and expensive to retrofit. None of them requires a translation to
+exist.
+
+1. **Keys come from authored names.** A storylet's title is `topic_lamp.title`, a choice's is
+   `topic_lamp.nod.title`, a scene line uses the stable line id of milestone 29. Renaming a
+   storylet already breaks saves, so these names are already permanent; no generated identifiers
+   appear in content files. The language server's rename rewrites catalogs. Two messages with the
+   same English text stay separate.
+2. **Scene lines need an id that survives editing.** Lines have no authored name, and an id
+   derived from position breaks when a line is inserted. Milestone 29 must choose between a short
+   tool-written tag on the line and an id derived from the line's first-seen text; either way the
+   checker reports duplicates and the tool never guesses identity from similar text.
+3. **One template grammar.** The Varis template language gains named placeholders (already
+   present), a `select` on a declared value with a required fallback branch, a plural select on a
+   number, and **named** variant alternatives. Translators write the same grammar as writers.
+   MessageFormat's ideas are used; its syntax is not added as a second language.
+4. **Named variants, not indices.** Replay logs record which alternative was drawn by name, so a
+   translation can reorder alternatives and the log format never needs migrating.
+5. **Literal display text in content files.** Titles, text and dialogue are string literals with
+   placeholders; the checker rejects computed strings there and flags byte-oriented operations
+   (`#`, `string.sub`) applied to display text. Extraction then needs no execution.
+6. **Wording leaves the gameplay fingerprint.** Today the content fingerprint hashes every option
+   of a definition, including `title` and `text`, so fixing a typo invalidates saves. Split it:
+   conditions embedded in text and the structure of variants stay in the gameplay fingerprint;
+   wording moves to a presentation revision. This is worth doing even with no translations.
+7. **Presentation output is spans.** Rendered text is a sequence of spans carrying markup
+   (emphasis, colour, pauses, ruby annotations) and, for substituted values, a marker that they
+   are data. Arguments can never inject markup.
+8. **Content comes in packages, and a package declares its source language.** The base game is
+   one package with source language English. A mod is another package: it may add translations
+   of an existing package (a language pack), or new content written in any language, which can
+   in turn be translated. Message keys are qualified by package, so two mods cannot collide.
+   This is the minimum needed to leave room for modding; load order, how mods extend sealed
+   content and how saves record the set of packages are a separate design, not part of this
+   plan. Whether identifiers (as opposed to display text) may use non-ASCII letters is a
+   milestone 27 decision. The restricted content tier of ROADMAP milestone 26 is also what makes
+   loading someone else's package safe.
+
+## 4. What each target language needs
+
+| Language | Needs from templates and data | Needs from the presentation layer |
 | --- | --- | --- |
-| Runtime name / instance key | `travel`, plus canonical bindings | Existing gameplay, saves, policies, tokens; unchanged. |
-| Permanent localization object ID | `urn:uuid:…` on a storylet or choice | Generated once, committed, survives rename, move, and prose edits. |
-| Message ID and source revision | `<object-id>/title`, `<object-id>/text`, plus source hash | Message ID stays stable; hash detects translations needing review. |
+| Simplified and Traditional Chinese | Measure words: "3 apples" takes a classifier that depends on the noun, so items carry a translatable classifier or the message selects on the item. No plural forms. Two separate catalogs (`zh-Hans`, `zh-Hant`) with no automatic fallback between them. | Line breaking without spaces, with punctuation that may not start or end a line. Full-width punctuation. |
+| Japanese | No plural forms. Counters, like Chinese classifiers. Honorifics and sentence endings vary by speaker and listener, so translators restructure whole lines. | Same line breaking rules. **Ruby** (small reading annotations above characters) as a span type. |
+| Korean | Particles change with the final sound of the preceding word (은/는, 이/가, 을/를), which matters whenever a name is substituted. Provide a built-in formatter that picks the particle from the substituted text's last syllable. | Breaks at spaces, and within words where the font size demands. |
+| French | Plural categories (0 and 1 are singular), gender agreement with substituted nouns, elision (`le`/`l'`). Substituted names and items need a declared gender; elision needs a select or a formatter. | Non-breaking spaces before some punctuation. |
+| Russian | Four plural categories (one, few, many, other) and six cases: a substituted name must be supplied in the form the sentence needs, so `narrative.name` labels need optional per-case forms. Gendered past-tense verbs. | Nothing unusual. |
 
-Use a committed project namespace UUID and full randomly generated object UUIDs.
-Use readable aliases such as `harbor.travel.title` in tools, never as the sole
-durable key. Titles, source paths, line numbers, registration order, and content
-hashes must not determine permanent IDs. Identical English text in different
-contexts gets separate IDs unless the author explicitly shares a message.
+Shared consequences:
 
-Proposed authoring workflow:
+- **Plural rules** come from a small generated table for the shipped languages, not a Unicode
+  library. Chinese, Japanese and Korean use a single category; French and Russian exercise the rest.
+- **Names and labels** (`narrative.name`, quality labels, character names) are translatable and
+  can carry grammatical attributes: gender, classifier, case forms. Nothing is inferred from a name.
+- **Fonts are per language.** Chinese, Japanese and Korean share many code points but need
+  different glyphs, so the font chain is chosen by language, not by character. The catalog
+  compiler emits the set of characters each language actually uses, so fonts can be subset; a
+  full font for one of these scripts is 10–20 MB.
+- **Text is counted in graphemes.** Typewriter reveal, truncation and length limits never cut a
+  character in half.
+- **Player-entered names** need input-method support in the front end, and are substituted as data.
 
-1. `tools/localize label --check` reports unlabeled translatable objects.
-2. `tools/localize label --write` inserts a machine-readable comment immediately
-   before each storylet, choice, or standalone message declaration. Initial form:
-   `-- @varis-l10n-id <full-uuid>`. This is tooling metadata, not a new keyword.
-3. The frontend retains this one annotation class and attaches it to the following
-   relevant AST node; compiler metadata carries it into prototypes/definitions.
-   Define exact attachment rules across whitespace/comments and reject orphaned,
-   malformed, conflicting, or duplicate annotations. Ordinary comments stay inert.
-4. A generated manifest maps IDs to kind, current runtime name, readable alias,
-   source location, fields, and translator context. Regeneration is deterministic;
-   re-running labeling changes nothing once IDs exist.
-5. Check duplicates across the entire packaged project, including imported content.
-   Copying content requires a fresh ID; provide an explicit duplicate/rekey command.
-   Moving or renaming content retains its annotation. Never guess identity from
-   similar text after a merge conflict.
+## 5. The presentation layer's share (ROADMAP milestone 36)
 
-Choices receive their own IDs, so moving one between storylets preserves its
-translation history. That does **not** make its gameplay identity/save history
-portable: runtime renames or reparenting still need existing migration rules.
-Deleted IDs become tombstones; never recycle them. Splitting/merging messages
-creates new IDs with explicit translation-history links. Explicit authored IDs
-are supported with collision validation. Dynamic content factories must supply
-stable IDs from an authored manifest; no runtime-generated localization UUIDs.
+The standard SDL3 presentation layer, not the engine, implements:
 
-Fields default to object ID plus role. A role rename needs an explicit alias or
-migration. Structural conditional/variant nodes also need persisted authoring IDs
-or explicit names; tree positions and text hashes are insufficient. Prototype an
-editor-managed sidecar for these internal nodes; unresolved structural edits fail
-extraction until their mappings are reconciled rather than silently rekeyed.
+- Line breaking for scripts without spaces, including the prohibited-position rules, and
+  ordinary breaking for the others.
+- Per-language font selection, fallback and glyph caching.
+- Ruby annotations, emphasis, colour, pauses and text speed from the span stream.
+- A language switch that asks the engine to re-render the current presentation.
 
-## 4. Catalogs and translator workflow
+Localized assets (images with text in them, voice) are resolved through the asset manifest by
+language, with fallback to the source asset. The engine only names the asset.
 
-Use a versioned UTF-8 JSON catalog as the canonical editable interchange first,
-with deterministic serialization and a separately compiled runtime bundle. Include:
+## 6. Catalogs and the publisher handoff
 
-- Project/object/message IDs, source locale, source revision, source text, and alias.
-- Translator notes, speaker, narrative context, sample bindings, and source location.
-- Argument contract: stable name, value category, formatting role, required selectors,
-  and direction/language hints; distinguish absent from present-with-nil.
-- Locale, translated pattern, review status, and the source revision it translates.
-- Named semantic branches/variant alternatives and permitted markup/formatters.
+### 6.1 Catalog model
 
-Extract complete sentences or paragraphs rather than concatenated translated
-fragments. Allow parameters to move, repeat, or be omitted when linguistically
-appropriate; reject unknown arguments and require all selection paths to be total.
-Do not require identical placeholder counts in source and target.
+One canonical catalog model per package and language, held in D and stored in the repository
+as deterministic UTF-8 JSON so it diffs well. Each entry holds the key, the source text and its
+revision hash, the translation, a status (untranslated, draft, reviewed, stale), and context. A
+changed source text marks its translations stale; it never discards them.
 
-The extractor reads AST/template metadata without executing game code. Cover
-storylet and choice titles/text, quality labels, symbol display names, and explicit
-standalone messages. Report computed strings and dynamic registrations with exact
-locations. Require a declared message/argument contract for those cases; do not
-silently report full coverage. A host can explicitly export its constructed registry
-for coverage comparison, but extraction never automatically runs a story to do so.
+### 6.2 Formats are adapters
 
-Proposed commands: `label`, `extract`, `check`, `compile`, `coverage`, and `pseudo`.
-Translation changes retain their IDs; source revisions mark entries stale for review.
-Compilation validates the entire bundle before publishing it. Invalid translations
-produce message-ID/locale/source-path diagnostics. Production policy uses approved,
-current entries with fallback; development strict mode makes gaps errors. CI can
-require 100% reviewed coverage for release locales without requiring every draft
-locale to be complete. Count messages and branch coverage separately.
+No interchange format is privileged, because different translators, publishers and other users
+of Varis will want different ones.
 
-Add XLIFF import/export after the internal schema stabilizes, with round-trip tests
-for notes, IDs, branches, and status. Translation-memory or machine-translation
-integration is optional tooling: generated translations remain drafts and never
-alter executable content or receive automatic publication approval.
+- A format adapter is two functions over the catalog model: export to bytes, and import from
+  bytes to a set of proposed changes plus diagnostics. Import never writes the catalog directly;
+  the changes go through the same validation as any other edit.
+- **Why any format can work:** grammatical branches (select, plural, variants) live inside the
+  message text in the one template grammar (§3.3), so a translation is always a single string
+  per key. A two-column spreadsheet is therefore a complete format. Richer formats only add
+  places to put context and status.
+- Built in from the start: **CSV** (opens in any spreadsheet), the canonical **JSON**, and
+  **XLIFF**. Each adapter states what it cannot carry (CSV has no native status or notes fields,
+  so they travel as extra columns) and has a round-trip test: export, import, compare.
+- Something unforeseen is handled either by a small new adapter in D, or without touching the
+  engine at all by converting to and from the canonical JSON, whose schema is documented and
+  versioned for that purpose.
 
-## 5. Message grammar and linguistic support
+### 6.3 What owning the frontend makes possible
 
-Target a documented, versioned profile of Unicode MessageFormat 2 for catalog
-patterns, compiled to engine-owned message IR. Keep existing Varis template syntax
-working in legacy mode. Do not silently reinterpret its braces as MessageFormat.
-Evaluate a maintained implementation/provider before committing to a D parser;
-if only a subset ships, reject unsupported constructs and name the supported profile.
-MessageFormat supplies structured selection and locale-aware formatting facilities.
-See [Unicode MessageFormat](https://messageformat.unicode.org/) and its
-[function reference](https://messageformat.unicode.org/docs/reference/functions/).
+Because extraction reads the Varis AST rather than scanning strings, the tools can derive what
+translators usually have to ask for:
 
-Support cardinal/ordinal plural selection, exact numeric matches, grammatical
-selectors, number formatting, and explicit locale-aware lists. Use CLDR data for
-plural categories and decimal operands; English singular/plural rules are
-insufficient. Preserve integer precision above 2^53 and define how visible decimal
-precision is supplied when it affects a plural category. Every selector needs a
-fallback. See [CLDR plural rules](https://cldr.unicode.org/index/cldr-spec/plural-rules).
+- **Context from structure:** the speaker, the scene order, and the condition under which a line
+  appears ("shown when the keeper's trust is at least 1"), taken from the `when` clause.
+- **Argument kinds from schemas:** a placeholder bound to a numeric column needs plural handling
+  in languages that have it; one bound to a character or item needs that entity's grammatical
+  attributes. The checker can require exactly the branches a language needs, and no others.
+- **Every branch rendered:** sample renderings of each message for each plural category and
+  select value, generated mechanically for review and screenshots.
+- **Meaningful change detection:** a source edit that changes only spacing or punctuation can
+  be told apart from one that changes arguments or structure, so translations are marked stale
+  only when a translator needs to look.
+- **Untranslatable constructs found at authoring time:** computed strings, concatenation and
+  byte-wise string operations on display text are reported to the writer, not discovered by
+  the translator.
 
-Authors supply semantic grammatical features, including inflected proper-name
-forms where needed. Never infer gender, pronouns, or grammatical case from a name.
-Let translators restructure whole clauses. Keep symbol identity separate from its
-localized label. Date/time/unit/currency formatters can follow the core slice, with
-explicit time zone, calendar, numbering system, and unit inputs; never read the
-machine clock or process-global locale during rendering.
+These are opportunities to take once the catalog pipeline exists, not commitments of stage L2.
 
-Use a provider interface for version-pinned Unicode/CLDR data and formatting.
-Compare ICU via its C API with generated, narrowly scoped CLDR tables in an initial
-dependency spike: supported platforms, license notices, bundle size, determinism,
-integer correctness, build integration, and available MessageFormat support.
-Do not implement a new bidi or Arabic shaping algorithm in Varis.
+### 6.4 Handoff kit
 
-## 6. RTL, LTR, and Unicode contract
+`varis l10n export` produces, for a language or a set of them:
 
-Use validated BCP 47 language tags, with script/region information retained. Store
-direction independently as `ltr`, `rtl`, or explicit `auto` where appropriate;
-language alone is not a sufficient direction contract. See
-[BCP 47](https://www.rfc-editor.org/info/rfc5646/) and
-[W3C language/direction guidance](https://www.w3.org/International/articles/lang-bidi-use-cases/).
+- The messages through whichever adapter the recipient wants.
+- **Context per message:** speaker, the neighbouring lines in scene order, the storylet or scene
+  it belongs to, the arguments with example values and their grammatical attributes, the writer's
+  note if any, and a length limit where the text box imposes one.
+- A **glossary** of character names, place names and recurring terms with their attributes, so
+  they are translated once and consistently.
+- The character set and font requirements per language.
 
-Localized output should be an immutable structured value containing logical-order
-text/runs, resolved language, base direction, message ID, bundle revision, and
-fallback provenance. Runs retain language, direction, and isolation boundaries for
-substituted names, URLs, numbers, and nested language changes. Resolve unknown
-direction from first-strong rules at the renderer boundary, with a documented
-all-neutral fallback. Never reverse strings or manually reorder glyphs. Follow
-[Unicode UAX #9](https://www.unicode.org/reports/tr9/).
+### 6.5 Loadable translation packs
 
-Provide two adapter contracts:
+A compiled language pack is a directory the released game loads at start-up. The publisher, or
+a player making a fan translation, can drop in a new pack and see it running without a rebuild
+and without the source tree. A pack
+that fails validation is rejected as a whole with diagnostics naming the key and language.
 
-- HTML: escape literal text, use `lang`/`dir` and isolated inline spans or `bdi` for
-  substitutions. Only emit allowlisted structural markup from the message IR.
-- Plain text: serialize isolation with LRI/RLI/FSI and PDI as appropriate, retaining
-  logical order. Controls belong to output, never to message IDs, bindings, or
-  persisted gameplay values. Document terminal capability limitations.
+### 6.6 Checking and preview, for the publisher and for CI
 
-These techniques follow [W3C inline bidi guidance](https://www.w3.org/International/articles/inline-bidi-markup/).
-The renderer contract also covers logical start/end alignment, selective icon
-mirroring, keyboard focus order, screen-reader language, and font coverage. Do not
-reverse the engine's canonical choice order to create an RTL interface.
+Folded into the planned tools rather than a separate suite of commands:
 
-Require valid UTF-8 for localized patterns and displayed text inputs in strict mode.
-Offer explicit replacement diagnostics for host-provided invalid display bytes;
-never change underlying Lua strings, symbols, equality, hashing, or serialization.
-Do not strip combining marks, ZWJ/ZWNJ, or normalize player names silently. Any
-normalization used for catalog lookup must be specified and confined to that layer.
+- `varis check --locale <tag>`: unknown or missing arguments, a select without a fallback, missing
+  plural categories for that language, markup that the source does not permit, text over its
+  length limit, characters the configured fonts lack, untranslated and stale entries. Reports
+  message coverage and branch coverage separately.
+- A **pseudo-locale** that lengthens and accents the source text, to find clipped text boxes and
+  hard-coded strings before any translator is involved.
+- The playtest host takes `--locale` and can overlay message keys on screen, so a tester can
+  report "this line is wrong" by key.
+- The language server shows missing and stale translations as diagnostics on the source line.
 
-Lint invisible bidi controls in authored catalogs and escape them in diagnostics.
-Use a documented display-input policy for untrusted control characters; isolation
-does not remove the need to handle embedded controls. Translators should normally
-use structured direction metadata instead of inserting invisible overrides.
-Rendered arguments remain data: they cannot inject template syntax or markup.
+Machine translation or translation memory is the publisher's business; anything imported
+arrives as draft and is never marked reviewed automatically.
 
-Hosts must truncate, select, and reveal text using grapheme boundaries, not byte
-offsets or individual code points; use [UAX #29](https://unicode.org/reports/tr29/).
-Test CJK wrapping, Thai segmentation, Indic shaping, emoji sequences, combining
-marks, and text expansion as well as RTL. Vertical writing remains a future host
-layout capability; the engine must preserve logical text without assuming a visual axis.
+## 7. Saves, replay and versions
 
-## 7. Locale resolution, rendering, and deterministic behavior
+- **Gameplay compatibility** covers definitions, schemas, effects, conditions (including those
+  embedded in text) and variant structure. **Presentation revision** covers wording, catalogs and
+  the plural table. A translation-only or wording-only change never invalidates a save.
+- Changing a message's arguments or its select branches invalidates the language packs that
+  translate it, not saves.
+- The split is a new save-format revision behind a versioned reader. Old saves keep their
+  current validation, and a fingerprint mismatch is never silently accepted.
+- The chosen language may be stored as a preference alongside a save. It is never an input to
+  eligibility or compatibility. Gameplay replay is independent of language.
 
-Make locale a presentation/view setting, not a mutable global or world fact. One
-session can support multiple views without language changes affecting simulation.
-An immutable render context pins requested locale, resolved catalog chain, bundle
-revision, formatter/data versions, and explicit formatting preferences.
-
-Use a validated fallback graph: exact locale, configured script-aware parents,
-project default, embedded source. Reject cycles at bundle build time; do not blindly
-drop subtags and accidentally cross scripts. Resolve each whole message atomically,
-including its branches. Format fallback text using its resolved message locale by
-default, retaining separately configured numeric preferences when explicitly enabled.
-Expose which message fell back, its actual language, and why.
-
-Refactor presentation into selection and rendering internally. Selection captures
-bindings, snapshot, tokens, authored condition results, and semantic variant choices.
-Rendering can run repeatedly on that immutable selection without drawing cards,
-allocating new token identities, consuming RNG, advancing turns, or executing effects.
-An illustrative new API is `narrative.render(presentation, context)`; it must reuse
-the original choice tokens and preserve their normal stale/consumed checks. Calling
-`present()` again must not be the prescribed way to switch languages.
-
-Translated messages may select linguistic alternatives from declared values; they
-cannot add Lua, query goals, state access, callbacks, weights, or RNG operations.
-Existing authored query conditionals become named immutable selector results;
-evaluate them against the original snapshot under current purity/no-yield rules.
-Keep original conditional nesting and evaluation semantics; do not eagerly execute
-previously unreachable queries. Expose no additional hidden bindings to translations.
-
-Select weighted semantic variants from the authored template before localization.
-Catalog branches reference permanent alternative IDs, allowing translators to
-reorder syntax without changing selection. Linguistic plural branches are distinct
-from random alternatives. Preserve current variant traversal/RNG behavior for old
-content, including nested groups. Version any transition from index-based replay
-to named alternatives and provide explicit mapping. Adding a translation must not
-introduce a new random draw; missing alternatives fall back as a whole message.
-
-Legacy custom formatters can observe external mutable state despite the authored
-purity obligation. Localized mode must freeze their display inputs/results at
-selection or require an explicit deterministic locale-aware formatter contract.
-Cache by immutable selection/context identity; never cache only by message ID and
-locale when values or snapshots differ. Failed rendering publishes no partial view.
-Bundle hot reload creates a new immutable bundle; existing views keep their old one.
-
-## 8. Saves, replay, and compatibility
-
-Separate three version domains in a new, explicit format revision:
-
-- Gameplay compatibility: definitions, schemas, policies, effects/code/captures,
-  authored condition logic, and weighted variant structure.
-- Message contract: permanent IDs, arguments, selector/alternative IDs, formatter
-  contracts, and permitted markup.
-- Presentation revision: source/translated wording, catalog approval state,
-  locale data, and formatting implementation versions.
-
-Translation-only edits must not invalidate gameplay saves. Message contract changes
-invalidate incompatible bundles. Source prose-only edits should eventually avoid
-gameplay incompatibility too, but first audit all current fingerprint paths: simply
-omitting `title`/`text` would also omit embedded queries and weighted variant logic.
-Keep those semantic components in gameplay fingerprints. Audit quality labels,
-symbol labels, formatter captures, and explicit authored version assertions.
-
-Preserve old save validation unchanged. Load a new format only through a versioned
-reader; upgrading old saves requires verified compatible content or the existing
-explicit migration protocol. Never silently accept an old fingerprint mismatch.
-Localization IDs supplement existing runtime identity; do not rewrite instance keys.
-
-Distinguish gameplay replay from exact presentation replay. Gameplay replay is
-locale-independent. Exact presentation replay pins catalogs, source messages,
-formatting/data versions, view locale, and any captured external formatter output;
-it fails clearly if required artifacts are unavailable. Locale preferences may be
-saved as optional view metadata, never as an eligibility or save-compatibility input.
-
-## 9. Implementation sequence and acceptance gates
+## 8. Stages
 
 | Stage | Deliverable | Exit evidence |
 | --- | --- | --- |
-| L0: contract and dependency spike | Provider decision, catalog schema, locale/direction contract, threat/resource limits, save/replay split design | English/Arabic proof of concept with exact integer plural behavior, mixed-direction output, dependency/license/build report; no runtime compatibility changes. |
-| L1: permanent identity and extraction | Annotation retention, AST/prototype metadata, label/extract/check tools, translator manifest | Idempotent labeling; IDs survive rename/move/reorder/prose edits; duplicates fail; computed fields appear in coverage gaps; branch-ID edits require reconciliation. |
-| L2: catalog compiler and messages | Versioned IR, argument validation, plurals/selectors, symbol/quality localization, fallback | Invalid bundles fail atomically; all supported branches render; no executable translation input; legacy templates remain byte-compatible. |
-| L3: presentation integration | Immutable render context/result, selection reuse, plain-text and HTML adapters | Locale switching preserves token identity, snapshot, choices, RNG, turns, and replay; mixed-direction visual tests pass in a declared renderer. |
-| L4: compatibility and replay | Split fingerprints, new save/replay versions, audited migration behavior | Translation-only update loads saves; gameplay edits still reject; exact replay detects missing bundle/provider; old format fixtures keep existing behavior. |
-| L5: authoring and release gate | Pseudolocales, coverage reports, translator round trip, reference/manual updates | Full automated gates, native-speaker review, measured runtime/bundle cost, published host support limits. |
+| L0, with milestones 27 and 29 | The §3 decisions in the grammar and the manual; fingerprint split designed. This is all the English-first release needs | Keys derivable for every message in the sample games; a wording edit no longer changes the gameplay fingerprint; old save fixtures behave as before. |
+| L1 | Selection/render split and span output, delivered with beat-stream presentations | Re-rendering a presentation changes no token, draw, turn or replay log. |
+| L2 | Catalog model, extraction, CSV/JSON/XLIFF adapters with round-trip tests, `check --locale`, pseudo-locale, plural table, select and plural in templates, translatable names with attributes | French and Russian translations of *Saltmarsh Light* pass the checker and read correctly to the owner; every plural category and a case-inflected name are exercised. |
+| L3 | Handoff kit export and import, loadable packs, key overlay | A pack built only from the exported kit loads into a release build; a deliberately broken pack is rejected with useful diagnostics. |
+| L4, with milestone 36 | Line breaking, per-language fonts, ruby, Korean particle formatter, character-set output | A Chinese, a Japanese and a Korean sample render correctly in the SDL3 layer, reviewed by a reader of each language; fonts subset from the emitted character sets. |
 
-L0 and L1 precede runtime integration. L2 precedes L3; settle L4's compatibility
-design before merging changes to fingerprints. The public feature ships after L4
-and L5, not after the first translated string renders. Keep changes small and
-reviewable; runtime optimization is a separate measured task.
+L0 and L1 belong to the syntax and presentation work and should not wait for milestone 39. The
+feature is announced after L3 and L4, with review by native readers, not when the first
+translated string renders.
 
-Suggested module boundaries: `narrative/localization/{model,catalog,validate,render,locale}.d`,
-with an explicit formatter-provider adapter and tooling under `tools/localize`.
-Touch lexer/AST/parser/compiler/prototype metadata for annotations; registry/templates
-for message contracts; session/lib for views; fingerprint/persistence for versioning.
-Audit registry cloning in analysis and both VM execution paths where metadata flows.
-Every new D module receives the required license header and explicit Makefile entry.
+## 9. Deferred
 
-## 10. Verification and release limits
+- Right-to-left languages and bidirectional text. The span stream carries a language per span
+  from the start, which is the part that would be hard to add later.
+- Per-region editions with different content.
+- A general Unicode library (ICU), full MessageFormat 2 syntax, locale-aware dates, units and
+  currency.
+- Exact presentation replay (reproducing the wording, not only the gameplay), hot reload of
+  packs inside a running session, vertical text.
 
-Add a separate localization suite and conformance matrix. Preserve core stateful,
-aggregate, narrative, optional authoring, and official Lua gates as distinct evidence.
+## 10. Verification
 
-- Identity fixtures: file moves, name changes, duplicate aliases/text, copy/paste,
-  deleted/reintroduced content, concurrent-branch merges, and dynamic manifests.
-- Language fixtures: English, Arabic, Hebrew, Polish or Russian, Japanese, Turkish,
-  Thai, and an Indic script; script-sensitive locale fallback and unknown locales.
-- Message fixtures: zero/one/two/few/many/other where applicable, ordinals, decimals,
-  negative and large integers, nil, repeated/omitted parameters, selector fallback,
-  names with grammatical forms, escaped braces, and deliberate translation errors.
-- Bidi/Unicode fixtures: Latin names and URLs inside Arabic, Arabic inside English,
-  punctuation/parentheses, numbers, nested runs, neutral-only inputs, control attacks,
-  malformed UTF-8, combining marks, emoji, and long expanded text.
-- Narrative fixtures: repeated rerendering, two locales over one selection, stale
-  tokens, state mutation after capture, rollback, nested variants, query failures,
-  custom formatter failures/yields, analysis isolation, and concurrent sessions.
-- Compatibility fixtures: translation-only update, source-only prose edit, argument
-  change, altered query/weights, corrupt/unsupported bundle, hot reload, old saves,
-  gameplay replay and exact presentation replay.
-- Resource fixtures: bounded catalog size, nesting, output length, formatter cost,
-  and total fallback work; reject malformed inputs with diagnostics rather than
-  stack overflow, hangs, or partial registry publication.
-
-Use pseudolocalization for expansion/accenting and a separate bidi stress mode;
-neither replaces review by Arabic/Hebrew readers. Visual QA must check shaped output,
-wrapping, focus/navigation, copying, and screen-reader language in the supported
-host. Golden strings alone cannot establish correct display.
-
-For implementation, run targeted tests, full `make test`, optimized assertion-enabled
-validation, and release CLI fixtures. Measure cold catalog load, bundle memory, and
-warm render cost for representative small/large catalogs on an idle machine; establish
-budgets from that evidence without resetting existing performance baselines.
-
-Before release, update the reference's narrative/library/syntax/compatibility pages
-and the narrative conformance audit with implemented APIs and explicit limitations.
-Do not claim universal script rendering, automatic grammatical correctness, complete
-MessageFormat support, or translation quality based solely on engine tests.
+- Unit and extension cases for: key derivation and duplicates, rename with catalog rewrite,
+  select and plural totality, argument reordering and omission, stale marking, pack rejection,
+  fallback of a whole message, re-rendering without side effects, save compatibility across a
+  translation-only change, and gameplay replay in two languages producing identical logs.
+- Language fixtures for the five target languages covering the rows of §4.
+- Measured costs on the reference game: catalog load, pack memory and render time per
+  presentation, inside the budgets of [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md).
+- Engine tests cannot establish that text reads well or displays correctly. Each shipped
+  language needs a reader's review in the real front end.

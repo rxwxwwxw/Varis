@@ -298,8 +298,8 @@ known unsupported cases remain visible rather than being counted as successes.
 - [x] **Phase 8: Core-Lua Performance & Conformance (closed)**: The conformance gate is met for all executable official files and most core workloads run within about 2× of C Lua (see Performance Benchmarks). Closed October 11, 2026; the ≤2× target is no longer pursued and milestones 21–25 are retired.
 - [ ] **Phase 9: Authoring Language v1**: Content/engine file tiers, syntax triage and freeze, the authoring gaps found by the sample game, declared symbols, scenes and beats.
 - [ ] **Phase 10: Authoring Tools**: `varis check` with source-ranged diagnostics, parser error recovery, syntax highlighting, a language server built on the Varis frontend, writer playtest and CI workflow.
-- [ ] **Phase 11: Low-End Runtime & Host Interface**: Reference game with enforced latency and memory budgets, indexed semi-naive cached inference, a documented D host API and reference graphical host, portability.
-- [ ] **Phase 12: Ergonomics**: Undo and persistent data, localization, Twine-class conveniences, writer documentation.
+- [ ] **Phase 11: Low-End Runtime & Host Interface**: Reference game with enforced latency and memory budgets, indexed semi-naive cached inference, a documented D host API and a standard SDL3 presentation layer, builds for Windows, macOS and Linux (Android as a stretch).
+- [ ] **Phase 12: Ergonomics**: Undo and persistent data, localization tooling and a publisher handoff kit, Twine-class conveniences, writer documentation.
 
 Phases 9–12 are defined in [ROADMAP.md](ROADMAP.md) and are planned, not implemented.
 

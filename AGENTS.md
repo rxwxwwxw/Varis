@@ -195,10 +195,10 @@ Defined in [ROADMAP.md](ROADMAP.md); none of this exists yet, and proposals ther
 
 | Phase | Milestones | Planned deliverable |
 | --- | --- | --- |
-| 9 | 26–29 | Authoring language v1: content/engine tiers and a distinct file identity, syntax triage and freeze, the core authoring gaps from `sample-game/needed_extensions.md`, declared entities/symbols, scenes and beats |
+| 9 | 26–29 | Authoring language v1: content/engine tiers and a distinct file identity, syntax triage and freeze (including the localization-ready decisions), the core authoring gaps from `sample-game/needed_extensions.md`, declared entities/symbols, scenes, beats and engine-owned stage state (characters with attributes, slots, audio channels) |
 | 10 | 30–33 | Authoring tools: `varis check` with source-ranged diagnostics, parser error recovery, syntax highlighting and a language server on the Varis frontend, writer playtest/test/CI workflow |
-| 11 | 34–37 | Low-end runtime: reference game and enforced latency/memory budgets, semi-naive indexed cached inference, documented D host interface and reference graphical host, portability and footprint |
-| 12 | 38–41 | Ergonomics: undo and persistent data, localization, Twine-class conveniences, writer documentation |
+| 11 | 34–37 | Low-end runtime: reference game and enforced latency/memory budgets, semi-naive indexed cached inference, documented D host interface and a standard SDL3 presentation layer, builds for Windows/macOS/Linux with Android as a stretch |
+| 12 | 38–41 | Ergonomics: undo and persistent data, localization pipeline and publisher handoff (Chinese, Japanese, Korean; French and Russian as in-house test languages), Twine-class conveniences, writer documentation |
 
 ---
 

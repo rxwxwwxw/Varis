@@ -21,9 +21,9 @@ This plan records implementation of the relational and narrative facilities now 
 ## Scope and current state
 
 Future narrative localization work is proposed in
-[NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): permanent automatic
-content labels, translation catalogs, locale-aware messages, RTL/LTR rendering
-contracts, and save/replay compatibility. This is a proposal, not current support.
+[NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): message keys
+from authored names, translation catalogs and a publisher handoff kit, per-language text
+features for Chinese, Japanese, Korean, French and Russian, and save/replay compatibility. This is a proposal, not current support.
 
 The base target is finite Datalog with set semantics, least-fixed-point recursion, stratified negation, lexical local relations, independent worlds, and snapshot queries. Its engine, typed declarative AST, compiler/VM integration, `logic` library, and tests now exist. `Makefile` explicitly includes the logic modules and runs foundation, frontend, VM, library, logic, stateful, narrative, Datalog, extension regression/stress, and benchmark-runner tests. The official Lua conformance runner is implemented (`tests/runner.d`, runnable via `make test-official`), establishing an automated pass/fail/skip baseline and failure backlog. Historical instructions in milestones 0–8 describe how the base was built; their presence alone is not a fresh claim that every conformance check has passed.
 
