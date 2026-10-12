@@ -179,6 +179,17 @@ cases = [
   { id = "diagnostics", command = ["python3", "tests/check/check_test.py", "{candidate}"] },
 ]
 
+# `varis l10n`: extraction, change detection, status and the CSV adapter (localization plan stage T1).
+[[suite]]
+id = "l10n"
+kind = "script"
+tier = "fast"
+tags = ["tools", "l10n"]
+timeout = 120
+cases = [
+  { id = "extract-status-csv", command = ["python3", "tests/l10n/l10n_test.py", "{candidate}"] },
+]
+
 [[suite]]
 id = "selftest"
 kind = "script"

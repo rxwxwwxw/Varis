@@ -53,24 +53,8 @@ private Diagnostic diagnose(string file, string text) {
 /// 1 when a file does not compile, 0 otherwise (warnings do not fail the check).
 int checkProject(LuaState state, string[] files, bool json, bool dumpIndex = false) {
     auto manifest = loadManifest(".");
-    if (files.length == 0) {
-        if (manifest.present && (manifest.content.length || manifest.scripts.length || manifest.tests.length))
-            files = expandPatterns(".", manifest.content ~ manifest.scripts ~ manifest.tests);
-        else {
-            string[] found;
-            listFiles(".", "", 0, found);
-            foreach (name; found)
-                if (name.length > 4 && name[$ - 4 .. $] == ".lua")
-                    files ~= name;
-            sortStrings(files);
-        }
-        // The manifest is read, never executed; its own problems are reported above.
-        string[] kept;
-        foreach (name; files)
-            if (!(manifest.present && name == manifest.path))
-                kept ~= name;
-        files = kept;
-    }
+    if (files.length == 0)
+        files = projectFiles(".", manifest);
     Diagnostic[] problems = manifest.problems.dup;
     ProjectIndex index;
     foreach (file; files) {
@@ -120,6 +104,12 @@ int checkProject(LuaState state, string[] files, bool json, bool dumpIndex = fal
                 symbolUses[r.name] = SymbolUse(r.file, r.range, 1);
         }
     }
+    // Display text built by code cannot be extracted for translation.
+    foreach (ref f; index.files)
+        foreach (ref m; f.messages)
+            if (m.computed)
+                problems ~= makeDiagnostic("warning", "computed-text", m.file, m.range.line, m.range.column, m.range.endLine,
+                        m.range.endColumn, "display text built by code cannot be extracted for translation", m.owner);
     string[] once;
     foreach (name, use; symbolUses)
         if (use.count == 1 && name !in identifiers)

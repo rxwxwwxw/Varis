@@ -543,6 +543,11 @@ private int runMain(string[] argv, ref LuaState state) {
         return runServe(argv, state);
     if (argv.length > 1 && argv[1] == "check")
         return runCheck(argv, state);
+    if (argv.length > 1 && argv[1] == "l10n") {
+        import varis.services.l10n : l10nMain;
+
+        return l10nMain(argv[2 .. $]);
+    }
     int script;
     int args = collectArgs(argv, script);
     int optlim = script > 0 ? script : cast(int) argv.length;

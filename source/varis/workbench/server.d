@@ -561,7 +561,7 @@ public bool readFile(string path, out string content) {
     return true;
 }
 
-private bool writeFile(string path, string content) {
+public bool writeFile(string path, string content) {
     auto file = fopen((path ~ "\0").ptr, "wb");
     if (file is null)
         return false;

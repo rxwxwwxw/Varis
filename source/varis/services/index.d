@@ -321,6 +321,12 @@ private TemplateScan scanTemplate(string raw, int line, int column, string file,
     return result;
 }
 
+/// The placeholders (`{name}`) of a template text, in order. For translations, which are not
+/// string literals in a source file.
+string[] templatePlaceholders(string text) {
+    return scanTemplate("\"" ~ text ~ "\"", 1, 1, "", "").placeholders;
+}
+
 // -----------------------------------------------------------------------------
 // The walker
 // -----------------------------------------------------------------------------

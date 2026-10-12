@@ -81,8 +81,35 @@ Every diagnostic has a stable `code`, a `severity` (`error`, `warning`, `note`),
 byte columns; the end is just past the last byte; 0 when unknown), and a `message`.
 `--json` prints `{"files": N, "problems": [...]}`; the text form is
 `file:line:column: severity: message [code]`. Only errors give exit status 1.
-Codes in use: `syntax`, `io`, `manifest`, `manifest-key` and `symbol-once` (a
-symbol written once in the whole project and never as a plain name).
+Codes in use: `syntax`, `io`, `manifest`, `manifest-key`, `symbol-once` (a
+symbol written once in the whole project and never as a plain name) and
+`computed-text` (a label or name whose text is not a string literal, so it cannot
+be extracted for translation). `varis check --index` prints the project index:
+the declarations, references and display messages read from the source files.
+
+
+### 8.4 — Message catalogs: `varis l10n`
+
+`bin/varis l10n` reads the project like `varis check` (the manifest, else every
+`.lua` file) and runs nothing. Every display text that is a string literal has a
+**message key** built from authored names: a storylet's `title` is `lamp.title`,
+a choice's is `lamp.light.title`, a quality's label `quality.oil.label`, a
+`narrative.name` label `name.keeper`. Text built by code has no key and is
+reported as `computed-text`; empty text is not extracted.
+
+| Command | Does |
+| --- | --- |
+| `l10n extract [--check] [--carry-renames]` | Writes `l10n/source.json`, the messages of the package sorted by key with source text, revision, arguments and context, and prints what changed. With `--check` it writes nothing and fails when the file is out of date. |
+| `l10n status` | Per locale of the manifest: reviewed, draft, stale and untranslated messages, and the definitions with work left. |
+| `l10n export [--locale L] [--format csv] [--out FILE]` | The catalog as CSV (UTF-8 with a byte order mark): `key,source,translation,status,revision,context,arguments`. |
+| `l10n import FILE --locale L [--apply]` | Proposes `draft` translations and rejects unknown keys and placeholders the source does not have; writes `l10n/L.json` only with `--apply`. |
+
+A message's **revision** is a hash of its text with case, spacing and punctuation
+outside template tags removed. A source edit that leaves the revision equal is
+*cosmetic*: translations keep their status. Any other edit is *substantive* and
+marks translations of that message `stale` (their text is kept). A removed key
+and an added key with the same words are reported as a probable rename;
+`--carry-renames` moves the translation to the new key.
 
 ## 9 — Compatibility and implementation limits
 

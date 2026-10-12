@@ -221,3 +221,24 @@ string manifestJson(ref const Manifest manifest) {
         text ~= (i ? "," : "") ~ diagnosticJson(problem);
     return text ~ "]}";
 }
+
+/// The files a project tool reads: those the manifest lists, or every `.lua` file under the
+/// directory when there is no manifest or it lists none. The manifest itself is not included.
+string[] projectFiles(string directory, ref const Manifest manifest) {
+    string[] files;
+    if (manifest.present && (manifest.content.length || manifest.scripts.length || manifest.tests.length))
+        files = expandPatterns(directory, manifest.content ~ manifest.scripts ~ manifest.tests);
+    else {
+        string[] found;
+        listFiles(directory.length ? directory : ".", "", 0, found);
+        foreach (name; found)
+            if (name.length > 4 && name[$ - 4 .. $] == ".lua")
+                files ~= name;
+        sortStrings(files);
+    }
+    string[] kept;
+    foreach (name; files)
+        if (!(manifest.present && name == manifest.path))
+            kept ~= name;
+    return kept;
+}

@@ -55,6 +55,17 @@
    "endLine": 32,
    "endColumn": 34,
    "subject": "symbol :given"
+  },
+  {
+   "file": "qualities.lua",
+   "line": 21,
+   "severity": "warning",
+   "code": "computed-text",
+   "message": "display text built by code cannot be extracted for translation",
+   "column": 25,
+   "endLine": 21,
+   "endColumn": 30,
+   "subject": "name"
   }
  ]
 }
