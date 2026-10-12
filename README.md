@@ -246,17 +246,20 @@ make clean
 
 Varis has two performance targets, because it has two engines
 ([benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md) has the measurements and the
-staged plan; neither target is met yet):
+staged plan and what has landed; the first target is met on the development-machine stand-in, the
+second is not yet):
 
 1. **World model: a turn within a budget on low-end hardware.** Provisional budgets
    ([ROADMAP.md](ROADMAP.md), milestone 34): 50 ms per turn, 1 s content load, 50 ms per save,
-   64 MB. Measured on a synthetic game (Apple M1, October 11, 2026): 3 ms per presentation with
-   100 rooms and 200 storylets, 15 ms with 1000 storylets, and about 0.84 s once a storylet
-   depends on a recursive rule over the 100-room map. The cost is inference, which copies the
-   facts each query depends on and recomputes without caches, indexes or semi-naive evaluation.
+   64 MB. Measured on a synthetic game (Apple M1, October 11, 2026) after the world-model
+   rewrite: 0.7 ms per presentation with 100 rooms and 200 storylets and 3.2 ms with 1000
+   storylets, with or without a recursive rule over the map (before: 3 ms, 15 ms, and 0.84 s with
+   the recursive rule). Facts are shared instead of copied, joins use indexes, recursion is
+   semi-naive and derived relations are cached. Peak memory (about 150 MB) is still over budget.
 2. **Lua core: never slower than C Lua 5.4, then faster.** Measured against stock C Lua 5.4.9
-   (`-O2`) in the same session, the core workloads are at 0.60–2.41× today, with two outliers:
-   caught errors (37×, D exceptions through the platform unwinder) and deep recursion (8×).
+   (`-O2`) in the same session, the core workloads are at 0.6–2.3× today (function calls and
+   string operations are the slowest; caught errors went from 37× to 1.3× and deep recursion from
+   8× to 2.7×).
    Every workload with a C Lua comparator has `goal.clua = 1.0` in `benchmarks/targets.toml`.
 
 Current per-workload ratios are in the generated [docs/STATUS.md](docs/STATUS.md).
