@@ -80,8 +80,8 @@ PNG with alpha is suitable for finished sprite and portrait artwork.
 
 ## Controls and current limits
 
-- Enter, Space or left click advances dialogue; Escape closes the window (in a scene-only
-  manifest; whole games, below, open a menu instead).
+- Enter, Space or left click advances dialogue; Escape closes the window (scene-only manifests; whole
+  games, below, open a menu instead).
 - Up/Down selects a menu item; Enter or a click chooses it. Menus page in groups of six.
 - Type a name and press Enter at an input beat. Backspace removes a UTF-8 code point.
 - Up/Down scrolls long dialogue. H shows the five most recent lines.
@@ -174,8 +174,36 @@ Extra manifest fields of a whole game:
 
 Controls: Up/Down, 1–9, Enter or the mouse choose; C character sheet, J journal, M map, H history,
 F1 help, F5/F9 quicksave/load, F11 fullscreen, Esc the pause menu (resume, save, load, language,
-volume, fullscreen, quit to title). A choice with an unmet requirement is listed greyed out as
+volume, text size, layout, fullscreen, quit to title); Tab opens the drawer in the compact layout. A choice with an unmet requirement is listed greyed out as
 "locked", and hovering it shows why. Time of day is drawn as a tint; sprites, backgrounds, music and
 one-shot sounds (`click`, `stat_up`, `fail` on the `sfx` channel) come from the manifest as above.
 `make test-sdl` plays *The Hollowbrook Summer* headlessly (hub, every overlay, name input, a save
 round trip) and captures a frame. See [sample-rpg/README.md](../sample-rpg/README.md).
+
+## Layout, text and style
+
+The player has no fixed canvas: it lays widgets out for the window it has (`tools/sdl/ui.d`).
+
+- **One root owns the screen.** Every widget lives in a tree whose root is the whole window, and
+  a child is only laid out inside the rectangle its parent gives it, so nothing draws outside its
+  box.
+- **Text belongs to a box.** A label measures its text for the width it is offered. If the box is
+  smaller: a title or a choice is cut with "…" and slides sideways while the pointer rests on it; a
+  paragraph is clipped and scrolls with the wheel, and on its own while hovered. Boxes give up room
+  to such labels before anything else is squeezed.
+- **Size classes.** Judged in design units (pixels at the 1280x720 design, scaled by display
+  density, the text-size setting and a mild automatic fit): *compact* (under about 900x560) puts the
+  stage over one scrolling panel and moves the status and menu into a drawer; *regular* is stage over
+  a text-and-choices panel; *wide* (about 1500x820 units and up) has a status sidebar, the stage and
+  text in the middle and the choices in a column of their own. The pause menu sets text size
+  (80–175%) and can force a layout.
+- **Style is data.** A manifest `theme` overrides colours (`"colors": {"accent": "#ffcc66"}` with
+  `#rrggbb` or `#rrggbbaa`), the type scale (`font_size`, `font_small`, `font_heading`,
+  `font_title`), spacing (`padding`, `gap`, `row_padding`, `border_width`) and the breakpoints
+  (`compact_width`, `compact_height`, `wide_width`, `wide_height`). `heading_font` names a second
+  font file for headings; `window` sets the initial size. Backgrounds fill the window (cover), and
+  sprite slots (written in the 1280-wide design) are kept as fractions of the stage rectangle.
+
+For testing, `--smoke` honours `VARIS_SMOKE_SIZE=WxH`, `VARIS_SMOKE_SCALE` (a text size index),
+`VARIS_SMOKE_LAYOUT=compact|regular|wide`, `VARIS_SMOKE_OVERLAY`, `VARIS_SMOKE_DRAWER=1` and
+`VARIS_SMOKE_SCREEN=title|scene`.

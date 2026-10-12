@@ -1,5 +1,8 @@
 /* Varis SDL3 presentation bridge. Copyright (C) 2026 Varis contributors.
- * See LICENSE. SDL owns its graphics/audio resources; no Lua objects cross this ABI. */
+ * See LICENSE. SDL owns its graphics/audio resources; no Lua objects cross this ABI.
+ *
+ * The renderer works in output pixels: there is no fixed canvas. The player lays its widgets out
+ * for whatever size the window has (see tools/sdl/ui.d) and asks for text at a pixel size. */
 #include <SDL3/SDL.h>
 #include <SDL3_image/SDL_image.h>
 #include <SDL3_ttf/SDL_ttf.h>
@@ -8,18 +11,18 @@
 
 static SDL_Window *window;
 static SDL_Renderer *renderer;
-static TTF_Font *font;
 static MIX_Mixer *mixer;
 
 const char *v_error(void) { return SDL_GetError(); }
-int v_open(const char *title, const char *font_path, float size, int hidden) {
+
+/* Opens the window (width, height in points) and the audio device. */
+int v_open(const char *title, int width, int height, int hidden) {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) || !TTF_Init() || !MIX_Init()) return 0;
-    if (!SDL_CreateWindowAndRenderer(title, 1280, 720,
-            SDL_WINDOW_RESIZABLE | (hidden ? SDL_WINDOW_HIDDEN : 0), &window, &renderer)) return 0;
-    if (!SDL_SetRenderLogicalPresentation(renderer, 1280, 720, SDL_LOGICAL_PRESENTATION_LETTERBOX)) return 0;
+    if (!SDL_CreateWindowAndRenderer(title, width, height,
+            SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | (hidden ? SDL_WINDOW_HIDDEN : 0),
+            &window, &renderer)) return 0;
+    SDL_SetWindowMinimumSize(window, 320, 240);
     SDL_SetRenderDrawBlendMode(renderer, SDL_BLENDMODE_BLEND);
-    font = TTF_OpenFont(font_path, size);
-    if (!font) return 0;
     mixer = MIX_CreateMixerDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
     if (!mixer) return 0;
     SDL_StartTextInput(window);
@@ -28,29 +31,26 @@ int v_open(const char *title, const char *font_path, float size, int hidden) {
 void v_close(void) {
     if (mixer) MIX_DestroyMixer(mixer);
     mixer = NULL;
-    if (font) TTF_CloseFont(font);
-    font = NULL;
     if (renderer) SDL_DestroyRenderer(renderer);
     renderer = NULL;
     if (window) SDL_DestroyWindow(window);
     window = NULL;
     MIX_Quit(); TTF_Quit(); SDL_Quit();
 }
-void *v_image(const char *path) { return IMG_LoadTexture(renderer, path); }
-void *v_text(const char *text, int wrap, unsigned color) {
-    if (!*text) return NULL;
-    SDL_Color c = {color >> 24, color >> 16, color >> 8, color};
-    SDL_Surface *s = TTF_RenderText_Blended_Wrapped(font, text, 0, c, wrap);
-    if (!s) return NULL;
-    SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
-    SDL_DestroySurface(s);
-    return t;
+/* The render target size in pixels, and how many pixels a point is (2 on a retina display). */
+void v_output_size(int *w, int *h) {
+    *w = *h = 0;
+    SDL_GetRenderOutputSize(renderer, w, h);
 }
-/* Extra font sizes: the player opens one handle per size. */
-void *v_font(const char *path, float size) { return TTF_OpenFont(path, size); }
+float v_pixel_scale(void) { return window ? SDL_GetWindowPixelDensity(window) : 1.0f; }
+
+void *v_image(const char *path) { return IMG_LoadTexture(renderer, path); }
+void *v_font(const char *path) { return TTF_OpenFont(path, 24); }
 void v_font_free(void *f) { if (f) TTF_CloseFont(f); }
-void *v_text_font(void *f, const char *text, int wrap, unsigned color) {
-    if (!*text) return NULL;
+/* Text at a pixel size, wrapped at `wrap` pixels (0: only at newlines). */
+void *v_text(void *f, const char *text, float px, int wrap, unsigned color) {
+    if (!f || !*text) return NULL;
+    TTF_SetFontSize(f, px);
     SDL_Color c = {color >> 24, color >> 16, color >> 8, color};
     SDL_Surface *s = TTF_RenderText_Blended_Wrapped(f, text, 0, c, wrap);
     if (!s) return NULL;
@@ -58,42 +58,53 @@ void *v_text_font(void *f, const char *text, int wrap, unsigned color) {
     SDL_DestroySurface(s);
     return t;
 }
-void v_text_size(void *texture, float *w, float *h) { SDL_GetTextureSize(texture, w, h); }
+void v_texture_size(void *texture, float *w, float *h) { SDL_GetTextureSize(texture, w, h); }
 void v_free(void *texture) { if (texture) SDL_DestroyTexture(texture); }
-void v_begin(void) { SDL_SetRenderDrawColor(renderer, 14, 20, 34, 255); SDL_RenderClear(renderer); }
+void v_begin(unsigned color) {
+    SDL_SetRenderDrawColor(renderer, color >> 24, color >> 16, color >> 8, 255);
+    SDL_RenderClear(renderer);
+}
 void v_rect(float x, float y, float w, float h, unsigned color) {
     SDL_SetRenderDrawColor(renderer, color >> 24, color >> 16, color >> 8, color);
-    SDL_FRect r = {x,y,w,h}; SDL_RenderFillRect(renderer, &r);
+    SDL_FRect r = {x, y, w, h}; SDL_RenderFillRect(renderer, &r);
 }
-/* fit: 0 stretch, 1 contain (bottom anchored), 2 natural size (top anchored). */
-void v_draw(void *texture, float x, float y, float w, float h, int fit, float alpha) {
+void v_outline(float x, float y, float w, float h, unsigned color) {
+    SDL_SetRenderDrawColor(renderer, color >> 24, color >> 16, color >> 8, color);
+    SDL_FRect r = {x, y, w, h}; SDL_RenderRect(renderer, &r);
+}
+/* fit: 0 stretch, 1 contain (bottom anchored), 2 natural size (top left), 3 cover (centred, cropped).
+ * tint is 0xRRGGBBAA: a colour multiplied into the texture, and its alpha. */
+void v_draw(void *texture, float x, float y, float w, float h, int fit, unsigned tint) {
     if (!texture) return;
     float tw, th; SDL_GetTextureSize(texture, &tw, &th);
+    SDL_FRect src = {0, 0, tw, th};
     if (fit == 1) {
         float scale = SDL_min(w / tw, h / th);
         x += (w - tw * scale) / 2; y += h - th * scale;
         w = tw * scale; h = th * scale;
     } else if (fit == 2) { w = tw; h = th; }
-    SDL_SetTextureAlphaModFloat(texture, alpha);
-    SDL_FRect r = {x,y,w,h}; SDL_RenderTexture(renderer, texture, NULL, &r);
+    else if (fit == 3) {
+        float scale = SDL_max(w / tw, h / th);
+        src.w = w / scale; src.h = h / scale;
+        src.x = (tw - src.w) / 2; src.y = (th - src.h) / 2;
+    }
+    SDL_SetTextureColorMod(texture, tint >> 24, tint >> 16, tint >> 8);
+    SDL_SetTextureAlphaMod(texture, tint);
+    SDL_FRect r = {x, y, w, h}; SDL_RenderTexture(renderer, texture, &src, &r);
 }
 int v_capture(const char *path) {
     SDL_Surface *s = SDL_RenderReadPixels(renderer, NULL);
     if (!s) return 0;
     int ok = SDL_SaveBMP(s, path); SDL_DestroySurface(s); return ok;
 }
-void v_outline(float x, float y, float w, float h, unsigned color) {
-    SDL_SetRenderDrawColor(renderer, color >> 24, color >> 16, color >> 8, color);
-    SDL_FRect r = {x,y,w,h}; SDL_RenderRect(renderer, &r);
-}
-void v_volume(float gain) { if (mixer) MIX_SetMixerGain(mixer, gain); }
-void v_fullscreen(int on) { if (window) SDL_SetWindowFullscreen(window, on != 0); }
 void v_clip(int x, int y, int w, int h) {
-    SDL_Rect r = {x,y,w,h}; SDL_SetRenderClipRect(renderer, w ? &r : NULL);
+    SDL_Rect r = {x, y, w, h}; SDL_SetRenderClipRect(renderer, w > 0 && h > 0 ? &r : NULL);
 }
 void v_end(void) { SDL_RenderPresent(renderer); }
 void v_delay(void) { SDL_Delay(16); }
 unsigned long long v_ticks(void) { return SDL_GetTicks(); }
+void v_volume(float gain) { if (mixer) MIX_SetMixerGain(mixer, gain); }
+void v_fullscreen(int on) { if (window) SDL_SetWindowFullscreen(window, on != 0); }
 /* 1 quit, 2 advance, 3 backspace, 4 text, 5 click, 6 key, 7 motion, 8 wheel (key = +-1). */
 int v_event(int *key, float *x, float *y, const char **text) {
     SDL_Event e;
@@ -102,11 +113,11 @@ int v_event(int *key, float *x, float *y, const char **text) {
         if (e.type == SDL_EVENT_QUIT) return 1;
         if (e.type == SDL_EVENT_KEY_DOWN && !e.key.repeat) {
             *key = e.key.key;
-            if (*key == SDLK_ESCAPE) return 6;
             if (*key == SDLK_BACKSPACE) return 3;
             if (*key == SDLK_RETURN || *key == SDLK_SPACE) return 2;
             return 6;
         }
+        if (e.type == SDL_EVENT_KEY_DOWN && e.key.repeat && e.key.key == SDLK_BACKSPACE) { *key = SDLK_BACKSPACE; return 3; }
         if (e.type == SDL_EVENT_MOUSE_MOTION) {
             SDL_RenderCoordinatesFromWindow(renderer, e.motion.x, e.motion.y, x, y); return 7;
         }

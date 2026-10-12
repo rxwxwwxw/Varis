@@ -95,6 +95,16 @@ def melody(base, steps, length=0.5):
 def main():
     manifest = {
         "title": "The Hollowbrook Summer",
+        "subtitle": "A summer of small decisions",
+        "window": [1280, 720],
+        # The look of the interface. Every key is optional; these are the defaults, written out.
+        "theme": {
+            "font_size": 22,
+            "padding": 12,
+            "gap": 8,
+            "colors": {"accent": "#9bdbd9", "panel": "#101a2eee", "row": "#1a2740ee", "row_hot": "#356b80ee",
+                       "gold": "#ffe08a", "good": "#9fe0a0", "bad": "#e8847c"},
+        },
         "project": ".",
         "scene": "prologue",
         "font_size": 22,

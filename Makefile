@@ -175,7 +175,7 @@ varis-sdl: bin
 	pkg-config --exists $(SDL_PACKAGES)
 	mkdir -p $(BUILD_DIR)/sdl
 	$(CC) -std=c11 -Wall -Wextra -Werror $(SDL_CFLAGS) -c tools/sdl/bridge.c -o $(BUILD_DIR)/sdl/bridge.o
-	$(DC) -Isource -Jworkbench -I. -O3 $(SRC_FILES) tools/sdl/main.d tools/sdl/gameplayer.d tools/sdl/native.d $(BUILD_DIR)/sdl/bridge.o $(addprefix -L,$(SDL_LIBS)) -of=$(BIN_DIR)/varis-sdl
+	$(DC) -Isource -Jworkbench -I. -O3 $(SRC_FILES) tools/sdl/main.d tools/sdl/gameplayer.d tools/sdl/ui.d tools/sdl/native.d $(BUILD_DIR)/sdl/bridge.o $(addprefix -L,$(SDL_LIBS)) -of=$(BIN_DIR)/varis-sdl
 
 test-sdl: varis-sdl
 	python3 tests/sample_game/sdl_test.py

@@ -242,3 +242,14 @@ test.case("the Trials end the game: three contests, then the verdict", function(
     pick_with(t, "verdict", :accept, { e = :quiet })
     assert(t:is_over(), "the summer is over")
 end)
+
+test.case("a loss never takes more than you have", function()
+    local t = strong(start())
+    local w = t.session:world()
+    quality.set(:player, :coins, 3, w)
+    walk(t, :square)
+    walk(t, :market)
+    t:expect_shown "thief"
+    pick(t, "thief", "let_go")
+    t:expect_quality(:player, :coins, 0)
+end)

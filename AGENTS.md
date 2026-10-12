@@ -374,7 +374,7 @@ Use this table to avoid coding against a design that has not landed.
 | `source/varis/narrative/{scenes,plural,text}.d` | narrative | ✅ initial scenes and text support | Portable beat programs, stage state, plural rules and Unicode/text helpers |
 | `source/varis/services/{tier,presentation}.d`, `tools/sdl/` | tools | ✅ initial slices | Static content restrictions, status-returning scene adapter and optional SDL3 player |
 | `sample-vn/` | | ✅ | *Harbour Window*: scene saves and graphical presentation sample |
-| `source/varis/services/gamehost.d`, `tools/sdl/gameplayer.d` | tools | ✅ | `GameHost`: the status-returning host of a whole project (hub, scenes, stage, status, toasts, journal, map, saves, language); the SDL3 whole-game player |
+| `source/varis/services/gamehost.d`, `tools/sdl/{gameplayer,ui}.d` | tools | ✅ | `GameHost`: the status-returning host of a project or of scene-only content (hub, scenes, stage, status, toasts, journal, map, saves, language); the SDL3 player; `ui.d` is its widget toolkit (one root owns the screen, text owned by boxes with overflow policies, size classes, theme as data) |
 | `sample-rpg/` | | ✅ | *The Hollowbrook Summer*: Twine-style RPG sample for the SDL3 player; see its README |
 
 Keep all source modules listed explicitly in the `Makefile` (`make check-sources`).

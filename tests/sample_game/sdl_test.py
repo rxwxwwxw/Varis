@@ -27,6 +27,19 @@ def rpg():
     assert data[:2] == b"BM" and struct.unpack_from("<ii", data, 18) == (1280, 720)
     offset = struct.unpack_from("<I", data, 10)[0]
     assert len(set(data[offset:])) > 40
+    # The interface adapts to the window: a phone-sized window, a large one, and a large text size
+    # all render without a diagnostic (the layout is chosen by size, see tools/sdl/ui.d).
+    for name, extra in (("compact", dict(VARIS_SMOKE_SIZE="420x800")),
+                        ("wide", dict(VARIS_SMOKE_SIZE="1920x1080")),
+                        ("large-text", dict(VARIS_SMOKE_SIZE="1280x720", VARIS_SMOKE_SCALE="6")),
+                        ("forced-compact", dict(VARIS_SMOKE_SIZE="1000x700", VARIS_SMOKE_LAYOUT="compact")),
+                        ("journal", dict(VARIS_SMOKE_OVERLAY="journal")),
+                        ("drawer", dict(VARIS_SMOKE_SIZE="420x800", VARIS_SMOKE_DRAWER="1"))):
+        out = ROOT / f"build/sdl/hollowbrook-{name}.bmp"
+        result = subprocess.run([str(BINARY), str(ROOT / "sample-rpg/presentation.json"), "--smoke", str(out)],
+                                cwd=ROOT, env=dict(ENV, **extra), capture_output=True, text=True, timeout=60)
+        assert result.returncode == 0 and "checks passed" in result.stdout, (name, result.stdout + result.stderr)
+        assert len(set(out.read_bytes()[offset:])) > 30, name
     for leftover in ("autosave.json", "settings.json", "quicksave.json"):
         (ROOT / "sample-rpg" / leftover).unlink(missing_ok=True)
 

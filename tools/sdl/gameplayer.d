@@ -8,13 +8,22 @@
 ** See LICENSE for license details.
 */
 
-/// The SDL3 front end for whole games (a manifest with a `project`): title screen, the storylet
-/// hub with a status panel, scenes, overlays (character sheet, journal, map, help, history),
-/// a pause menu with settings, toasts and an ending screen. It draws from `GameHost.view` only;
-/// the engine runs once per player action.
+/// The SDL3 player: scene-only games (`content` + `scene`) and whole games (`project`), both
+/// through `GameHost`. It draws widgets from `tools.sdl.ui` and decides nothing about layout
+/// itself except which arrangement a window size calls for:
+///
+/// * **regular** (about 900x560 units and up): status panel and stage over a text-and-choices panel;
+/// * **wide** (1500x820 and up): a left sidebar with the status and the goals, the stage and text in
+///   the middle, and the choices in a column of their own on the right;
+/// * **compact**: the stage on top and one scrolling panel below; the status and the menu move to a
+///   drawer opened by the Menu button (or Tab).
+///
+/// Colours, type sizes and spacing come from the manifest's `theme`; text size and the layout are
+/// also the player's choice, in the pause menu.
 module tools.sdl.gameplayer;
 
 import tools.sdl.native;
+import tools.sdl.ui;
 import varis.services.gamehost;
 import varis.services.presentation : SceneView, StageCharacter;
 import varis.services.json;
@@ -26,10 +35,7 @@ import std.string : toStringz, fromStringz;
 import std.stdio : stderr, writeln;
 import std.conv : to;
 import std.format : format;
-
-private enum uint panelColor = 0x101a2eee, accentColor = 0x9bdbd9ff, textColor = 0xffffffff, dimColor = 0x9aa7bbff,
-    lockedColor = 0x6b7587ff, badColor = 0xe8847cff, goodColor = 0x9fe0a0ff, barBack = 0x243049ff, rowColor = 0x1a2740ee,
-    rowSelected = 0x356b80ee;
+import std.algorithm : max, min;
 
 private struct Image {
     string id, character;
@@ -39,7 +45,7 @@ private struct Image {
 
 private struct Slot {
     string id;
-    float x, y, width, height;
+    float x, width; // fractions of the stage width
 }
 
 private struct Sound {
@@ -87,12 +93,127 @@ enum Overlay {
     journal,
     map,
     help,
-    history,
-    language
+    history
+}
+
+private immutable float[] textScales = [0.8f, 0.9f, 1.0f, 1.15f, 1.3f, 1.5f, 1.75f];
+private immutable string[] layoutNames = ["Auto", "Compact", "Regular", "Wide"];
+
+/// The pictures of a scene: sprites in their slots of the stage rectangle.
+private final class StageWidget : Widget {
+    GamePlayer player;
+
+    this(GamePlayer player) {
+        this.player = player;
+    }
+
+    override Size measure(Ui ui, float maxW, float maxH) {
+        return Size(maxW, 0);
+    }
+
+    override bool shrinkable() {
+        return true;
+    }
+
+    override float minHeight(Ui ui) {
+        return ui.u(60);
+    }
+
+    override void draw(Ui ui) {
+        auto view = player.host.view.beat;
+        ui.pushClip(rect);
+        foreach (ref slot; player.slots)
+            foreach (ref c; view.characters)
+                if (c.slot == slot.id) {
+                    auto art = player.characterImage(player.sprites, c.id, c.attributes);
+                    ui.image(art, Rect(rect.x + slot.x * rect.w, rect.y + rect.h * 0.04f, slot.width * rect.w, rect.h * 0.96f), 1);
+                }
+        ui.popClip();
+        player.drawToasts(ui, rect);
+    }
+}
+
+/// The map overlay: places and roads scaled into whatever box they are given.
+private final class MapView : Widget {
+    GamePlayer player;
+    MapState state;
+    void delegate(string) onPick;
+    private Rect[string] spots;
+
+    this(GamePlayer player, MapState state) {
+        this.player = player;
+        this.state = state;
+    }
+
+    override Size measure(Ui ui, float maxW, float maxH) {
+        return Size(maxW, maxH);
+    }
+
+    override bool shrinkable() {
+        return true;
+    }
+
+    override float minHeight(Ui ui) {
+        return ui.u(120);
+    }
+
+    private Rect spot(Ui ui, Node n) {
+        float x0 = float.max, y0 = float.max, x1 = -float.max, y1 = -float.max;
+        foreach (ref m; player.nodes) {
+            x0 = min(x0, m.x);
+            y0 = min(y0, m.y);
+            x1 = max(x1, m.x);
+            y1 = max(y1, m.y);
+        }
+        auto margin = ui.u(70);
+        auto box = rect.inset(margin, ui.u(24), margin, ui.u(34));
+        auto sx = x1 > x0 ? box.w / (x1 - x0) : 1, sy = y1 > y0 ? box.h / (y1 - y0) : 1;
+        auto s = min(sx, sy);
+        auto cx = box.x + box.w / 2 - (x1 - x0) * s / 2, cy = box.y + box.h / 2 - (y1 - y0) * s / 2;
+        auto half = ui.u(11);
+        return Rect(cx + (n.x - x0) * s - half, cy + (n.y - y0) * s - half, 2 * half, 2 * half);
+    }
+
+    override void draw(Ui ui) {
+        spots = null;
+        foreach (ref n; player.nodes)
+            spots[n.id] = spot(ui, n);
+        foreach (from, list; player.roads)
+            foreach (to; list)
+                if (from in spots && to in spots) {
+                    auto a = spots[from], b = spots[to];
+                    auto ax = a.x + a.w / 2, ay = a.y + a.h / 2, bx = b.x + b.w / 2, by = b.y + b.h / 2;
+                    foreach (s; 0 .. 24) {
+                        auto f = s / 24.0f;
+                        ui.fill(Rect(ax + (bx - ax) * f - 1, ay + (by - ay) * f - 1, 3, 3), ui.theme.dim);
+                    }
+                }
+        foreach (ref n; player.nodes) {
+            auto r = spots[n.id];
+            bool here = n.id == state.at, open = (n.id in state.reachable) !is null;
+            ui.fill(r, here ? ui.theme.gold : open ? ui.theme.accent : ui.theme.locked);
+            auto name = player.host.display(n.id);
+            auto size = ui.measure(name, FontRole.small);
+            ui.drawText(name, FontRole.small, r.x + r.w / 2 - size.w / 2, r.y + r.h + ui.u(3), 0,
+                    open ? ui.theme.text : ui.theme.locked);
+        }
+    }
+
+    override bool event(Ui ui, ref UiEvent e) {
+        if (e.type != 5)
+            return false;
+        foreach (id, r; spots)
+            if (r.inset(-ui.u(8)).contains(e.x, e.y) && onPick !is null) {
+                onPick(id);
+                return true;
+            }
+        return false;
+    }
 }
 
 class GamePlayer {
     GameHost host;
+    Ui ui;
     Image[] backgrounds, sprites, portraits;
     Slot[] slots;
     Sound[] sounds;
@@ -102,23 +223,25 @@ class GamePlayer {
     string[][string] roads;
     string[] clock;
     string[] choiceLabels; // storylets whose rows are labelled by the choice, not the storylet
-    string root, savePath, autosavePath, settingsPath, title, seedText;
+    string root, savePath, autosavePath, settingsPath, title, subtitle;
     string[] history;
-    void*[string] cache;
-    void* fontSmall, fontBig, fontHuge;
     Mode mode;
     Overlay overlay;
+    bool drawerOpen;
     Row[] rows;
-    int selected, scroll, menuIndex;
-    float mouseX, mouseY;
+    Button[] rowButtons;
+    int selected, menuIndex;
+    bool revealSelected;
     ToastView[] toasts;
     string notice, input;
-    ulong entered, noticeAt;
+    ulong noticeAt;
     long seed;
-    int volume = 8;
-    bool fullscreen, failed, sawEnding;
-    string fontPath;
-    float fontSize = 22;
+    int volume = 8, textScaleIndex = 2, layoutIndex;
+    bool fullscreen, failed;
+    string fontPath, headingFontPath;
+    int windowWidth = 1280, windowHeight = 720;
+    bool sceneOnly;
+    private Widget lastRoot;
 
     string path(string value) {
         return isAbsolute(value) ? value : buildPath(root, value);
@@ -155,17 +278,28 @@ class GamePlayer {
         return true;
     }
 
-    bool load(string manifest, bool hidden) {
+    bool load(string manifest, bool hidden, int forcedWidth = 0, int forcedHeight = 0) {
         root = dirName(manifest);
         JsonValue config;
         string error;
         if (!parseJson(readText(manifest), config, error))
             return fail(error);
-        auto project = config.stringOr("project", ".");
         title = config.stringOr("title", "Varis");
+        subtitle = config.stringOr("subtitle");
         host = new GameHost;
-        if (!host.loadProject(path(project), config.stringOr("scene")))
-            return fail(host.error);
+        auto project = config.stringOr("project");
+        if (project.length) {
+            if (!host.loadProject(path(project), config.stringOr("scene")))
+                return fail(host.error);
+        } else {
+            auto source = config.stringOr("content");
+            auto scene = config.stringOr("scene");
+            if (!source.length || !scene.length)
+                return fail("manifest requires content and scene (or a project)");
+            sceneOnly = true;
+            if (!host.loadScenes(readText(path(source)), path(source), scene))
+                return fail(host.error);
+        }
         auto font = config.stringOr("font");
         if (font.length)
             font = path(font);
@@ -180,14 +314,40 @@ class GamePlayer {
         if (!font.length)
             return fail("manifest requires a font file on this platform");
         fontPath = font;
-        fontSize = config.integerOr("font_size", 22);
-        if (fontSize < 8 || fontSize > 96)
-            return fail("font_size must be between 8 and 96");
-        if (!v_open(title.toStringz, font.toStringz, fontSize, hidden))
+        if (auto heading = config.stringOr("heading_font"))
+            headingFontPath = path(heading);
+        auto theme = Theme.fromJson(config.get("theme"));
+        // The legacy `font_size` key sets the type scale as the theme's does.
+        auto legacySize = config.integerOr("font_size", 0);
+        if (legacySize) {
+            if (legacySize < 8 || legacySize > 96)
+                return fail("font_size must be between 8 and 96");
+            auto ratio = cast(float) legacySize / theme.fontBody;
+            theme.fontBody *= ratio;
+            theme.fontSmall *= ratio;
+            theme.fontHeading *= ratio;
+            theme.fontTitle *= ratio;
+        }
+        theme.panel = cast(uint) config.integerOr("panel_color", theme.panel);
+        theme.accent = cast(uint) config.integerOr("accent_color", theme.accent);
+        if (auto size = config.get("window"))
+            if (size.kind == JsonValue.Kind.array && size.items.length == 2) {
+                windowWidth = cast(int) size.items[0].number;
+                windowHeight = cast(int) size.items[1].number;
+            }
+        if (forcedWidth > 0) {
+            windowWidth = forcedWidth;
+            windowHeight = forcedHeight;
+        }
+        if (!v_open(title.toStringz, windowWidth, windowHeight, hidden))
             return fail(fromStringz(v_error()).idup);
-        fontSmall = v_font(font.toStringz, fontSize * 0.8f);
-        fontBig = v_font(font.toStringz, fontSize * 1.5f);
-        fontHuge = v_font(font.toStringz, fontSize * 2.4f);
+        ui = new Ui;
+        ui.theme = theme;
+        ui.fontBody = v_font(font.toStringz);
+        if (!ui.fontBody)
+            return fail("font " ~ font ~ ": " ~ fromStringz(v_error()).idup);
+        if (headingFontPath.length)
+            ui.fontHeading = v_font(headingFontPath.toStringz);
         savePath = path(config.stringOr("save", "quicksave.json"));
         autosavePath = path(config.stringOr("autosave", "autosave.json"));
         settingsPath = path(config.stringOr("settings", "settings.json"));
@@ -195,14 +355,20 @@ class GamePlayer {
         if (!images(config.get("backgrounds"), backgrounds) || !images(config.get("sprites"), sprites) ||
                 !images(config.get("portraits"), portraits))
             return false;
+        // Slots are written in the 1280-unit design; they are kept as fractions of the stage.
         if (auto values = config.get("slots"))
-            foreach (ref s; values.items)
-                slots ~= Slot(s.stringOr("id"), s.integerOr("x"), s.integerOr("y"), s.integerOr("width", 400),
-                        s.integerOr("height", 650));
+            foreach (ref s; values.items) {
+                Slot slot;
+                slot.id = s.stringOr("id");
+                slot.x = s.integerOr("x") / 1280.0f;
+                slot.width = s.integerOr("width", 400) / 1280.0f;
+                if (!slot.id.length || slot.width <= 0)
+                    return fail("slot requires id and positive dimensions");
+                slots ~= slot;
+            }
         if (!slots.length)
             slots = [
-            Slot("left", 80, 40, 400, 400), Slot("center", 440, 40, 400, 400),
-            Slot("right", 800, 40, 400, 400)
+            Slot("left", 0.06f, 0.3f), Slot("center", 0.35f, 0.3f), Slot("right", 0.64f, 0.3f)
         ];
         if (auto values = config.get("audio"))
             foreach (ref s; values.items) {
@@ -244,7 +410,7 @@ class GamePlayer {
                 clock ~= c.text;
         }
         loadSettings();
-        v_volume(volume / 10.0f);
+        applySettings();
         return true;
     }
 
@@ -261,66 +427,31 @@ class GamePlayer {
         if (volume < 0 || volume > 10)
             volume = 8;
         fullscreen = v.integerOr("fullscreen", 0) != 0;
+        textScaleIndex = cast(int) v.integerOr("text_scale", textScaleIndex);
+        if (textScaleIndex < 0 || textScaleIndex >= cast(int) textScales.length)
+            textScaleIndex = 2;
+        layoutIndex = cast(int) v.integerOr("layout", 0);
+        if (layoutIndex < 0 || layoutIndex >= cast(int) layoutNames.length)
+            layoutIndex = 0;
         auto tag = v.stringOr("language");
         foreach (ref l; languages)
             if (l.tag == tag)
                 host.language = tag;
-        if (fullscreen)
-            v_fullscreen(1);
     }
 
     void saveSettings() {
-        write(settingsPath, format(`{"volume":%d,"fullscreen":%d,"language":"%s"}`, volume, fullscreen ? 1 : 0,
-                host.language));
+        if (sceneOnly)
+            return;
+        write(settingsPath, format(`{"volume":%d,"fullscreen":%d,"text_scale":%d,"layout":%d,"language":"%s"}`, volume,
+                fullscreen ? 1 : 0, textScaleIndex, layoutIndex, host.language));
     }
 
-    // ---- text ----------------------------------------------------------------------
-
-    void* textureFor(void* font, string value, int wrap, uint color) {
-        if (!value.length)
-            return null;
-        auto key = format("%x|%d|%x|", cast(size_t) font, wrap, color) ~ value;
-        if (auto found = key in cache)
-            return *found;
-        if (cache.length > 600) {
-            foreach (texture; cache)
-                v_free(texture);
-            cache = null;
-        }
-        auto texture = font is null ? v_text(value.toStringz, wrap, color) : v_text_font(font, value.toStringz, wrap, color);
-        cache[key] = texture;
-        return texture;
-    }
-
-    /// Draws text at (x, y); wrap 0 does not wrap. Returns the rendered height.
-    float label(void* font, string value, float x, float y, int wrap = 0, uint color = textColor) {
-        auto texture = textureFor(font, value, wrap, color);
-        if (texture is null)
-            return 0;
-        float w, h;
-        v_text_size(texture, &w, &h);
-        v_draw(texture, x, y, 0, 0, 2, 1);
-        return h;
-    }
-
-    float labelRight(void* font, string value, float right, float y, uint color = textColor) {
-        auto texture = textureFor(font, value, 0, color);
-        if (texture is null)
-            return 0;
-        float w, h;
-        v_text_size(texture, &w, &h);
-        v_draw(texture, right - w, y, 0, 0, 2, 1);
-        return h;
-    }
-
-    float labelCentre(void* font, string value, float centre, float y, uint color = textColor) {
-        auto texture = textureFor(font, value, 0, color);
-        if (texture is null)
-            return 0;
-        float w, h;
-        v_text_size(texture, &w, &h);
-        v_draw(texture, centre - w / 2, y, 0, 0, 2, 1);
-        return h;
+    void applySettings() {
+        v_volume(volume / 10.0f);
+        v_fullscreen(fullscreen ? 1 : 0);
+        ui.userScale = textScales[textScaleIndex];
+        ui.isForced = layoutIndex != 0;
+        ui.forced = layoutIndex == 1 ? SizeClass.compact : layoutIndex == 3 ? SizeClass.wide : SizeClass.regular;
     }
 
     // ---- images and audio ----------------------------------------------------------
@@ -345,7 +476,52 @@ class GamePlayer {
         return found;
     }
 
-    void syncAudio() {
+    void* backgroundImage() {
+        auto id = host.view.beat.background;
+        foreach (ref image; backgrounds)
+            if (image.id == id)
+                return image.texture;
+        return null;
+    }
+
+    /// An unmapped background, slot, sprite or audio channel is a diagnostic, not a blank screen.
+    bool validate() {
+        auto v = host.view.beat;
+        if (v.kind == "picture" || v.kind == "screen")
+            return fail("SDL player does not yet support beat kind: " ~ v.kind);
+        bool hasBackground = !v.background.length;
+        foreach (ref image; backgrounds)
+            if (image.id == v.background)
+                hasBackground = true;
+        if (!hasBackground)
+            return fail("unmapped background: " ~ v.background);
+        foreach (ref c; v.characters) {
+            bool hasSlot;
+            foreach (ref s; slots)
+                if (s.id == c.slot)
+                    hasSlot = true;
+            if (!hasSlot)
+                return fail("unmapped slot: " ~ c.slot);
+            if (!characterImage(sprites, c.id, c.attributes))
+                return fail("no matching sprite for character: " ~ c.id);
+        }
+        import varis.narrative.codec : ImmutableRecord;
+
+        if (!v.audio.isNil) {
+            auto record = cast(ImmutableRecord) v.audio.asUserData.payload;
+            foreach (name, value; record.fields) {
+                bool mapped;
+                foreach (ref c; channels)
+                    if (c.id == name)
+                        mapped = true;
+                if (!mapped)
+                    return fail("unmapped audio channel: " ~ name);
+            }
+        }
+        return true;
+    }
+
+    bool syncAudio() {
         auto audio = host.view.beat.audio;
         foreach (ref c; channels) {
             auto tag = nameOf(field(audio, c.id));
@@ -356,10 +532,11 @@ class GamePlayer {
                 if (a.id == tag)
                     sound = a.sound;
             if (tag.length && sound is null)
-                continue; // an unmapped tag is silent, not fatal
+                return fail("unmapped audio tag: " ~ tag);
             v_play(c.track, sound, c.loop);
             c.playing = tag;
         }
+        return true;
     }
 
     /// A one-shot sound on the `sfx` channel; a missing channel or sound is silent.
@@ -383,7 +560,7 @@ class GamePlayer {
             return fail(host.error);
         mode = Mode.play;
         overlay = Overlay.none;
-        sawEnding = false;
+        drawerOpen = false;
         return afterBoundary();
     }
 
@@ -409,17 +586,20 @@ class GamePlayer {
                 break;
             auto kind = v.beat.kind;
             bool media = kind == "background" || kind == "show" || kind == "hide" || kind == "audio" ||
-                kind == "transition" || kind == "pause" || kind == "ended";
+                kind == "transition" || kind == "pause";
             if (!media)
                 break;
+            if (!validate() || !syncAudio())
+                return false;
             if (!host.advance())
                 return fail(host.error);
         }
-        entered = v_ticks();
-        selected = scroll = 0;
+        selected = 0;
         input = "";
         rows = null;
         auto v = host.view;
+        if (!validate() || !syncAudio())
+            return false;
         if (!v.inScene)
             foreach (i, ref story; v.stories)
                 foreach (j, ref choice; story.choices) {
@@ -445,7 +625,6 @@ class GamePlayer {
             sfx("fail");
         else if (gained)
             sfx("stat_up");
-        syncAudio();
         if (v.over && !v.inScene)
             mode = Mode.over;
         return true;
@@ -468,6 +647,8 @@ class GamePlayer {
     }
 
     void autosave() {
+        if (sceneOnly)
+            return;
         string bytes;
         if (host.save(bytes))
             write(autosavePath, bytes);
@@ -479,371 +660,619 @@ class GamePlayer {
         return afterBoundary();
     }
 
-    // ---- drawing -------------------------------------------------------------------
+    // ---- widgets -------------------------------------------------------------------
 
-    void drawStage() {
-        auto v = host.view.beat;
-        foreach (ref image; backgrounds)
-            if (image.id == v.background)
-                v_draw(image.texture, 0, 0, 1280, 720, 0, 1);
-        foreach (ref slot; slots)
-            foreach (ref c; v.characters)
-                if (c.slot == slot.id)
-                    v_draw(characterImage(sprites, c.id, c.attributes), slot.x, slot.y, slot.width, slot.height, 1, 1);
-        // Time of day is a tint, not a different set of backgrounds.
-        auto slotValue = host.view.values.get("slot", 1);
-        if (slotValue >= 3)
-            v_rect(0, 0, 1280, 720, slotValue >= 4 ? 0x0a0a3a88 : 0x2a124a44);
+    private Label text(string value, FontRole role = FontRole.body, uint colour = 0, Overflow overflow = Overflow.grow) {
+        auto l = new Label(value, role, colour);
+        l.overflow = overflow;
+        l.wrap = overflow != Overflow.ellipsis;
+        return l;
     }
 
-    void drawBar(float x, float y, float w, float fraction, uint color) {
-        v_rect(x, y, w, 10, barBack);
-        if (fraction < 0)
-            fraction = 0;
-        if (fraction > 1)
-            fraction = 1;
-        v_rect(x, y, w * fraction, 10, color);
+    private Box panel(bool vertical = true, float pad = -1) {
+        auto b = new Box(vertical);
+        b.background = ui.theme.panel;
+        b.pad = pad < 0 ? ui.theme.pad : pad;
+        return b;
     }
 
-    void drawHud() {
+    private Button button(string label, void delegate() click, bool enabled = true) {
+        auto b = new Button(label, click);
+        b.role = FontRole.body;
+        b.enabled = enabled;
+        return b;
+    }
+
+    private string timeLabel() {
+        auto slot = cast(size_t) host.view.values.get("slot", 1);
+        return slot >= 1 && slot <= clock.length ? clock[slot - 1] : "";
+    }
+
+    private string placeLabel() {
+        auto place = host.display(host.view.beat.background);
+        return place.length ? place : title;
+    }
+
+    private Widget topBar(bool compact) {
+        auto bar = panel(false, 8);
         auto v = host.view;
-        v_rect(0, 0, 1280, 40, panelColor);
-        string place = host.display(v.beat.background);
-        label(fontBig, place.length ? place : title, 16, 4);
-        auto day = v.values.get("day", 1);
-        auto time = cast(size_t) v.values.get("slot", 1);
-        string timeLabel = time >= 1 && time <= clock.length ? clock[time - 1] : "";
-        labelCentre(fontBig, format("Day %d, %s", cast(long) day, timeLabel), 640, 4);
-        labelRight(fontBig, format("%d coins", cast(long) v.values.get("coins", 0)), 1264, 4, 0xffe08aff);
-        // Stat panel
-        float y = 52;
-        size_t shown;
-        foreach (ref stat; v.hud)
-            if (stat.id != "coins" && stat.id != "day")
-                ++shown;
-        v_rect(8, y - 6, 250, 12 + 36 * cast(float) shown, panelColor);
-        foreach (ref stat; v.hud) {
+        if (compact) {
+            auto menu = button("Menu", { drawerOpen = true; });
+            menu.fit = true;
+            bar.add(menu);
+        }
+        auto place = text(placeLabel(), FontRole.heading, ui.theme.text, Overflow.ellipsis);
+        bar.add(place, 1);
+        if (v.values.length) {
+            if (!compact)
+                bar.add(text(format("Day %d, %s", cast(long) v.values.get("day", 1), timeLabel()), FontRole.body, ui
+                        .theme.text,
+                        Overflow.ellipsis), 1);
+            auto coins = text(format("%d coins", cast(long) v.values.get("coins", 0)), FontRole.body, ui.theme.gold,
+                    Overflow.ellipsis);
+            coins.alignment = Align.right;
+            bar.add(coins, compact ? 0 : 1);
+        }
+        return bar;
+    }
+
+    private Box statPanel() {
+        auto p = panel(true, 10);
+        p.gap = 5;
+        foreach (ref stat; host.view.hud) {
             if (stat.id == "coins" || stat.id == "day")
                 continue;
-            label(fontSmall, stat.label, 18, y);
-            labelRight(fontSmall, format("%d", cast(long) stat.value), 246, y);
-            float span = stat.hasMaximum ? stat.maximum - stat.minimum : 100;
-            uint color = stat.id == "stamina" && stat.value <= 2 ? badColor : accentColor;
-            drawBar(18, y + 24, 224, span > 0 ? (stat.value - stat.minimum) / span : 0, color);
-            y += 36;
+            auto line = new Box(false);
+            line.add(text(stat.label, FontRole.small, ui.theme.text, Overflow.ellipsis), 1);
+            auto number = text(format("%d", cast(long) stat.value), FontRole.small);
+            number.alignment = Align.right;
+            line.add(number);
+            auto group = new Box(true);
+            group.gap = 2;
+            group.add(line);
+            group.add(new Bar(stat.value, stat.hasMinimum ? stat.minimum : 0, stat.hasMaximum ? stat.maximum
+                    : 100,
+                    stat.id == "stamina" && stat.value <= 2 ? ui.theme.bad : 0));
+            p.add(group);
         }
+        return p;
     }
 
-    void drawToasts() {
-        float y = 52;
-        auto now = v_ticks();
-        ToastView[] alive;
-        foreach (ref t; toasts) {
-            auto age = now - t.born;
-            if (age > 3600)
+    private Box goalsPanel() {
+        auto p = panel(true, 10);
+        p.add(text("Goals", FontRole.small, ui.theme.accent));
+        foreach (ref section; host.journal()) {
+            if (section.title != "Goals")
                 continue;
-            alive ~= t;
-            float fade = age > 2800 ? 1.0f - (age - 2800) / 800.0f : 1.0f;
-            auto texture = textureFor(fontSmall, t.text, 0, t.good ? goodColor : badColor);
-            if (texture is null)
-                continue;
-            float w, h;
-            v_text_size(texture, &w, &h);
-            v_rect(1270 - w - 20, y, w + 16, h + 8, cast(uint)(0x101a2e00 | cast(uint)(220 * fade)));
-            v_draw(texture, 1270 - w - 12, y + 4, 0, 0, 2, fade);
-            y += h + 12;
+            foreach (line; section.lines)
+                p.add(text(line, FontRole.small, ui.theme.text));
         }
-        toasts = alive;
+        return p;
     }
 
-    void drawHub() {
+    /// The text of the panel next to the choices: the place's own description, then what the
+    /// highlighted row says (its text, its reason when locked).
+    private string narrativeText(out string reason) {
         auto v = host.view;
-        v_rect(0, 400, 1280, 320, panelColor);
-        // Narrative panel: the ambient text, or the text of the row under the pointer.
-        string text;
-        string reason;
-        if (selected >= 0 && selected < cast(int) rows.length) {
-            auto r = rows[selected];
-            auto story = v.stories[r.story];
-            if (story.text.length && story.choices.length == 1 || !story.text.length)
-                text = story.text;
-            else
-                text = story.text;
-            if (!r.enabled)
-                reason = story.choices[r.choice].because;
-            else if (story.choices[r.choice].text.length)
-                text ~= (text.length ? "\n\n" : "") ~ story.choices[r.choice].text;
-        }
-        string ambient;
+        string ambient, detail;
         foreach (ref s; v.stories)
             if (s.text.length && s.id == "look") {
                 ambient = s.text;
                 break;
             }
-        float ty = 412;
-        ty += label(null, ambient, 24, ty, 560, textColor) + 8;
-        if (text.length && text != ambient)
-            ty += label(fontSmall, text, 24, ty + 4, 560, accentColor) + 8;
-        if (reason.length)
-            label(fontSmall, reason, 24, ty + 4, 560, badColor);
-        if (notice.length && v_ticks() - noticeAt < 4000)
-            label(fontSmall, notice, 24, 686, 560, badColor);
-        // Choice list
-        enum visible = 8;
-        enum rowHeight = 36;
-        if (selected < scroll)
-            scroll = selected;
-        if (selected >= scroll + visible)
-            scroll = selected - visible + 1;
-        float x = 610;
-        for (int i = scroll; i < cast(int) rows.length && i < scroll + visible; ++i) {
-            float ry = 408 + (i - scroll) * rowHeight;
-            bool hot = i == selected;
-            v_rect(x, ry, 650, rowHeight - 4, hot ? rowSelected : rowColor);
-            auto r = rows[i];
-            string tag = i < 9 ? format("%d  ", i + 1) : "    ";
-            label(fontSmall, tag ~ r.label, x + 10, ry + 5, 0, r.enabled ? textColor : lockedColor);
+        if (selected >= 0 && selected < cast(int) rows.length) {
+            auto r = rows[selected];
+            auto story = v.stories[r.story];
+            detail = story.text;
             if (!r.enabled)
-                labelRight(fontSmall, "locked", x + 640, ry + 5, lockedColor);
+                reason = story.choices[r.choice].because;
+            else if (story.choices[r.choice].text.length)
+                detail ~= (detail.length ? "\n\n" : "") ~ story.choices[r.choice].text;
         }
-        if (scroll > 0)
-            labelRight(fontSmall, "^", 1262, 400, dimColor);
-        if (scroll + visible < cast(int) rows.length)
-            labelRight(fontSmall, "v", 1262, 690, dimColor);
-        label(fontSmall, "Up/Down, 1-9, Enter: choose   C: sheet   J: journal   M: map   Esc: menu   F1: help", 24, 700, 0,
-                dimColor);
+        string result = ambient;
+        if (detail.length && detail != ambient)
+            result ~= (result.length ? "\n\n" : "") ~ detail;
+        return result;
     }
 
-    void drawScene() {
-        auto v = host.view.beat;
-        if (v.kind == "menu") {
-            v_rect(180, 60, 920, 40 + 72 * cast(float) v.choices.length, 0x101a2ecc);
-            foreach (i, ref c; v.choices) {
-                float y = 80 + i * 72;
-                v_rect(190, y, 900, 64, cast(int) i == selected ? rowSelected : rowColor);
-                label(null, c.text, 215, y + 14, 850, textColor);
-            }
-        } else {
-            v_rect(24, 490, 1232, 200, panelColor);
-            foreach (ref c; v.characters)
-                if (c.id == v.character) {
-                    auto portrait = characterImage(portraits, c.id, c.attributes);
-                    if (portrait !is null)
-                        v_draw(portrait, 34, 500, 140, 170, 1, 1);
-                }
-            label(fontBig, v.speaker, 190, 498, 0, accentColor);
-            string body = v.kind == "input" ? v.text ~ "\n> " ~ input ~ "_" : v.text;
-            label(null, body, 190, 540, 1030, textColor);
-            label(fontSmall, v.kind == "input" ? "Type, then Enter" : "Enter or click to continue    H: history", 24, 694, 0,
-                    dimColor);
+    private Box narrativePanel() {
+        auto p = panel(true, ui.theme.pad);
+        p.gap = 6;
+        string reason;
+        auto body = narrativeText(reason);
+        auto label = text(body, FontRole.body, ui.theme.text, Overflow.scroll);
+        label.id = "narrative";
+        p.add(label, 1);
+        if (reason.length)
+            p.add(text(reason, FontRole.small, ui.theme.bad));
+        else if (notice.length && ui.now - noticeAt < 4000)
+            p.add(text(notice, FontRole.small, ui.theme.bad));
+        return p;
+    }
+
+    private Widget choiceList() {
+        auto list = new Box(true);
+        list.gap = 4;
+        rowButtons = null;
+        foreach (i, ref r; rows) {
+            // A locked row still answers a click: the reason appears in the text panel.
+            auto b = new Button(r.label, { selected = cast(int) i; choose(i); });
+            b.role = FontRole.small;
+            b.prefix = i < 9 ? format("%d", i + 1) : "";
+            b.hint = r.enabled ? "" : "locked";
+            b.locked = !r.enabled;
+            b.selected = cast(int) i == selected;
+            b.id = format("row%d", i);
+            rowButtons ~= b;
+            list.add(b);
         }
+        auto scroll = new ScrollBox(list);
+        scroll.id = "choices";
+        if (revealSelected && rows.length) {
+            auto rowHeight = ui.measure("Ag", FontRole.small).h + 2 * ui.u(ui.theme.rowPad) + ui.u(4);
+            scroll.revealTop = selected * rowHeight;
+            scroll.revealHeight = rowHeight;
+            revealSelected = false;
+        }
+        return scroll;
     }
 
-    void drawPanel(string heading, float x = 140, float y = 60, float w = 1000, float h = 600) {
-        v_rect(0, 0, 1280, 720, 0x000000a0);
-        v_rect(x, y, w, h, 0x101a2efa);
-        v_outline(x, y, w, h, accentColor);
-        label(fontBig, heading, x + 24, y + 14, 0, accentColor);
-    }
-
-    void drawSheet() {
-        drawPanel("Character");
-        float y = 130;
-        foreach (ref stat; host.view.hud) {
-            if (stat.id == "day")
+    /// The notices of stat changes, stacked at the top right of the stage.
+    void drawToasts(Ui ui, Rect area) {
+        auto y = area.y + ui.u(8);
+        ToastView[] alive;
+        foreach (ref t; toasts) {
+            auto age = ui.now - t.born;
+            if (age > 3600)
                 continue;
-            label(null, stat.label, 180, y);
-            labelRight(null, format("%d", cast(long) stat.value), 480, y);
-            float span = stat.hasMaximum ? stat.maximum - stat.minimum : 100;
-            drawBar(500, y + 12, 300, span > 0 ? (stat.value - stat.minimum) / span : 0, accentColor);
-            y += 44;
+            alive ~= t;
+            auto fade = age > 2800 ? 1.0f - (age - 2800) / 800.0f : 1.0f;
+            auto size = ui.measure(t.text, FontRole.small);
+            auto pad = ui.u(6);
+            auto width = min(size.w + 2 * pad, area.w - 2 * pad);
+            auto box = Rect(area.x + area.w - width - pad, y, width, size.h + 2 * pad);
+            ui.fill(box, (ui.theme.panelStrong & 0xffffff00) | cast(uint)(220 * fade));
+            ui.pushClip(box);
+            ui.drawText(t.text, FontRole.small, box.x + pad, box.y + pad, 0,
+                    ((t.good ? ui.theme.good
+                    : ui.theme.bad) & 0xffffff00) | cast(uint)(255 * fade));
+            ui.popClip();
+            y += box.h + ui.u(6);
         }
-        label(fontSmall, "Esc: close", 180, 628, 0, dimColor);
+        toasts = alive;
     }
 
-    void drawJournal() {
-        drawPanel("Journal");
-        float y = 120;
-        foreach (ref section; host.journal()) {
-            y += label(fontBig, section.title, 180, y, 0, accentColor) + 4;
-            foreach (ref line; section.lines)
-                y += label(fontSmall, "  " ~ line, 190, y, 900, textColor) + 2;
-            y += 8;
-        }
-        label(fontSmall, "Esc: close", 180, 628, 0, dimColor);
+    private Widget stageArea() {
+        auto s = new StageWidget(this);
+        s.flex = 1;
+        return s;
     }
 
-    void drawMap() {
-        drawPanel("Hollowbrook");
-        auto state = host.mapState();
-        float ox = 140, oy = 60;
-        foreach (from, list; roads)
-            foreach (to; list)
-                foreach (ref a; nodes)
-                    if (a.id == from)
-                        foreach (ref b; nodes)
-                            if (b.id == to) {
-                                float dx = b.x - a.x, dy = b.y - a.y;
-                                int steps = 24;
-                                foreach (s; 0 .. steps)
-                                    v_rect(ox + a.x + dx * s / steps, oy + a.y + dy * s / steps, 3, 3, dimColor);
-                            }
-        foreach (ref n; nodes) {
-            bool here = n.id == state.at;
-            bool open = (n.id in state.reachable) !is null;
-            v_rect(ox + n.x - 10, oy + n.y - 10, 20, 20, here ? 0xffe08aff : open ? accentColor : lockedColor);
-            labelCentre(fontSmall, host.display(n.id), ox + n.x, oy + n.y + 14, open ? textColor : lockedColor);
+    private Widget hubBody(SizeClass cls) {
+        auto hint = text("Up/Down, 1-9, Enter: choose   C: sheet   J: journal   M: map   Esc: menu", FontRole.small,
+                ui.theme.dim, Overflow.ellipsis);
+        final switch (cls) {
+        case SizeClass.wide: {
+                auto side = new Box(true);
+                side.gap = 10;
+                side.widthUnits = 300;
+                side.add(statPanel());
+                side.add(goalsPanel());
+                auto centre = new Box(true);
+                centre.gap = 0;
+                centre.add(topBar(false));
+                centre.add(stageArea(), 1);
+                auto narrative = narrativePanel();
+                narrative.heightUnits = 190;
+                centre.add(narrative);
+                auto right = panel(true, ui.theme.pad);
+                right.widthUnits = 470;
+                right.gap = 8;
+                right.add(text("What now?", FontRole.heading, ui.theme.accent));
+                right.add(choiceList(), 1);
+                right.add(hint);
+                auto row = new Box(false);
+                row.gap = 0;
+                row.add(side);
+                row.add(centre, 1);
+                row.add(right);
+                return row;
+            }
+        case SizeClass.regular: {
+                auto top = new Box(false);
+                top.gap = 0;
+                auto side = new Box(true);
+                side.widthUnits = 250;
+                side.add(statPanel());
+                top.add(side);
+                top.add(stageArea(), 1);
+                auto bottom = new Box(false);
+                bottom.gap = 0;
+                bottom.heightPx = max(ui.u(250), ui.height * 0.4f);
+                bottom.add(narrativePanel(), 1);
+                auto choices = panel(true, ui.theme.pad);
+                choices.add(choiceList(), 1);
+                choices.add(hint);
+                choices.gap = 6;
+                bottom.add(choices, 1.25f);
+                auto column = new Box(true);
+                column.gap = 0;
+                column.add(topBar(false));
+                column.add(top, 1);
+                column.add(bottom);
+                return column;
+            }
+        case SizeClass.compact: {
+                auto column = new Box(true);
+                column.gap = 0;
+                column.add(topBar(true));
+                column.add(stageArea(), 0.7f);
+                auto bottom = panel(true, 8);
+                bottom.gap = 6;
+                // The text takes the room it needs (and shrinks first); the list takes the rest.
+                bottom.add(narrativePanel());
+                bottom.add(choiceList(), 1);
+                column.add(bottom, 1.7f);
+                return column;
+            }
         }
-        label(fontSmall, "Click a place you can reach to go there. Esc: close", 180, 628, 0, dimColor);
     }
 
-    void drawHelp() {
-        drawPanel("How to play");
-        float y = 120;
-        foreach (line; [
-            "Spend ten days getting ready for the Midsummer Trials.", "",
-            "Each activity uses a part of the day (morning, afternoon, evening).",
-            "Stats rise by training. Many choices need a stat to be high enough:",
-            "locked choices say what they want.", "",
-            "Up/Down and Enter, a number key, or the mouse: choose.",
-            "C character sheet   J journal   M map   H history   F5 save   F9 load",
-            "Esc: menu (settings, language, quit)."
+    private Widget dialogue(SizeClass cls) {
+        auto v = host.view.beat;
+        auto page = new Box(true);
+        page.gap = 0;
+        if (host.view.values.length)
+            page.add(topBar(cls == SizeClass.compact));
+        page.add(stageArea(), 1);
+        if (v.kind == "menu") {
+            auto menu = panel(true, ui.theme.pad);
+            menu.gap = 6;
+            foreach (i, ref c; v.choices) {
+                auto b = new Button(c.text, {
+                    selected = cast(int) i;
+                    advance(host.view.beat.choices[i].id);
+                });
+                b.role = FontRole.body;
+                b.wrap = true;
+                b.prefix = format("%d", i + 1);
+                b.selected = cast(int) i == selected;
+                b.id = format("menu%d", i);
+                menu.add(b);
+            }
+            page.add(menu);
+            return page;
+        }
+        auto box = panel(false, ui.theme.pad);
+        box.gap = 12;
+        box.heightPx = min(ui.height * 0.4f, max(ui.u(190), ui.height * 0.28f));
+        void* portrait;
+        foreach (ref c; v.characters)
+            if (c.id == v.character)
+                portrait = characterImage(portraits, c.id, c.attributes);
+        if (portrait !is null && cls != SizeClass.compact) {
+            auto p = new ImageBox(portrait, 1);
+            p.width = 140;
+            p.height = 170;
+            auto column = new Box(true);
+            column.widthUnits = 140;
+            column.add(p);
+            box.add(column);
+        }
+        auto words = new Box(true);
+        words.gap = 4;
+        if (v.speaker.length)
+            words.add(text(v.speaker, FontRole.heading, ui.theme.accent, Overflow.ellipsis));
+        string body = v.kind == "input" ? v.text ~ "\n> " ~ input ~ "_" : v.text;
+        auto message = text(body, FontRole.body, ui.theme.text, Overflow.scroll);
+        message.id = "dialogue";
+        words.add(message, 1);
+        words.add(text(v.kind == "input" ? "Type, then Enter" : "Enter or click to continue    H: history", FontRole
+                .small,
+                ui.theme.dim, Overflow.ellipsis));
+        box.add(words, 1);
+        page.add(box);
+        return page;
+    }
+
+    private Widget playScreen() {
+        auto cls = ui.sizeClass;
+        auto layers = new Stack;
+        auto back = new Backdrop;
+        back.texture = backgroundImage();
+        back.colour = ui.theme.backdrop;
+        auto slot = host.view.values.get("slot", 1);
+        back.overlay = slot >= 4 ? 0x0a0a3a88 : slot >= 3 ? 0x2a124a44 : 0;
+        layers.add(back);
+        layers.add(host.view.inScene ? dialogue(cls) : hubBody(cls));
+        if (drawerOpen && cls == SizeClass.compact) {
+            auto d = new Box(true);
+            d.gap = 8;
+            d.add(text(title, FontRole.heading, ui.theme.accent));
+            d.add(statPanel());
+            foreach (entry; [
+                    ["Character", "sheet"], ["Journal", "journal"], ["Map", "map"],
+                    ["History", "history"], ["Help", "help"],
+                    ["Menu", "pause"]
+                ]) {
+                auto target = entry[1];
+                d.add(button(entry[0], { drawerOpen = false; openOverlay(target); }));
+            }
+            auto drawer = new Drawer(d);
+            drawer.onClose = { drawerOpen = false; };
+            layers.add(drawer);
+        }
+        return layers;
+    }
+
+    private void openOverlay(string name) {
+        foreach (o; [
+            Overlay.pause, Overlay.sheet, Overlay.journal, Overlay.map, Overlay.help,
+            Overlay.history
         ])
-            y += label(null, line, 180, y, 900) + 6;
+            if (to!string(o) == name)
+                overlay = o;
     }
 
-    void drawHistory() {
-        drawPanel("Recent lines");
-        string log;
-        auto start = history.length > 8 ? history.length - 8 : 0;
-        foreach (line; history[start .. $])
-            log ~= line ~ "\n\n";
-        label(fontSmall, log, 180, 110, 900);
-    }
-
-    void drawPause() {
-        drawPanel("Paused", 440, 120, 400, 440);
-        string[] items = [
-            "Resume", "Save (F5)", "Load (F9)", "Language: " ~ currentLanguage(),
-            "Volume: " ~ to!string(volume),
-            fullscreen ? "Fullscreen: on" : "Fullscreen: off", "Quit to title"
-        ];
-        foreach (i, item; items) {
-            float y = 180 + i * 48;
-            v_rect(460, y, 360, 40, cast(int) i == menuIndex ? rowSelected : rowColor);
-            labelCentre(null, item, 640, y + 6);
+    private Widget overlayWidget() {
+        void close() {
+            overlay = Overlay.none;
         }
-        if (notice.length && v_ticks() - noticeAt < 3000)
-            labelCentre(fontSmall, notice, 640, 530, goodColor);
+
+        Modal modal;
+        final switch (overlay) {
+        case Overlay.none:
+            return null;
+        case Overlay.pause: {
+                auto body = new Box(true);
+                body.gap = 6;
+                body.add(button("Resume", &close));
+                body.add(button("Save (F5)", { quickSave(); }));
+                body.add(button("Load (F9)", { quickLoad(); }));
+                body.add(button("Language: " ~ currentLanguage(), { cycleLanguage(1); }, languages.length > 1));
+                body.add(button(format("Volume: %d", volume), { adjustVolume(1); }));
+                body.add(button(format("Text size: %d%%", cast(int)(textScales[textScaleIndex] * 100 + 0.5f)), {
+                        textScaleIndex = (textScaleIndex + 1) % cast(int) textScales.length;
+                        applySettings();
+                        saveSettings();
+                    }));
+                body.add(button("Layout: " ~ layoutNames[layoutIndex], {
+                        layoutIndex = (layoutIndex + 1) % cast(int) layoutNames.length;
+                        applySettings();
+                        saveSettings();
+                    }));
+                body.add(button(fullscreen ? "Fullscreen: on" : "Fullscreen: off", {
+                        toggleFullscreen();
+                    }));
+                body.add(button("Quit to title", {
+                        autosave();
+                        mode = Mode.title;
+                        menuIndex = 0;
+                        close();
+                    }));
+                if (notice.length && ui.now - noticeAt < 3000)
+                    body.add(text(notice, FontRole.small, ui.theme.good));
+                modal = new Modal("Paused", new ScrollBox(body), 460, 640);
+                break;
+            }
+        case Overlay.sheet: {
+                auto body = new Box(true);
+                body.gap = 10;
+                foreach (ref stat; host.view.hud) {
+                    if (stat.id == "day")
+                        continue;
+                    auto line = new Box(false);
+                    line.add(text(stat.label, FontRole.body, ui.theme.text, Overflow.ellipsis), 1);
+                    auto number = text(format("%d", cast(long) stat.value), FontRole.body);
+                    number.alignment = Align.right;
+                    line.add(number);
+                    auto group = new Box(true);
+                    group.gap = 3;
+                    group.add(line);
+                    group.add(new Bar(stat.value, stat.hasMinimum ? stat.minimum : 0, stat.hasMaximum ? stat.maximum
+                            : 100));
+                    body.add(group);
+                }
+                modal = new Modal("Character", new ScrollBox(body), 640, 620);
+                break;
+            }
+        case Overlay.journal: {
+                auto body = new Box(true);
+                body.gap = 4;
+                foreach (ref section; host.journal()) {
+                    body.add(text(section.title, FontRole.heading, ui.theme.accent));
+                    foreach (line; section.lines)
+                        body.add(text("  " ~ line, FontRole.body));
+                    body.add(new Spacer(0, 8));
+                }
+                modal = new Modal("Journal", new ScrollBox(body), 820, 640);
+                break;
+            }
+        case Overlay.map: {
+                auto view = new MapView(this, host.mapState());
+                view.flex = 1;
+                view.onPick = (string id) {
+                    foreach (i, ref r; rows)
+                        if (host.view.stories[r.story].id == "walk" && host.view.stories[r.story].bindings.get("to", "") == id) {
+                            close();
+                            choose(i);
+                            return;
+                        }
+                    notice = "You can't go there from here right now.";
+                    noticeAt = ui.now;
+                };
+                auto body = new Box(true);
+                body.add(view, 1);
+                body.add(text("Click a place you can reach to go there.", FontRole.small, ui.theme.dim));
+                modal = new Modal("The town", body, 1000, 640);
+                break;
+            }
+        case Overlay.help: {
+                auto body = new Box(true);
+                body.gap = 6;
+                foreach (line; [
+                    "Spend your days getting ready for the Trials.",
+                    "Each activity uses a part of the day. Stats rise by training, and many choices need a stat to be high enough: locked choices say what they want.",
+                    "Up/Down and Enter, a number key, or the mouse choose.",
+                    "C character, J journal, M map, H history, F5 save, F9 load, F11 fullscreen, Tab or Esc for the menu.",
+                    "The text size and the layout can be changed in the menu; a narrow window moves the status into a drawer."
+                ])
+                    body.add(text(line, FontRole.body));
+                modal = new Modal("How to play", new ScrollBox(body), 760, 520);
+                break;
+            }
+        case Overlay.history: {
+                auto body = new Box(true);
+                body.gap = 8;
+                auto start = history.length > 20 ? history.length - 20 : 0;
+                foreach (line; history[start .. $])
+                    body.add(text(line, FontRole.body));
+                modal = new Modal("Recent lines", new ScrollBox(body), 820, 640);
+                break;
+            }
+        }
+        modal.onClose = &close;
+        return modal;
     }
 
-    string currentLanguage() {
+    private string currentLanguage() {
         foreach (ref l; languages)
             if (l.tag == host.language)
                 return l.name;
         return "English";
     }
 
-    void drawTitle() {
-        v_rect(0, 0, 1280, 720, 0x0e1424ff);
+    private Widget titleScreen() {
+        auto layers = new Stack;
+        auto back = new Backdrop;
         foreach (ref image; backgrounds)
             if (image.id == "title")
-                v_draw(image.texture, 0, 0, 1280, 720, 0, 1);
-        v_rect(0, 0, 1280, 720, 0x00000070);
-        labelCentre(fontHuge, title, 640, 150);
-        labelCentre(fontBig, "A summer of small decisions", 640, 240, accentColor);
-        string[] items = [
-            "New game", exists(autosavePath) ? "Continue" : "Continue (no save yet)",
-            "Language: " ~ currentLanguage(),
-            "Quit"
-        ];
-        foreach (i, item; items) {
-            float y = 340 + i * 56;
-            v_rect(490, y, 300, 46, cast(int) i == menuIndex ? rowSelected : rowColor);
-            labelCentre(null, item, 640, y + 8);
+                back.texture = image.texture;
+        back.colour = ui.theme.backdrop;
+        back.overlay = 0x00000070;
+        layers.add(back);
+        auto column = new Box(true);
+        column.add(new Spacer(0, 0, 1));
+        auto heading = text(title, FontRole.title, ui.theme.text, Overflow.grow);
+        heading.alignment = Align.centre;
+        column.add(heading);
+        if (subtitle.length) {
+            auto sub = text(subtitle, FontRole.heading, ui.theme.accent);
+            sub.alignment = Align.centre;
+            column.add(sub);
         }
-        if (notice.length && v_ticks() - noticeAt < 4000)
-            labelCentre(fontSmall, notice, 640, 580, badColor);
+        column.add(new Spacer(0, 24));
+        auto menu = new Box(true);
+        menu.gap = 8;
+        menu.widthUnits = 360;
+        auto items = [
+            button("New game", { menuIndex = 0; activateTitle(); }),
+            button(exists(autosavePath) ? "Continue" : "Continue (no save yet)", {
+                menuIndex = 1;
+                activateTitle();
+            }),
+            button("Language: " ~ currentLanguage(), { menuIndex = 2; activateTitle(); }, languages.length > 1),
+            button(format("Text size: %d%%", cast(int)(textScales[textScaleIndex] * 100 + 0.5f)), {
+                menuIndex = 3;
+                activateTitle();
+            }),
+            button("Quit", { menuIndex = 4; activateTitle(); })
+        ];
+        foreach (i, b; items) {
+            b.alignment = Align.centre;
+            b.selected = cast(int) i == menuIndex;
+            menu.add(b);
+        }
+        auto row = new Box(false);
+        row.add(new Spacer(0, 0, 1));
+        row.add(menu);
+        row.add(new Spacer(0, 0, 1));
+        column.add(row);
+        if (notice.length && ui.now - noticeAt < 4000) {
+            auto n = text(notice, FontRole.small, ui.theme.bad);
+            n.alignment = Align.centre;
+            column.add(n);
+        }
+        column.add(new Spacer(0, 0, 1.4f));
+        layers.add(column);
+        return layers;
     }
 
-    void drawOver() {
-        drawStage();
-        v_rect(0, 0, 1280, 720, 0x000000b0);
-        labelCentre(fontHuge, "The summer is over", 640, 90);
-        float y = 200;
-        auto v = host.view;
-        label(null, "How it went", 380, y, 0, accentColor);
-        y += 40;
-        foreach (ref stat; v.hud) {
+    private Widget overScreen() {
+        auto layers = new Stack;
+        auto back = new Backdrop;
+        back.texture = backgroundImage();
+        back.colour = ui.theme.backdrop;
+        back.overlay = 0x000000a0;
+        layers.add(back);
+        auto body = new Box(true);
+        body.gap = 6;
+        body.add(text("How it went", FontRole.heading, ui.theme.accent));
+        foreach (ref stat; host.view.hud) {
             if (stat.id == "day")
                 continue;
-            label(fontSmall, stat.label, 380, y);
-            labelRight(fontSmall, format("%d", cast(long) stat.value), 900, y);
-            y += 28;
+            auto line = new Box(false);
+            line.add(text(stat.label, FontRole.body, ui.theme.text, Overflow.ellipsis), 1);
+            auto n = text(format("%d", cast(long) stat.value), FontRole.body);
+            n.alignment = Align.right;
+            line.add(n);
+            body.add(line);
         }
-        y += 14;
-        label(null, "Achievements", 380, y, 0, accentColor);
-        y += 36;
-        foreach (a; host.achievements()) {
-            label(fontSmall, "  " ~ a, 380, y);
-            y += 28;
+        auto achievements = host.achievements();
+        if (achievements.length) {
+            body.add(new Spacer(0, 10));
+            body.add(text("Achievements", FontRole.heading, ui.theme.accent));
+            foreach (a; achievements)
+                body.add(text("  " ~ a, FontRole.body));
         }
-        labelCentre(fontSmall, "Enter: play again    Esc: title", 640, 680, dimColor);
+        body.add(new Spacer(0, 10));
+        body.add(text(sceneOnly ? "Esc: close" : "Enter: play again    Esc: title", FontRole.small, ui.theme.dim));
+        layers.add(new Modal(sceneOnly ? "The end" : "The summer is over", new ScrollBox(body), 640, 620));
+        return layers;
     }
 
-    void draw() {
-        v_begin();
+    private Widget build() {
+        Widget base;
         final switch (mode) {
         case Mode.title:
-            drawTitle();
+            base = titleScreen();
             break;
         case Mode.over:
-            drawOver();
+            base = overScreen();
             break;
         case Mode.play:
-            drawStage();
-            auto v = host.view;
-            if (v.inScene)
-                drawScene();
-            else {
-                drawHud();
-                drawHub();
-            }
-            if (v.inScene && v.beat.kind != "menu")
-                drawHud();
-            drawToasts();
-            final switch (overlay) {
-            case Overlay.none:
-                break;
-            case Overlay.pause:
-                drawPause();
-                break;
-            case Overlay.sheet:
-                drawSheet();
-                break;
-            case Overlay.journal:
-                drawJournal();
-                break;
-            case Overlay.map:
-                drawMap();
-                break;
-            case Overlay.help:
-                drawHelp();
-                break;
-            case Overlay.history:
-                drawHistory();
-                break;
-            case Overlay.language:
-                break;
-            }
+            base = playScreen();
             break;
         }
+        auto overlayW = mode == Mode.play ? overlayWidget() : null;
+        if (overlayW is null)
+            return base;
+        auto layers = new Stack;
+        layers.add(new Dimmed(base));
+        layers.add(overlayW);
+        return layers;
+    }
+
+    /// One frame: build the tree for the current state, lay it out in the window, draw it.
+    void frame() {
+        v_output_size(&ui.width, &ui.height);
+        ui.pixelScale = v_pixel_scale();
+        ui.now = v_ticks();
+        {
+            auto points = Size(ui.width / ui.pixelScale, ui.height / ui.pixelScale);
+            ui.autoFit = max(0.75f, min(1.25f, min(points.w / 1280.0f, points.h / 720.0f)));
+        }
+        auto rootWidget = build();
+        layout(ui, rootWidget);
+        v_begin(ui.theme.backdrop);
+        rootWidget.draw(ui);
+        lastRoot = rootWidget;
     }
 
     // ---- input ---------------------------------------------------------------------
 
     enum KeyUp = 0x40000052, KeyDown = 0x40000051, KeyF1 = 0x4000003a, KeyF5 = 0x4000003e, KeyF9 = 0x40000042,
-        KeyF11 = 0x40000044, KeyLeft = 0x40000050, KeyRight = 0x4000004f;
+        KeyF11 = 0x40000044, KeyLeft = 0x40000050, KeyRight = 0x4000004f, KeyTab = 9;
 
     void cycleLanguage(int direction) {
         size_t index;
@@ -852,15 +1281,32 @@ class GamePlayer {
                 index = i;
         index = (index + languages.length + direction) % languages.length;
         host.setLanguage(languages[index].tag);
-        afterBoundary();
+        if (mode == Mode.play)
+            afterBoundary();
+        saveSettings();
+    }
+
+    void adjustVolume(int delta) {
+        volume += delta;
+        if (volume > 10)
+            volume = 0;
+        if (volume < 0)
+            volume = 10;
+        v_volume(volume / 10.0f);
+        saveSettings();
+    }
+
+    void toggleFullscreen() {
+        fullscreen = !fullscreen;
+        v_fullscreen(fullscreen ? 1 : 0);
         saveSettings();
     }
 
     bool quickSave() {
         string bytes;
-        if (!host.save(bytes)) {
+        if (!host.save(bytes))
             notice = host.error;
-        } else {
+        else {
             write(savePath, bytes);
             notice = "Saved";
         }
@@ -887,67 +1333,6 @@ class GamePlayer {
         return true;
     }
 
-    /// Returns false to quit.
-    bool event(int type, int key, float x, float y, string typed) {
-        if (type == 1)
-            return false;
-        if (type == 7) {
-            mouseX = x;
-            mouseY = y;
-            hover(x, y);
-            return true;
-        }
-        final switch (mode) {
-        case Mode.title:
-            return titleEvent(type, key, x, y);
-        case Mode.over:
-            if (type == 2)
-                return newGame() || true;
-            if (type == 6 && key == 27) {
-                mode = Mode.title;
-                menuIndex = 0;
-            }
-            return true;
-        case Mode.play:
-            return playEvent(type, key, x, y, typed);
-        }
-    }
-
-    void hover(float x, float y) {
-        if (mode == Mode.play && overlay == Overlay.none && !host.view.inScene) {
-            if (x >= 610 && y >= 408) {
-                int row = scroll + cast(int)((y - 408) / 36);
-                if (row >= 0 && row < cast(int) rows.length && row < scroll + 8)
-                    selected = row;
-            }
-        } else if (mode == Mode.play && overlay == Overlay.none && host.view.inScene && host.view.beat.kind == "menu") {
-            if (x >= 190 && x <= 1090 && y >= 80) {
-                int row = cast(int)((y - 80) / 72);
-                if (row >= 0 && row < cast(int) host.view.beat.choices.length)
-                    selected = row;
-            }
-        }
-    }
-
-    bool titleEvent(int type, int key, float x, float y) {
-        enum count = 4;
-        if (type == 6 && key == KeyDown)
-            menuIndex = (menuIndex + 1) % count;
-        else if (type == 6 && key == KeyUp)
-            menuIndex = (menuIndex + count - 1) % count;
-        else if (type == 5 && x >= 490 && x <= 790 && y >= 340) {
-            int row = cast(int)((y - 340) / 56);
-            if (row >= 0 && row < count && y < 340 + row * 56 + 46) {
-                menuIndex = row;
-                return activateTitle();
-            }
-        } else if (type == 2)
-            return activateTitle();
-        else if (type == 6 && key == 27)
-            return false;
-        return true;
-    }
-
     bool activateTitle() {
         switch (menuIndex) {
         case 0:
@@ -961,46 +1346,105 @@ class GamePlayer {
         case 2:
             cycleLanguage(1);
             break;
+        case 3:
+            textScaleIndex = (textScaleIndex + 1) % cast(int) textScales.length;
+            applySettings();
+            saveSettings();
+            break;
         default:
             return false;
         }
         return true;
     }
 
-    bool playEvent(int type, int key, float x, float y, string typed) {
+    /// Returns false to quit.
+    bool event(int type, int key, float x, float y, string typed) {
+        if (type == 1)
+            return false;
+        if (type == 7) {
+            ui.mouseX = x;
+            ui.mouseY = y;
+            if (mode == Mode.play && overlay == Overlay.none)
+                foreach (i, b; rowButtons)
+                    if (b.rect.contains(x, y))
+                        selected = cast(int) i;
+            return true;
+        }
+        if (type == 5 || type == 8) {
+            ui.mouseX = x;
+            ui.mouseY = y;
+            // Pointer events go to the widget tree first (a click on a button, the wheel on a list).
+            if (lastRoot !is null) {
+                auto e = UiEvent(type, key, x, y, typed);
+                if (lastRoot.event(ui, e))
+                    return !failed;
+            }
+        }
+        final switch (mode) {
+        case Mode.title:
+            return titleEvent(type, key);
+        case Mode.over:
+            if (type == 2)
+                return newGame() || true;
+            if (type == 6 && key == 27) {
+                if (sceneOnly)
+                    return false;
+                mode = Mode.title;
+                menuIndex = 0;
+            }
+            return true;
+        case Mode.play:
+            return playEvent(type, key, typed);
+        }
+    }
+
+    bool titleEvent(int type, int key) {
+        enum count = 5;
+        if (type == 6 && key == KeyDown)
+            menuIndex = (menuIndex + 1) % count;
+        else if (type == 6 && key == KeyUp)
+            menuIndex = (menuIndex + count - 1) % count;
+        else if (type == 2)
+            return activateTitle();
+        else if (type == 6 && key == 27)
+            return false;
+        return true;
+    }
+
+    bool playEvent(int type, int key, string typed) {
         auto v = host.view;
-        // Overlays first.
         if (overlay != Overlay.none) {
             if (type == 6 && key == 27) {
                 overlay = Overlay.none;
                 return true;
             }
-            if (overlay == Overlay.map && type == 5) {
-                foreach (ref n; nodes)
-                    if (x >= 140 + n.x - 14 && x <= 140 + n.x + 14 && y >= 60 + n.y - 14 && y <= 60 + n.y + 14) {
-                        foreach (i, ref r; rows)
-                            if (host.view.stories[r.story].id == "walk" &&
-                                    host.view.stories[r.story].bindings.get("to", "") == n.id) {
-                                overlay = Overlay.none;
-                                return choose(i);
-                            }
-                        notice = "You can't go there from here right now.";
-                        noticeAt = v_ticks();
-                    }
-            }
-            if (overlay == Overlay.pause)
-                return pauseEvent(type, key, x, y);
             if (type == 6 && ((overlay == Overlay.sheet && key == 'c') || (overlay == Overlay.journal && key == 'j') ||
                     (overlay == Overlay.map && key == 'm') || (overlay == Overlay.history && key == 'h') ||
                     (overlay == Overlay.help && key == KeyF1)))
                 overlay = Overlay.none;
+            if (overlay == Overlay.pause && type == 6 && key == KeyLeft)
+                adjustVolume(-1);
             return true;
         }
+        if (drawerOpen && type == 6 && (key == 27 || key == KeyTab)) {
+            drawerOpen = false;
+            return true;
+        }
+        bool typing = v.inScene && v.beat.kind == "input";
         if (type == 6) {
             switch (key) {
             case 27:
+                if (sceneOnly)
+                    return false;
                 overlay = Overlay.pause;
-                menuIndex = 0;
+                return true;
+            case KeyTab:
+                if (!typing && ui.sizeClass == SizeClass.compact) {
+                    drawerOpen = !drawerOpen;
+                    return true;
+                }
+                if (!sceneOnly)
+                    overlay = Overlay.pause;
                 return true;
             case KeyF1:
                 overlay = Overlay.help;
@@ -1010,30 +1454,28 @@ class GamePlayer {
             case KeyF9:
                 return quickLoad();
             case KeyF11:
-                fullscreen = !fullscreen;
-                v_fullscreen(fullscreen ? 1 : 0);
-                saveSettings();
+                toggleFullscreen();
                 return true;
             case 'c':
-                if (!(v.inScene && v.beat.kind == "input")) {
+                if (!typing && !sceneOnly) {
                     overlay = Overlay.sheet;
                     return true;
                 }
                 break;
             case 'j':
-                if (!(v.inScene && v.beat.kind == "input")) {
+                if (!typing && !sceneOnly) {
                     overlay = Overlay.journal;
                     return true;
                 }
                 break;
             case 'm':
-                if (!v.inScene) {
+                if (!typing && !v.inScene && !sceneOnly) {
                     overlay = Overlay.map;
                     return true;
                 }
                 break;
             case 'h':
-                if (!(v.inScene && v.beat.kind == "input")) {
+                if (!typing) {
                     overlay = Overlay.history;
                     return true;
                 }
@@ -1042,146 +1484,70 @@ class GamePlayer {
                 break;
             }
         }
-        if (v.inScene) {
-            auto kind = v.beat.kind;
-            if (kind == "input") {
-                if (type == 4) {
-                    if (input.length + typed.length <= 64)
-                        input ~= typed;
-                    return true;
-                }
-                if (type == 3 && input.length) {
-                    auto last = input.length - 1;
-                    while (last && (input[last] & 0xc0) == 0x80)
-                        --last;
-                    input = input[0 .. last];
-                    return true;
-                }
-                // Space arrives as a key (advance) and as text; only the text types the space.
-                if (type == 2 && key == ' ')
-                    return true;
-                if (type == 2 && input.length)
-                    return advance(LuaValue(input)) || true;
-                return true;
-            }
-            if (kind == "menu") {
-                auto count = cast(int) v.beat.choices.length;
-                if (type == 6 && key == KeyDown)
-                    selected = (selected + 1) % count;
-                else if (type == 6 && key == KeyUp)
-                    selected = (selected + count - 1) % count;
-                else if (type == 6 && key >= '1' && key <= '9' && key - '1' < count)
-                    return advance(v.beat.choices[key - '1'].id) || true;
-                else if (type == 2)
-                    return advance(v.beat.choices[selected].id) || true;
-                else if (type == 5 && x >= 190 && x <= 1090 && y >= 80) {
-                    int row = cast(int)((y - 80) / 72);
-                    if (row >= 0 && row < count)
-                        return advance(v.beat.choices[row].id) || true;
-                }
-                return true;
-            }
-            if (type == 2 || type == 5)
-                return advance() || true;
-            return true;
-        }
-        // The hub.
+        if (v.inScene)
+            return sceneEvent(type, key, typed);
         auto count = cast(int) rows.length;
-        if (type == 8) {
-            scroll -= key;
-            if (scroll < 0)
-                scroll = 0;
-            if (scroll > count - 8)
-                scroll = count > 8 ? count - 8 : 0;
-            return true;
-        }
-        if (type == 6 && key == KeyDown && count)
+        if (type == 6 && key == KeyDown && count) {
             selected = (selected + 1) % count;
-        else if (type == 6 && key == KeyUp && count)
+            revealSelected = true;
+        } else if (type == 6 && key == KeyUp && count) {
             selected = (selected + count - 1) % count;
-        else if (type == 6 && key >= '1' && key <= '9') {
+            revealSelected = true;
+        } else if (type == 6 && key >= '1' && key <= '9') {
             int row = cast(int)(key - '1');
             if (row < count)
                 return choose(row) || true;
         } else if (type == 2 && count)
             return choose(selected) || true;
-        else if (type == 5 && x >= 610 && y >= 408) {
-            int row = scroll + cast(int)((y - 408) / 36);
-            if (row >= 0 && row < count && row < scroll + 8)
-                return choose(row) || true;
-        }
         return true;
     }
 
-    bool pauseEvent(int type, int key, float x, float y) {
-        enum count = 7;
-        int activate = -1;
-        if (type == 6 && key == KeyDown)
-            menuIndex = (menuIndex + 1) % count;
-        else if (type == 6 && key == KeyUp)
-            menuIndex = (menuIndex + count - 1) % count;
-        else if (type == 6 && key == KeyLeft && menuIndex == 4)
-            adjustVolume(-1);
-        else if (type == 6 && key == KeyRight && menuIndex == 4)
-            adjustVolume(1);
-        else if (type == 2)
-            activate = menuIndex;
-        else if (type == 5 && x >= 460 && x <= 820 && y >= 180) {
-            int row = cast(int)((y - 180) / 48);
-            if (row >= 0 && row < count) {
-                menuIndex = row;
-                activate = row;
+    bool sceneEvent(int type, int key, string typed) {
+        auto v = host.view;
+        auto kind = v.beat.kind;
+        if (kind == "input") {
+            if (type == 4) {
+                if (input.length + typed.length <= 64)
+                    input ~= typed;
+                return true;
             }
+            if (type == 3 && input.length) {
+                auto last = input.length - 1;
+                while (last && (input[last] & 0xc0) == 0x80)
+                    --last;
+                input = input[0 .. last];
+                return true;
+            }
+            // Space arrives as a key (advance) and as text; only the text types the space.
+            if (type == 2 && key == ' ')
+                return true;
+            if (type == 2 && input.length)
+                return advance(LuaValue(input)) || true;
+            return true;
         }
-        switch (activate) {
-        case 0:
-            overlay = Overlay.none;
-            break;
-        case 1:
-            quickSave();
-            break;
-        case 2:
-            quickLoad();
-            break;
-        case 3:
-            cycleLanguage(1);
-            break;
-        case 4:
-            adjustVolume(1);
-            break;
-        case 5:
-            fullscreen = !fullscreen;
-            v_fullscreen(fullscreen ? 1 : 0);
-            saveSettings();
-            break;
-        case 6:
-            autosave();
-            mode = Mode.title;
-            menuIndex = 0;
-            overlay = Overlay.none;
-            break;
-        default:
-            break;
+        if (kind == "menu") {
+            auto count = cast(int) v.beat.choices.length;
+            if (type == 6 && key == KeyDown)
+                selected = (selected + 1) % count;
+            else if (type == 6 && key == KeyUp)
+                selected = (selected + count - 1) % count;
+            else if (type == 6 && key >= '1' && key <= '9' && key - '1' < count)
+                return advance(v.beat.choices[key - '1'].id) || true;
+            else if (type == 2)
+                return advance(v.beat.choices[selected].id) || true;
+            return true;
         }
+        if (type == 5 || type == 2)
+            return advance() || true;
         return true;
-    }
-
-    void adjustVolume(int delta) {
-        volume += delta;
-        if (volume > 10)
-            volume = 0;
-        if (volume < 0)
-            volume = 10;
-        v_volume(volume / 10.0f);
-        saveSettings();
     }
 
     void close() {
-        foreach (texture; cache)
-            v_free(texture);
-        v_font_free(fontSmall);
-        v_font_free(fontBig);
-        v_font_free(fontHuge);
+        if (ui !is null) {
+            ui.release();
+            v_font_free(ui.fontBody);
+            v_font_free(ui.fontHeading);
+        }
         foreach (ref c; channels)
             v_channel_free(c.track);
         foreach (ref a; sounds)
@@ -1193,19 +1559,34 @@ class GamePlayer {
     }
 }
 
-/// Runs the game window until the player quits. Returns the process exit code.
+/// Runs the player until the window is closed. Returns the process exit code.
 int runGame(string manifest, string screenshot) {
+    import std.process : environment;
+
     bool smoke = screenshot.length != 0;
+    int forcedWidth, forcedHeight;
+    auto size = environment.get("VARIS_SMOKE_SIZE", "");
+    if (smoke && size.length) {
+        import std.string : indexOf;
+
+        auto at = size.indexOf('x');
+        if (at > 0) {
+            forcedWidth = to!int(size[0 .. at]);
+            forcedHeight = to!int(size[at + 1 .. $]);
+        }
+    }
     auto player = new GamePlayer;
     scope (exit)
         player.close();
-    if (!player.load(manifest, smoke))
+    if (!player.load(manifest, smoke, forcedWidth, forcedHeight))
         return 1;
     if (smoke)
         return smokeGame(player, screenshot);
-    player.mode = Mode.title;
+    player.mode = player.sceneOnly ? Mode.play : Mode.title;
+    if (player.sceneOnly && !player.newGame())
+        return 1;
     for (;;) {
-        player.draw();
+        player.frame();
         v_end();
         int key;
         float x, y;
@@ -1219,28 +1600,59 @@ int runGame(string manifest, string screenshot) {
             }
         if (player.failed)
             return 1;
-        if (player.mode == Mode.play && player.overlay == Overlay.none) {
-            // Auto-advance nothing else: reading is the player's pace.
-        }
         v_delay();
     }
 }
 
 /// Headless run for `make test-sdl`: starts a game, plays by the first sensible choice,
 /// exercises text input, save/load and the overlays, and writes one screenshot.
+/// Environment: VARIS_SMOKE_SIZE=WxH, VARIS_SMOKE_SCALE=index of the text sizes, VARIS_SMOKE_LAYOUT=
+/// compact|regular|wide, VARIS_SMOKE_OVERLAY=map|journal|sheet|help|pause|history, VARIS_SMOKE_DRAWER=1.
 private int smokeGame(GamePlayer player, string screenshot) {
+    import std.process : environment;
+
+    auto layout = environment.get("VARIS_SMOKE_LAYOUT", "");
+    foreach (i, name; ["", "compact", "regular", "wide"])
+        if (name.length && name == layout)
+            player.layoutIndex = cast(int) i;
+    auto scale = environment.get("VARIS_SMOKE_SCALE", "");
+    if (scale.length)
+        player.textScaleIndex = to!int(scale);
+    player.applySettings();
+    auto screen = environment.get("VARIS_SMOKE_SCREEN", "");
+    if (screen == "title") {
+        player.mode = Mode.title;
+        player.frame();
+        return v_capture(screenshot.toStringz) ? 0 : 1;
+    }
     if (!player.newGame())
         return 1;
-    bool captured;
+    bool captured, project = !player.sceneOnly;
+    // VARIS_SMOKE_SCREEN=scene captures the first spoken line of a whole game instead of the hub.
+    if (screen == "scene")
+        project = false;
     size_t after;
     foreach (step; 0 .. 4000) {
         // After the screenshot, play on for a while: choices, scenes and toasts keep working.
         if (captured && ++after > 400)
             break;
-        player.draw();
+        player.frame();
         auto v = player.host.view;
         if (player.mode == Mode.over)
             break;
+        if (!project && v.inScene && v.beat.kind == "say" && !captured) {
+            string bytes, restored;
+            if (!player.host.save(bytes) || !player.host.restore(bytes) || !player.host.save(restored) || bytes != restored) {
+                writeln("smoke: save round trip failed: ", player.host.error);
+                return 1;
+            }
+            player.frame();
+            if (!v_capture(screenshot.toStringz)) {
+                writeln(fromStringz(v_error()).idup);
+                return 1;
+            }
+            captured = true;
+        }
         if (v.inScene) {
             auto kind = v.beat.kind;
             if (kind == "input") {
@@ -1284,16 +1696,15 @@ private int smokeGame(GamePlayer player, string screenshot) {
                     Overlay.pause
                 ]) {
                     player.overlay = o;
-                    player.draw();
+                    player.frame();
                 }
                 player.overlay = Overlay.none;
-                string bytes, again;
-                // Presenting after a load logs the presentation, so a restored game is compared with
-                // a second restore of the same bytes rather than with the bytes themselves.
+                string bytes, again, third;
+                // Presenting after a load logs the presentation, so a restored game is compared
+                // with a second restore of the same bytes rather than with the bytes themselves.
                 bool saved1 = player.host.save(bytes);
                 bool restored = saved1 && player.host.restore(bytes);
                 bool saved2 = restored && player.host.save(again);
-                string third;
                 bool again2 = saved2 && player.host.restore(bytes) && player.host.save(third);
                 if (!saved1 || !restored || !saved2 || !again2 || again != third) {
                     writeln("smoke: save round trip failed (save ", saved1, ", restore ", restored, ", save ", saved2,
@@ -1302,20 +1713,21 @@ private int smokeGame(GamePlayer player, string screenshot) {
                 }
                 if (!player.afterBoundary())
                     return 1;
-                // VARIS_SMOKE_OVERLAY=map|journal|sheet|help|pause|history captures that screen instead.
-                import std.process : environment;
-
                 foreach (o; [
                     Overlay.sheet, Overlay.journal, Overlay.map, Overlay.help, Overlay.history,
                     Overlay.pause
                 ])
                     if (environment.get("VARIS_SMOKE_OVERLAY", "") == to!string(o))
                         player.overlay = o;
-                player.draw();
+                if (environment.get("VARIS_SMOKE_DRAWER", "") == "1")
+                    player.drawerOpen = true;
+                player.frame();
                 if (!v_capture(screenshot.toStringz)) {
                     writeln(fromStringz(v_error()).idup);
                     return 1;
                 }
+                player.overlay = Overlay.none;
+                player.drawerOpen = false;
                 captured = true;
             }
             if (!player.choose(pick))
@@ -1324,9 +1736,10 @@ private int smokeGame(GamePlayer player, string screenshot) {
         v_end();
     }
     if (!captured) {
-        writeln("smoke: never reached the hub");
+        writeln("smoke: never reached a capture point");
         return 1;
     }
-    writeln("SDL game, hub, overlays, input and save/load checks passed");
+    writeln(project ? "SDL game, hub, overlays, input and save/load checks passed"
+            : "SDL scene, assets, input/menu and save/load checks passed");
     return 0;
 }

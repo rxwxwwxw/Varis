@@ -97,6 +97,9 @@ class GameHost {
     private LuaValue sceneToken;
     string startScene;
     string language;
+    /// Scene-only content (no project): an empty world and no hooks.
+    bool sceneOnly;
+    private string sceneSource, sceneFile;
 
     /// Loads the project in `root`: runs its entry module (which registers and seals content)
     /// and resolves the manifest's session, load, after-choose and finished functions.
@@ -154,6 +157,32 @@ LUA";
         }
     }
 
+    /// Scene-only content: a source file of `scene` and `character` declarations, played over an
+    /// empty world. Its game is over when its scene stack empties.
+    bool loadScenes(string source, string filename, string scene) {
+        try {
+            auto candidate = new LuaState;
+            openLibs(candidate);
+            auto fn = candidate.loadString(source, "@" ~ filename);
+            LuaException failure;
+            VM.callProtected(candidate, LuaValue(fn), null, failure);
+            if (failure !is null) {
+                error = failure.msg;
+                return false;
+            }
+            state = candidate;
+            sceneOnly = true;
+            startScene = scene;
+            sceneSource = source;
+            sceneFile = filename;
+            error = "";
+            return true;
+        } catch (Exception failure) {
+            error = failure.msg;
+            return false;
+        }
+    }
+
     /// A fresh game: a new session from the project, started at the initial scene (if any).
     bool newGame(long seed) {
         if (state is null) {
@@ -161,22 +190,31 @@ LUA";
             return false;
         }
         try {
-            auto value = VM.callValue(state, newSession, [LuaValue(seed)]);
-            if (!value.length) {
-                error = "the session function returned nothing";
-                return false;
+            Session next;
+            LuaValue nextValue;
+            if (sceneOnly) {
+                next = new Session(state, new World);
+            } else {
+                auto value = VM.callValue(state, newSession, [LuaValue(seed)]);
+                if (!value.length) {
+                    error = "the session function returned nothing";
+                    return false;
+                }
+                next = unwrapSession(value[0]);
+                nextValue = value[0];
             }
-            auto next = unwrapSession(value[0]);
             if (startScene.length)
                 next.playScene(startScene);
             auto previous = session;
+            auto previousValue = sessionValue;
             session = next;
-            sessionValue = value[0];
+            sessionValue = nextValue;
             if (language.length)
                 session.language = language;
             toasts = null;
             if (!refresh()) {
                 session = previous;
+                sessionValue = previousValue;
                 return false;
             }
             return true;
@@ -312,7 +350,9 @@ LUA";
             }
             readStage(field(p, "stage"), next.beat);
             readStatus(next);
-            if (!finished.isNil) {
+            if (sceneOnly)
+                next.over = !next.inScene;
+            else if (!finished.isNil) {
                 auto done = VM.callValue(state, finished, [sessionValue]);
                 next.over = done.length && done[0].isBoolean && done[0].asBool;
             }
@@ -503,20 +543,30 @@ LUA";
     }
 
     bool restore(string bytes) {
-        if (state is null || loadHook.isNil) {
+        if (state is null || (loadHook.isNil && !sceneOnly)) {
             error = "the project has no `load` function";
             return false;
         }
         try {
-            auto value = VM.callValue(state, loadHook, [LuaValue(bytes)]);
-            if (!value.length) {
-                error = "the load function returned nothing";
-                return false;
+            Session restored;
+            LuaValue restoredValue;
+            if (sceneOnly) {
+                restored = loadSession(state, bytes, LuaValue(new LuaNativeFunction((void* ignored, LuaValue[] args) {
+                            return [wrapWorld(new World)];
+                        }, "gamehost_world")));
+            } else {
+                auto value = VM.callValue(state, loadHook, [LuaValue(bytes)]);
+                if (!value.length) {
+                    error = "the load function returned nothing";
+                    return false;
+                }
+                restored = unwrapSession(value[0]);
+                restoredValue = value[0];
             }
             auto previousSession = session;
             auto previousValue = sessionValue;
-            session = unwrapSession(value[0]);
-            sessionValue = value[0];
+            session = restored;
+            sessionValue = restoredValue;
             if (language.length)
                 session.language = language;
             toasts = null;

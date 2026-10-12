@@ -153,7 +153,7 @@ scene r_thief_shout {
 }
 
 scene r_thief_let {
-    {kind=:narration, text="You decide five coins is the price of not running. Your purse is lighter and your feet are unhurt, and you learn a thing about the market that is worth more than five coins."},
+    {kind=:narration, text="You decide that whatever he took is the price of not running. Your purse is lighter and your feet are unhurt, and you learn a thing about the market that is worth more than the coins."},
     {kind="return"}
 }
 
