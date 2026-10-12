@@ -498,10 +498,21 @@ struct VM {
                 proto.newTableSizes[pc] = cast(uint) packed;
         proto.constantHashes = new size_t[proto.constants.length];
         foreach (index, ref constant; proto.constants)
-            if (constant.isString)
+            if (constant.isString) {
+                // Equal string constants of different functions become one slice, so table lookups
+                // with constant keys succeed on the pointer comparison (same bytes: fingerprints
+                // and dumps are unaffected). Only compile-time constants are interned.
+                auto text = constant.asString;
+                if (auto known = text in internedConstants)
+                    constant = LuaValue(*known);
+                else
+                    internedConstants[text] = text;
                 proto.constantHashes[index] = hashOf(constant.asString);
+            }
         proto.prepared = true;
     }
+
+    private static string[string] internedConstants;
 
     private static LuaValue[] executeFrame(LuaState state, LuaClosure closure,
             LuaValue[] args, ref TailRequest tail, bool transferred, string entryName, string entryKind) {
