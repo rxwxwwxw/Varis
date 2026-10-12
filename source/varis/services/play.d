@@ -104,7 +104,15 @@ end
 
 require(cfg.entry)
 local language = cfg.locale
-if language then
+local pack_path
+for i = 1, #(arg or {}) do
+    if arg[i] == "--pack" then pack_path = arg[i + 1] end
+end
+if pack_path then
+    -- A language pack as a released game loads it: whole or not at all.
+    local ok, result = pcall(narrative.load_pack, pack_path)
+    if ok then language = result else print(tostring(result)) end
+elseif language then
     if cfg.locale_error then
         print("language " .. language .. ": " .. cfg.locale_error)
         language = nil

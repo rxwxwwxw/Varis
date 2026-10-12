@@ -255,6 +255,56 @@ void openNarrativeLib(LuaState state) {
         }
         return cast(LuaValue[])[];
     });
+    // narrative.load_pack(directory): loads a language pack built by `varis l10n build` (a directory
+    // holding pack.json) and returns its language tag. The pack is accepted or rejected as a whole;
+    // the error names the language and each key that failed.
+    add("load_pack", (void* pointer, LuaValue[] arguments) {
+        import std.file : readText, isDir;
+        import std.json : parseJSON, JSONType, JSONException;
+
+        if (arguments.length != 1 || !isString(arguments[0]))
+            throw new LuaException("narrative.load_pack requires a directory");
+        string directory = arguments[0].match!((string s) => s, _ => "");
+        string path = directory;
+        try {
+            if (isDir(directory))
+                path = directory ~ "/pack.json";
+        } catch (Exception) {
+        }
+        string text;
+        try {
+            text = readText(path);
+        } catch (Exception) {
+            throw new LuaException("language pack rejected: cannot read " ~ path);
+        }
+        string locale;
+        string[string] messages;
+        try {
+            auto document = parseJSON(text);
+            if (document.type != JSONType.object || "locale" !in document || document["locale"].type != JSONType
+                .string
+                || "messages" !in document || document["messages"].type != JSONType.object)
+                throw new LuaException("language pack rejected: " ~ path ~ " is not a language pack");
+            if ("format" in document && document["format"].type == JSONType.integer && document["format"].integer != 1)
+                throw new LuaException("language pack rejected: " ~ path ~ " has an unknown format version");
+            locale = document["locale"].str;
+            foreach (key, value; document["messages"].object) {
+                if (value.type != JSONType.string)
+                    throw new LuaException("language pack rejected: " ~ locale ~ " " ~ key ~ ": the text is not a string");
+                messages[key] = value.str;
+            }
+        } catch (JSONException) {
+            throw new LuaException("language pack rejected: " ~ path ~ " is not valid JSON");
+        }
+        auto problems = (cast(LuaState) pointer).narrativeRegistry.registerTranslations(locale, messages);
+        if (problems.length) {
+            string message = "language pack rejected:";
+            foreach (problem; problems)
+                message ~= "\n  " ~ problem;
+            throw new LuaException(message);
+        }
+        return [LuaValue(locale)];
+    });
     add("languages", (void* pointer, LuaValue[] arguments) {
         LuaValue[] tags;
         foreach (tag; (cast(LuaState) pointer).narrativeRegistry.languages())

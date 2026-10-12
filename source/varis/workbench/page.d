@@ -67,8 +67,10 @@ immutable string workbenchPage = q"HTML
 <div id="grid">
   <section id="story"><header>Story <span class="spacer"></span><span id="turn" class="muted"></span>
       <select id="whyId" title="Why is this storylet showing or not?"></select><button id="why">Why?</button>
+      <select id="language" title="Language of the story (a view: nothing is presented again)"><option value="">source</option></select>
       <button id="refreshStory">Present</button></header>
-    <div class="body" id="storyBody"><span class="muted">No session. In the command window, create one and call <code>story(session)</code>.</span></div></section>
+    <div class="body" id="storyBody"><span class="muted">No session. In the command window, create one and call <code>story(session)</code>.</span></div>
+    <div class="body" id="translations"></div></section>
   <section id="command"><header>Command window</header>
     <div class="body"><pre id="log"></pre></div>
     <div id="prompt"><span>&gt;&gt;</span><textarea id="input" rows="1" spellcheck="false" autofocus></textarea></div></section>
@@ -221,6 +223,39 @@ async function refreshStory(explicit) {
   if (data.error) { if (explicit) { $("storyBody").textContent = ""; $("storyBody").append(el("span", { class: "muted" }, data.error)); } return; }
   renderStory(data);
 }
+// Language: the select lists the project's locales and the pseudo-locale. A switch renders the
+// presentation again; the translation panel lists its messages and saves a translation as a draft.
+async function loadLanguages() {
+  const project = await api("/api/project");
+  const select = $("language"); const keep = select.value;
+  select.textContent = ""; select.append(el("option", { value: "" }, "source"));
+  for (const tag of (project.locales || []).concat(["x-pseudo"])) select.append(el("option", { value: tag }, tag));
+  select.value = keep;
+}
+$("language").onchange = async () => {
+  const data = await api("/api/language", { lang: $("language").value }, "");
+  if (data.error) { logLine(data.error + "\n", "err"); return; }
+  renderStory(data);
+  showTranslations();
+};
+async function showTranslations() {
+  const lang = $("language").value;
+  const panel = $("translations"); panel.textContent = "";
+  if (!lang || lang === "x-pseudo") return;
+  const [messages, catalog] = await Promise.all([api("/api/messages"), api("/api/catalog", { lang })]);
+  const status = {}; for (const e of catalog.entries || []) status[e.key] = e.status;
+  for (const m of messages.messages || []) {
+    const area = el("textarea", { rows: 2, spellcheck: "false" }); area.value = m.shown === m.source ? "" : m.shown;
+    const save = el("button", { onclick: async () => {
+      const r = await api("/api/translate", { lang, key: m.key }, area.value);
+      if (!r.ok) { logLine(m.key + ": " + r.error + "\n", "err"); return; }
+      $("language").onchange();
+    } }, "Save draft");
+    panel.append(el("div", { class: "translation" },
+      el("div", { class: "muted mono" }, m.key + "  [" + (status[m.key] || "untranslated") + "]"),
+      el("div", {}, m.source), area, save));
+  }
+}
 function renderStory(data) {
   const body = $("storyBody");
   if (!data.session) return;
@@ -322,7 +357,7 @@ $("source").addEventListener("keydown", event => {
 });
 
 // The story is presented only on request: presenting advances the session's replay log.
-loadFiles(); refreshWorkspace();
+loadFiles(); refreshWorkspace(); loadLanguages();
 </script>
 </body>
 </html>

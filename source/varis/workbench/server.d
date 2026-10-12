@@ -140,13 +140,59 @@ function W.present()
     if not W.session then return encode({ session = false }) end
     local p = W.session:present()
     W.presentation = p
+    return W.show(p)
+end
+
+-- The same presentation in another language (nil: the source language). Language is a view:
+-- nothing is presented again, so no random number is drawn and no token is issued.
+function W.setLanguage(tag, messages)
+    if not W.session then error("no session; call story(session) first") end
+    if tag and tag ~= "" then
+        if messages then narrative.translate(tag, messages) end
+        W.session:set_language(tag)
+        W.language = tag
+    else
+        W.session:set_language(nil)
+        W.language = nil
+    end
+    if W.presentation then
+        W.presentation = W.session:render(W.presentation, W.language)
+        return W.show(W.presentation)
+    end
+    return W.present()
+end
+
+-- The messages of the current presentation: key, source text, and the text now shown.
+function W.messages()
+    local p = W.presentation
+    if not p then return encode({ language = W.language, messages = {} }) end
+    local source = W.session:render(p, nil)
+    local rows = {}
+    local function add(key, source_text, shown)
+        if source_text ~= "" then rows[#rows + 1] = { key = key, source = source_text, shown = shown } end
+    end
+    for i, st in ipairs(source.storylets) do
+        local shown = p.storylets[i]
+        local id = tostring(st.id)
+        add(id .. ".title", st.title, shown.title)
+        add(id .. ".text", st.text, shown.text)
+        for j, c in ipairs(st.choices) do
+            local key = id .. "." .. tostring(c.id)
+            add(key .. ".title", c.title, shown.choices[j].title)
+            add(key .. ".text", c.text, shown.choices[j].text)
+        end
+    end
+    return encode({ language = W.language, messages = rows })
+end
+
+function W.show(p)
     local storylets = {}
     for i, st in ipairs(p.storylets) do
         local choices = {}
         for j, c in ipairs(st.choices) do choices[j] = { id = tostring(c.id), title = tostring(c.title) } end
         storylets[i] = { id = tostring(st.id), title = tostring(st.title), text = tostring(st.text), choices = choices }
     end
-    return encode({ session = true, turn = W.session:turn(), storylets = storylets })
+    return encode({ session = true, turn = W.session:turn(), storylets = storylets, language = W.language })
 end
 
 -- Choosing reports what the turn changed: the facts added and removed, per relation.
@@ -1202,6 +1248,46 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
             LuaValue(numberOf(parameter("count"), 100))
         ], ok));
         return Disposition.done;
+    case "/api/language": {
+            // Switch the story panel's language: the catalog's messages are registered as a
+            // pack and the current presentation is rendered again, not presented again.
+            import varis.services.l10n : localeMessages;
+
+            auto lang = parameter("lang");
+            LuaValue[] arguments;
+            if (lang.length) {
+                string[string] messages;
+                string error;
+                if (!localeMessages(lang, messages, error)) {
+                    respond(socket, 200, "application/json", `{"error":` ~ jsonQuote(error) ~ `}`);
+                    return Disposition.done;
+                }
+                auto pack = new LuaTable();
+                foreach (key, text; messages)
+                    pack.rawset(LuaValue(key), LuaValue(text));
+                arguments = [LuaValue(lang), LuaValue(pack)];
+            } else
+                arguments = [luaNil()];
+            respond(socket, 200, "application/json", callView(state, "setLanguage", arguments, ok));
+            return Disposition.done;
+        }
+    case "/api/messages":
+        respond(socket, 200, "application/json", callView(state, "messages", [], ok));
+        return Disposition.done;
+    case "/api/catalog": {
+            import varis.services.l10n : catalogEntriesJson;
+
+            respond(socket, 200, "application/json", catalogEntriesJson(parameter("lang")));
+            return Disposition.done;
+        }
+    case "/api/translate": {
+            import varis.services.l10n : saveTranslation;
+
+            auto problem = saveTranslation(parameter("lang"), parameter("key"), request.body_);
+            respond(socket, 200, "application/json", problem.length ? `{"ok":false,"error":` ~ jsonQuote(
+                    problem) ~ `}` : `{"ok":true}`);
+            return Disposition.done;
+        }
     case "/api/present":
         respond(socket, 200, "application/json", callView(state, "present", [], ok));
         return Disposition.done;

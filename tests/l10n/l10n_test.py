@@ -139,6 +139,62 @@ def main():
         out = varis(binary, game, "l10n", "extract", "--check", expect=1)
         assert "out of date" in out, out
 
+        # Handoff (stage T4): a kit with XLIFF, the publisher's checks, import, a delta kit, packs.
+        lamp.write_text(text)
+        varis(binary, game, "l10n", "extract")
+        out = varis(binary, game, "l10n", "export", "--locale", "ja,ko", "--format", "xliff", "--kit", "kit")
+        kit = json.loads((game / "kit" / "kit.json").read_text())
+        assert kit["locales"] == ["ja", "ko"] and len(kit["kit"]) == 16, kit
+        assert (game / "kit" / "ja.xlf").exists() and (game / "kit" / "glossary.json").exists()
+        charset = json.loads((game / "kit" / "charset.json").read_text())
+        assert "A" in charset["source"] and charset["ja"] == "", charset
+        xlf = (game / "kit" / "ja.xlf").read_text()
+        assert '<trans-unit id="lamp.title"' in xlf and "arguments:" in xlf and "shown when:" in xlf
+        # The translator fills in targets (here: Japanese for two messages, one with a bad placeholder).
+        filled = xlf.replace('<source xml:lang="en">The great lamp</source>\n    <target xml:lang="ja" state="new"></target>',
+                             '<source xml:lang="en">The great lamp</source>\n    <target xml:lang="ja" state="translated">大きなランプ</target>', 1)
+        filled = filled.replace('<source xml:lang="en">Wait a while</source>\n    <target xml:lang="ja" state="new"></target>',
+                                '<source xml:lang="en">Wait a while</source>\n    <target xml:lang="ja" state="translated">{nope}しばらく待つ</target>', 1)
+        assert filled != xlf
+        (game / "ja.xlf").write_text(filled)
+        out = varis(binary, game, "l10n", "check", "--kit", "kit", "ja.xlf", expect=1)
+        assert "translation-placeholder" in out and "{nope}" in out, out
+        out = varis(binary, game, "l10n", "import", "ja.xlf", "--locale", "ja", "--kit", "kit", "--apply", expect=1)
+        assert "1 draft" in out and "1 rejected" in out, out
+        ja = json.loads((game / "l10n" / "ja.json").read_text())
+        assert [e["text"] for e in ja["entries"]] == ["大きなランプ"], ja
+        # Review is the only way to `reviewed`.
+        out = varis(binary, game, "l10n", "review", "--locale", "ja")
+        assert "1 marked reviewed" in out, out
+        # The source changes after the handoff: a delta kit holds only what changed, with old English.
+        old_kit = kit["kit"]
+        lamp.write_text(text.replace('title "The great lamp"', 'title "The huge lamp"'))
+        varis(binary, game, "l10n", "extract")
+        varis(binary, game, "l10n", "export", "--locale", "ja", "--format", "xliff", "--kit", "kit-delta", "--changed-since", old_kit)
+        delta = (game / "kit-delta" / "ja.xlf").read_text()
+        assert delta.count("<trans-unit") == 1 and "The huge lamp" in delta, delta.count("<trans-unit")
+        assert "<note from=\"varis-previous-source\">The great lamp</note>" in delta and "大きなランプ" in delta
+        # The previous translation is now stale; a pack leaves it out, so the source text shows.
+        status = varis(binary, game, "l10n", "check", "--locale", "ja")
+        assert "ja: 0 reviewed, 0 draft, 1 stale" in status, status
+        lamp.write_text(text)
+        varis(binary, game, "l10n", "extract")
+        # Packs: built only from a catalog that passes; loaded whole, or rejected whole by key.
+        manifest_text = (game / "project.lua").read_text().replace('locales  = { "fr" }', 'locales  = { "fr", "ja" }')
+        (game / "project.lua").write_text(manifest_text)
+        out = varis(binary, game, "l10n", "build", "--out", "packs")
+        assert "ja: pack of 1 message(s)" in out, out
+        pack = json.loads((game / "packs" / "ja" / "pack.json").read_text())
+        assert pack["locale"] == "ja" and pack["messages"] == {"lamp.title": "大きなランプ"} and "大" in pack["charset"]
+        play_pack = subprocess.run([binary, "play", "--pack", "packs/ja", "--seed", "7", "--keys"], cwd=game, input="quit\n",
+                                   capture_output=True, text=True, timeout=60).stdout
+        assert "Look around" in play_pack  # the pack loaded; look.title is untranslated and falls back
+        (game / "packs" / "ja" / "pack.json").write_text(json.dumps({"format": 1, "locale": "ja",
+                                                                      "messages": {"lamp.title": "{#if broken"}}))
+        rejected = subprocess.run([binary, "play", "--pack", "packs/ja", "--seed", "7"], cwd=game, input="quit\n",
+                                  capture_output=True, text=True, timeout=60).stdout
+        assert "language pack rejected" in rejected and "ja lamp.title" in rejected, rejected
+
         # A renamed choice is reported as a probable rename and its translation can be carried.
         lamp.write_text(text)
         varis(binary, game, "l10n", "extract")

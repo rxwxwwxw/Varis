@@ -336,6 +336,7 @@ and consumes no RNG. This function returns one string.
 | `narrative.emit(kind, ...)` | Queue a portable event for this transaction's commit. |
 | `narrative.schedule(kind, args, after_turns)` | Queue a symbol event with immutable sequence args and nonnegative integer delay. |
 | `narrative.translate(tag, {key = text, ...})` | Register a language pack: message keys (`lamp.title`, `lamp.light.title`, `name.keeper`) to template text. The pack is rejected as a whole, with one line per bad key, if any text does not parse. Not content: not fingerprinted, not saved. |
+| `narrative.load_pack(directory)` | Load a language pack built by `varis l10n build` (the directory holds `pack.json`); returns its language tag. Accepted or rejected as a whole, as `narrative.translate`. |
 | `narrative.languages()` | Immutable sequence of registered language tags. |
 | `narrative.defer(callback)` | Request no-argument callback after commit; discarded on rollback. |
 

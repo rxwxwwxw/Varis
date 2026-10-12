@@ -123,7 +123,11 @@ reported as `computed-text`; empty text is not extracted.
 | `l10n extract [--check] [--carry-renames]` | Writes `l10n/source.json`, the messages of the package sorted by key with source text, revision, arguments and context, and prints what changed. With `--check` it writes nothing and fails when the file is out of date. |
 | `l10n status` | Per locale of the manifest: reviewed, draft, stale and untranslated messages, and the definitions with work left. |
 | `l10n export [--locale L] [--format csv] [--out FILE]` | The catalog as CSV (UTF-8 with a byte order mark): `key,source,translation,status,revision,context,arguments`. |
-| `l10n import FILE --locale L [--apply]` | Proposes `draft` translations and rejects unknown keys and placeholders the source does not have; writes `l10n/L.json` only with `--apply`. |
+| `l10n export --locale L[,L...] --format csv\|xliff\|json --kit DIR [--changed-since ID]` | A handoff kit: the messages of each locale in the chosen format (XLIFF 1.2 carries the owner, arguments and `when` clause as notes), the source catalog, a glossary (`l10n/glossary.json` or one made from the labels and names), the character set each language uses, and a kit id (a hash of the source catalog). The source of each kit is kept in `l10n/kits/ID.json`; with `--changed-since` only new and substantively changed messages are sent, each with the previous English. |
+| `l10n import FILE(.csv\|.xlf\|.json) --locale L [--kit DIR] [--apply]` | Proposes `draft` translations and rejects unknown keys, text that does not parse and placeholders the source does not have; an entry made from an older revision (taken from the kit) arrives `stale`. Writes `l10n/L.json` only with `--apply`. Never deletes. |
+| `l10n check --kit DIR FILE` | What a publisher runs with no source tree: the checks of `check --locale` against the kit's source catalog. |
+| `l10n review --locale L [KEY...]` | The only way a translation becomes `reviewed` (stale ones cannot be). |
+| `l10n build [--out DIR]` | Language packs: `DIR/L/pack.json` (`messages`, `charset`) for each locale of the manifest that passes the checks; stale translations are left out. |
 
 A message's **revision** is a hash of its text with case, spacing and punctuation
 outside template tags removed. A source edit that leaves the revision equal is
@@ -185,7 +189,12 @@ prints the coverage and fails the release gate when a message is not reviewed.
 language pack and play in it; `--keys` shows the message key before each text, so
 that a line can be reported by key. The locale `x-pseudo` needs no catalog: it
 accents and lengthens the source text (`[Lóók áróúñd~~~]`) to show clipped text
-boxes and hard-coded strings. Packs are loaded with `narrative.translate` (section 7).
+boxes and hard-coded strings. `varis play --pack DIR` loads a built pack, as a released
+game does with `narrative.load_pack(DIR)`: the pack is accepted or rejected as a whole, and
+the error names the language and each bad key. Packs are registered with
+`narrative.translate` (section 7). In the workbench the story panel has a language
+selector (a switch renders the current presentation again) and a panel to edit a
+translation, which is saved to `l10n/L.json` as a draft.
 
 ## 9 — Compatibility and implementation limits
 

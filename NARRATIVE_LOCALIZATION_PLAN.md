@@ -374,9 +374,14 @@ condition results and variant draws its messages used), whole-message fallback, 
 [--keys]`. Still waiting on owner decisions: **T2** (wording out of the fingerprint, named variants:
 a save-format change, AGENTS §8.1 item 5), and the **syntax** of `select`, plural and named variants
 (T0, milestone 27); until then translations use the source's own conditions and variant groups, by
-position. The workbench language selector and translation panel (§7.7) are not built. T4 is
-partly built (CSV adapter; `check`; pseudo-locale; key overlay); kits, XLIFF, packs on disk and
-review states remain.
+position. The workbench language selector and translation panel (§7.7) exist in a first
+version (switch, list of the presentation's messages with status, save as draft; the plural and
+select branch views wait for the syntax). T4 is built except the font-subset output and the
+manifest's per-locale coverage: kits with context, glossary, character sets and ids, delta kits,
+the XLIFF and CSV adapters, import with stale/draft states, `l10n review`, `l10n check --kit`,
+`l10n build` packs and `narrative.load_pack` with whole-pack rejection, the key overlay and the
+release gate (`l10n check --locale all --require reviewed`). T5 (presentation: line breaking, fonts,
+ruby, the Korean particle formatter) needs the SDL3 layer and has not been started.
 
 T1 needs no owner decision and no runtime change; start it as soon as the project index exists.
 T2 should land before content is written in volume, because it changes saves. The feature is

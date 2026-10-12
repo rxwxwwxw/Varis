@@ -71,6 +71,17 @@ def main():
         second = call("/api/choose", {"s": 1, "c": 1}, body="")
         assert second["turn"] == first["turn"] + 1, (first["turn"], second["turn"])
 
+        # Language is a view: a switch renders the same presentation again (no new draw).
+        assert call("/api/language", {"lang": "no-such"}, body="")["error"]
+        pseudo = call("/api/language", {"lang": "x-pseudo"}, body="")
+        assert pseudo["language"] == "x-pseudo" and pseudo["turn"] == second["turn"], pseudo
+        assert pseudo["storylets"][0]["title"].startswith("["), pseudo["storylets"][0]
+        messages = call("/api/messages")["messages"]
+        assert messages and messages[0]["key"].endswith(".title") and messages[0]["shown"] != messages[0]["source"], messages[0]
+        back = call("/api/language", {"lang": ""}, body="")
+        assert back["storylets"][0]["title"] == messages[0]["source"] or not back["storylets"][0]["title"].startswith("[")
+        assert call("/api/translate", {"lang": "fr", "key": "walk.title"}, body="Aller {nope}")["ok"] is False
+
         # Story-level debugging: what the turn changed, the storylet list, and "why".
         changes = call("/api/changes")["changes"]
         assert isinstance(changes, list)
