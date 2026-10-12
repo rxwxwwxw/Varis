@@ -204,7 +204,7 @@ The frontend (`ast`, `lexer`, `parser`) and the compiler know the relational and
 
 ### 4.5 Control flow & errors (`source/varis/exception.d` & `state.d`)
 
-- **Today:** Lua runtime errors and `error()` throw `LuaException : Exception`. `pcall` and `xpcall` catch `LuaException` (and generic `Exception`), relying on D stack unwinding and `scope(exit)` / `scope(failure)` cleanup. This is slow (a caught error costs about 4.5 µs on macOS; `core.pcall_error` is 37× C Lua).
+- **Today:** a Lua error is a `LuaException` object. Natives and the VM's out-of-line helpers `throw` it; `executeFrame` catches it once and from there it travels **by return**: a Lua callee hands it back in `TailRequest.error`, the caller runs its frame handler (the block after the `try` in `executeFrame`) and returns it in turn, up to `VM.callProtected`. The `error` builtin called from Lua raises without any throw, and `pcall(error, …)` computes its result directly. `executeDeepFrame` and coroutine boundaries still rethrow. A D throw costs about 5 µs on macOS, so new code must not add throws on paths that can be hot.
 - **Planned (stage L1, ROADMAP D7):** errors as values. The executor and natives return a status; the error object sits in a slot on the thread; cleanup is explicit and in the same order the scope guards run today. An adapter keeps unconverted natives working during the migration.
 - Until L1 lands, existing code keeps throwing `LuaException`, and code that calls it must stay exception-safe. New modules written in the §3 style return statuses and convert at their boundary with old code.
 
@@ -286,7 +286,7 @@ Use this table to avoid coding against a design that has not landed.
 
 | Aspect | Today (code against this) | Target | Changes in |
 | --- | --- | --- | --- |
-| Errors | `throw LuaException`; `pcall` catches | Status returns; error object on the thread | L1 |
+| Errors | `LuaException` objects. Between Lua frames they are **returned** (`TailRequest.returnErrors`), and `error` raises without a throw; natives and out-of-line helpers still `throw`, and `pcall` still catches those | Status returns everywhere; error object on the thread | L1 (first step done) |
 | Value | 24-byte `SumType` wrapper; strings inline as slices | 16-byte tagged union; string objects with cached hash | L2 |
 | Instructions executed | `execCode` = canonical 32-byte instructions plus a final `Return` | Compact specialized encoding derived from `code` | L3 |
 | Executors | `executeFrame` and `executeDeepFrame`, handlers copied by hand | One handler source; fast and instrumented variants | S1 |
@@ -296,7 +296,7 @@ Use this table to avoid coding against a design that has not landed.
 | Sample game | In `make test` (suite `sample-game`: its check plus a golden transcript and save, `tests/sample_game/`) | Same | S0 (done) |
 | Debugging | Lua `debug` library; `narrative.explain`/`observe`/`analyze` from scripts | Workbench debugger at source and story level | Milestone 44 |
 | Tools | CLI and REPL (`cli.d`) | `varis check`, language services, `varis serve` | Milestones 30–33, 42–43 |
-| Core speed | 0.6–2.4× C Lua; outliers 37× (`pcall_error`), 8× (`deep_recursion`) | ≤ 1.0×, then below | L, X |
+| Core speed | 0.6–2.5× C Lua; `pcall_error` 1.4× (was 37×), `deep_recursion` 3.0× (was 8×) | ≤ 1.0×, then below | L, X |
 | Turn latency (reference-scale game, M1) | 3.2 ms with or without a recursive rule (was 15 ms and 840 ms) | 5 ms on the stand-in; real hardware unmeasured | W, M |
 
 ---

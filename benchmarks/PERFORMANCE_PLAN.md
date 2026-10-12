@@ -464,6 +464,14 @@ the single-collector rule.
 
 ### Stage M — Memory, pauses, the host boundary, real hardware (milestones 36, 37)
 
+**Measured October 11, 2026 (after track W):** the reference-scale game peaks at about 150 MB
+RSS with `heapSizeFactor:4` and at 70–95 MB with the collector's default factor 2, with the same
+`present()` time. Factor 2 cannot simply be adopted: it fails the `regression.limits` gate (2.33×
+against 2.3) and slows `programs.bintrees` and `regression.deepframes` by about 10–40 %. Live heap
+after a collection is about 45 MB, of which roughly 8 MB is fingerprint text kept for fast saves
+(W0). The memory budget therefore needs both a smaller live heap and a host-driven collection
+policy, not just a different factor.
+
 - Re-measure RSS after W1–W2 and L2; most of today's heap is garbage produced by copying. Then
   revisit `heapSizeFactor:4` in `cli.d`, which was chosen for the Phase 8 work and trades memory
   for fewer collections.
