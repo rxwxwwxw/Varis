@@ -14,6 +14,8 @@
 module varis.services.diagnostic;
 
 import core.stdc.stdio;
+import core.sys.posix.fcntl : open, O_WRONLY;
+import core.sys.posix.unistd : dup, dup2, close;
 
 import varis.workbench.server : jsonQuote;
 
@@ -131,4 +133,29 @@ string diagnosticText(ref const Diagnostic d) {
     foreach (r; d.related)
         text ~= "\n    " ~ r.file ~ ":" ~ number(r.line) ~ ": " ~ r.message;
     return text;
+}
+
+/// Project code may print; the checker's own output must stay clean (it may be JSON).
+struct QuietOutput {
+    int saved = -1;
+
+    this(bool enable) {
+        if (!enable)
+            return;
+        fflush(stdout);
+        saved = dup(1);
+        auto sink = open("/dev/null", O_WRONLY);
+        if (sink >= 0) {
+            dup2(sink, 1);
+            close(sink);
+        }
+    }
+
+    ~this() {
+        if (saved >= 0) {
+            fflush(stdout);
+            dup2(saved, 1);
+            close(saved);
+        }
+    }
 }

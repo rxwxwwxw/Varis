@@ -28,6 +28,9 @@ struct Manifest {
     string language; // source language of the display text
     string entry; // module that loads and seals the content
     string session; // "module.function": function(seed) -> session
+    string afterChoose; // "module.function": function(session), the host's step after a choice
+    string finished; // "module.function": function(session) -> boolean
+    string load; // "module.function": function(saveText) -> session
     string[] content; // file patterns held to the content tier
     string[] scripts; // file patterns of engine scripts
     string[] locales; // translations kept in this repository
@@ -116,6 +119,9 @@ Manifest loadManifest(string directory) {
         case "language":
         case "entry":
         case "session":
+        case "after_choose":
+        case "finished":
+        case "load":
             if (!single) {
                 manifest.record("error", "manifest", field.value, "manifest field `" ~ key.value ~ "` must be one string");
                 break;
@@ -126,8 +132,14 @@ Manifest loadManifest(string directory) {
                 manifest.language = list.items[0];
             else if (key.value == "entry")
                 manifest.entry = list.items[0];
-            else
+            else if (key.value == "session")
                 manifest.session = list.items[0];
+            else if (key.value == "after_choose")
+                manifest.afterChoose = list.items[0];
+            else if (key.value == "finished")
+                manifest.finished = list.items[0];
+            else
+                manifest.load = list.items[0];
             break;
         case "content":
             manifest.content = list.items;
@@ -216,7 +228,9 @@ string manifestJson(ref const Manifest manifest) {
         ~ `,"scripts":` ~ stringArrayJson(
                 manifest.scripts) ~ `,"tests":` ~ stringArrayJson(
                 manifest.tests)
-        ~ `,"locales":` ~ stringArrayJson(manifest.locales) ~ `,"problems":[`;
+        ~ `,"locales":` ~ stringArrayJson(
+                manifest.locales) ~ `,"after_choose":` ~ jsonQuote(manifest.afterChoose)
+        ~ `,"finished":` ~ jsonQuote(manifest.finished) ~ `,"load":` ~ jsonQuote(manifest.load) ~ `,"problems":[`;
     foreach (i, problem; manifest.problems)
         text ~= (i ? "," : "") ~ diagnosticJson(problem);
     return text ~ "]}";

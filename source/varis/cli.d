@@ -558,6 +558,18 @@ private int runMain(string[] argv, ref LuaState state) {
         return runServe(argv, state);
     if (argv.length > 1 && argv[1] == "check")
         return runCheck(argv, state);
+    if (argv.length > 1 && argv[1] == "play") {
+        import varis.services.play : playMain;
+
+        state = new LuaState();
+        openLibs(state);
+        return playMain(state, argv[2 .. $]);
+    }
+    if (argv.length > 1 && argv[1] == "test") {
+        import varis.services.play : testMain;
+
+        return testMain(() { auto fresh = new LuaState(); openLibs(fresh); return fresh; }, argv[2 .. $]);
+    }
     if (argv.length > 1 && argv[1] == "lsp") {
         import varis.services.lsp : lspMain;
 

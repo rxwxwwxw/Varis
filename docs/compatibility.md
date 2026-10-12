@@ -147,6 +147,33 @@ a storylet, choice or quality it also edits the message keys in `l10n/` catalogs
 load and analysis passes of 8.3 run project code and are only in `varis check`.
 `editors/` holds a TextMate grammar and setup notes.
 
+### 8.6 — Playtest and author tests: `varis play`, `varis test`
+
+Both commands run the project's `entry` module and the `session` function named in
+the manifest (8.3), in a fresh state. Three more optional manifest fields name the
+host's own steps, each `"module.function"`: `after_choose` (called with the session
+after every choice, as `main.lua` of the sample game calls `sync_periods`), `finished`
+(returns true when the game is over) and `load` (builds a session from saved text).
+
+`varis play [--seed N] [--record FILE] [--replay FILE]` is a text front end: it
+prints each presentation with numbered choices and reads commands from standard
+input: a number chooses, `why NAME` explains why a storylet or action is not
+available (the failing goal and the exclusions), `save [FILE]` and `load [FILE]`
+write and read a save, `quit` leaves. `--record` writes the choices made as lines
+`storylet choice param=value,...` and `--replay` plays such a file back with the
+same seed, for bug reports.
+
+`varis test [--json] [files...]` runs the files matching `tests` in the manifest
+(or the named files), each in a fresh state, with the global `test` available:
+`test.play{seed=N}` returns a session wrapper `t` with `t:choose(storylet, choice
+[, bindings])`, `t:expect_shown(storylet [, bindings])`, `t:expect_hidden(...)`,
+`t:expect_fact("told(:lamp)")`, `t:expect_no_fact(...)`, `t:expect_quality(entity,
+name, value)`, `t:save()`, `t:load(text)`, `t:why(storylet)`, `t:world()` and
+`t:session`. `test.case(name, function() ... end)` groups checks. A failure is a
+`test` diagnostic at the line of the failing call; a missing storylet's message
+includes `t:why`. Exit status is 1 when a test fails. `tools/project_ci.sh` runs
+`check`, `test` and `l10n extract --check` as a CI recipe.
+
 ## 9 — Compatibility and implementation limits
 
 ### 9.1 — Relationship to Lua

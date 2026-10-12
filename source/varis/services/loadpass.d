@@ -15,10 +15,6 @@
 /// `session` function and only explores it (the original is not changed).
 module varis.services.loadpass;
 
-import core.sys.posix.fcntl : open, O_WRONLY;
-import core.sys.posix.unistd : dup, dup2, close;
-import core.stdc.stdio : fflush, stdout;
-
 import varis.exception : LuaException;
 import varis.state;
 import varis.types;
@@ -53,31 +49,6 @@ private void splitLocation(string text, out string file, out int line, out strin
         file = file[2 .. $];
     line = number;
     message = text[at .. $];
-}
-
-/// Project code may print; the checker's own output must stay clean (it may be JSON).
-private struct QuietOutput {
-    int saved = -1;
-
-    this(bool enable) {
-        if (!enable)
-            return;
-        fflush(stdout);
-        saved = dup(1);
-        auto sink = open("/dev/null", O_WRONLY);
-        if (sink >= 0) {
-            dup2(sink, 1);
-            close(sink);
-        }
-    }
-
-    ~this() {
-        if (saved >= 0) {
-            fflush(stdout);
-            dup2(saved, 1);
-            close(saved);
-        }
-    }
 }
 
 private const(Declaration)* findDefinition(ref const ProjectIndex index, string kind, string id, string owner) {

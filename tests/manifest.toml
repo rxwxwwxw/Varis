@@ -202,6 +202,17 @@ cases = [
   { id = "protocol", command = ["python3", "tests/lsp/lsp_test.py", "{candidate}"] },
 ]
 
+# Playtest, author tests and the CI recipe (authoring plan stage A6).
+[[suite]]
+id = "play"
+kind = "script"
+tier = "fast"
+tags = ["tools", "play"]
+timeout = 180
+cases = [
+  { id = "play-test-ci", command = ["python3", "tests/play/play_test.py", "{candidate}"] },
+]
+
 [[suite]]
 id = "selftest"
 kind = "script"
