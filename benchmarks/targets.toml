@@ -8,27 +8,27 @@
 [workload."core.array_access"]
 goal.clua = 1.0
 gate.clua = 2.14
-gate.time = 0.036
+gate.time = 0.031
 
 [workload."core.closures"]
 goal.clua = 1.0
-gate.clua = 2.26
+gate.clua = 2.25
 gate.time = 0.15
 
 [workload."core.coroutine_switch"]
 goal.clua = 1.0
-gate.clua = 2.39
-gate.time = 0.086
+gate.clua = 2.25
+gate.time = 0.081
 
 [workload."core.deep_recursion"]
 goal.clua = 1.0
-gate.clua = 3.4
-gate.time = 0.09
+gate.clua = 3.15
+gate.time = 0.081
 
 [workload."core.fib"]
 goal.clua = 1.0
-gate.clua = 2.76
-gate.time = 0.17
+gate.clua = 2.63
+gate.time = 0.16
 
 [workload."core.gc_churn"]
 goal.clua = 1.0
@@ -37,27 +37,27 @@ gate.time = 0.13
 
 [workload."core.hash_access"]
 goal.clua = 1.0
-gate.clua = 2.37
-gate.time = 0.032
+gate.clua = 1.54
+gate.time = 0.031
 
 [workload."core.method_dispatch"]
 goal.clua = 1.0
-gate.clua = 2.1
-gate.time = 0.29
+gate.clua = 1.98
+gate.time = 0.28
 
 [workload."core.numeric_loop"]
 goal.clua = 1.0
-gate.clua = 1.9
-gate.time = 0.086
+gate.clua = 1.77
+gate.time = 0.081
 
 [workload."core.pcall_error"]
 goal.clua = 1.0
-gate.clua = 1.6
-gate.time = 0.04
+gate.clua = 1.48
+gate.time = 0.037
 
 [workload."core.sieve"]
 goal.clua = 1.0
-gate.clua = 2.25
+gate.clua = 1.97
 gate.time = 0.02
 
 [workload."core.string_manip"]
@@ -67,18 +67,18 @@ gate.time = 0.02
 
 [workload."core.string_ops"]
 goal.clua = 1.0
-gate.clua = 2.63
-gate.time = 0.052
+gate.clua = 2.43
+gate.time = 0.048
 
 [workload."core.table_insert_remove"]
 goal.clua = 1.0
-gate.clua = 1.29
-gate.time = 0.094
+gate.clua = 1.25
+gate.time = 0.09
 
 [workload."core.table_sort"]
 goal.clua = 1.0
-gate.clua = 1.15
-gate.time = 0.062
+gate.clua = 0.93
+gate.time = 0.049
 
 [workload."datalog.incremental_updates"]
 gate.time = 0.02
@@ -137,58 +137,58 @@ gate.time = 0.33
 
 [workload."programs.bintrees"]
 goal.clua = 1.0
-gate.clua = 2.33
-gate.time = 0.25
+gate.clua = 2.01
+gate.time = 0.22
 
 [workload."programs.closures"]
 goal.clua = 1.0
-gate.clua = 2.63
-gate.time = 0.25
+gate.clua = 2.6
+gate.time = 0.24
 
 [workload."programs.coro"]
 goal.clua = 1.0
-gate.clua = 2.66
-gate.time = 0.096
+gate.clua = 2.45
+gate.time = 0.089
 
 [workload."programs.mandel"]
 goal.clua = 1.0
-gate.clua = 2.46
-gate.time = 0.048
+gate.clua = 2.43
+gate.time = 0.047
 
 [workload."programs.matmul"]
 goal.clua = 1.0
-gate.clua = 2.46
+gate.clua = 2.39
 gate.time = 0.02
 
 [workload."programs.oop"]
 goal.clua = 1.0
-gate.clua = 2.24
-gate.time = 0.57
+gate.clua = 2.12
+gate.time = 0.54
 
 [workload."programs.pairs"]
 goal.clua = 1.0
-gate.clua = 0.84
-gate.time = 0.18
+gate.clua = 0.76
+gate.time = 0.16
 
 [workload."programs.queens"]
 goal.clua = 1.0
-gate.clua = 2.84
+gate.clua = 2.57
 gate.time = 0.02
 
 [workload."programs.sort"]
 goal.clua = 1.0
-gate.clua = 0.36
-gate.time = 0.38
+gate.clua = 0.29
+gate.time = 0.28
 
 [workload."programs.strings"]
 goal.clua = 1.0
-gate.clua = 1.51
-gate.time = 0.35
+gate.clua = 1.48
+gate.time = 0.34
 
 [workload."programs.varargs"]
 goal.clua = 1.0
-gate.clua = 1.92
-gate.time = 0.089
+gate.clua = 1.79
+gate.time = 0.082
 
 [workload."regression.coroutines"]
 goal.clua = 1.0
@@ -197,8 +197,8 @@ gate.time = 0.02
 
 [workload."regression.deepframes"]
 goal.clua = 1.0
-gate.clua = 2.59
-gate.time = 0.13
+gate.clua = 1.63
+gate.time = 0.077
 
 [workload."regression.errors"]
 goal.clua = 1.0
@@ -207,37 +207,37 @@ gate.time = 0.02
 
 [workload."regression.fastpaths"]
 goal.clua = 1.0
-gate.clua = 1.97
-gate.time = 0.064
+gate.clua = 1.94
+gate.time = 0.063
 
 [workload."regression.fuzz_expr"]
 goal.clua = 1.0
-gate.clua = 2.67
-gate.time = 0.045
+gate.clua = 2.48
+gate.time = 0.042
 
 [workload."regression.fuzz_table"]
 goal.clua = 1.0
-gate.clua = 3.07
+gate.clua = 2.89
 gate.time = 0.02
 
 [workload."regression.int_float"]
 goal.clua = 1.0
-gate.clua = 2.7
+gate.clua = 2.58
 gate.time = 0.02
 
 [workload."regression.io_os"]
 goal.clua = 1.0
-gate.clua = 1.97
+gate.clua = 1.86
 gate.time = 0.02
 
 [workload."regression.limits"]
 goal.clua = 1.0
-gate.clua = 1.74
-gate.time = 0.17
+gate.clua = 1.38
+gate.time = 0.13
 
 [workload."regression.load_dump"]
 goal.clua = 1.0
-gate.clua = 2.84
+gate.clua = 2.81
 gate.time = 0.02
 
 [workload."regression.metamethods"]
@@ -247,7 +247,7 @@ gate.time = 0.02
 
 [workload."regression.random_math"]
 goal.clua = 1.0
-gate.clua = 2.57
+gate.clua = 2.53
 gate.time = 0.02
 
 [workload."regression.strings"]
@@ -257,23 +257,23 @@ gate.time = 0.02
 
 [workload."regression.tables"]
 goal.clua = 1.0
-gate.clua = 2.51
+gate.clua = 2.37
 gate.time = 0.02
 
 [workload."regression.tbc_goto"]
 goal.clua = 1.0
-gate.clua = 2.71
+gate.clua = 2.62
 gate.time = 0.02
 
 [workload."regression.weak_gc"]
 goal.clua = 1.0
-gate.clua = 2.72
-gate.time = 0.023
+gate.clua = 2.61
+gate.time = 0.022
 
 [workload."regression.workloads"]
 goal.clua = 1.0
-gate.clua = 2.52
-gate.time = 0.37
+gate.clua = 2.47
+gate.time = 0.35
 
 [workload."regression.wrapcalls"]
 goal.clua = 1.0
@@ -339,7 +339,7 @@ gate.time = 0.02
 
 [workload."startup.empty"]
 goal.clua = 1.0
-gate.clua = 2.58
+gate.clua = 2.57
 gate.time = 0.02
 
 [workload."startup.stdlibs"]
