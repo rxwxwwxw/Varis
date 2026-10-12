@@ -16,7 +16,7 @@
 /// always a typo, and a typo in a symbol makes a storylet silently never appear). The other checks the milestone calls for
 /// (unknown relations, unreachable storylets, the content tier) need the project to be loaded
 /// and are not implemented yet.
-module varis.workbench.check;
+module varis.services.check;
 
 import core.stdc.stdio;
 

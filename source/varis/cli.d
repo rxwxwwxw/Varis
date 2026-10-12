@@ -516,9 +516,9 @@ private int runServe(string[] argv, ref LuaState state) {
     return serveWorkbench(state, directory, port);
 }
 
-/// `varis check [--json] [files...]`: compile without running (see varis.workbench.check).
+/// `varis check [--json] [files...]`: compile without running (see varis.services.check).
 private int runCheck(string[] argv, ref LuaState state) {
-    import varis.workbench.check : checkProject;
+    import varis.services.check : checkProject;
 
     bool json;
     string[] files;

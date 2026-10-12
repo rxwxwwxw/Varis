@@ -42,10 +42,10 @@ def check(files=None):
 LAYERS = [
     ("narrative", ("source/varis/narrative/", "source/varis/lib/narrative.d", "source/varis/lib/quality.d")),
     ("world model", ("source/varis/logic/", "source/varis/lib/logic.d")),
-    ("tools", ("source/varis/workbench/", "source/varis/cli.d")),
+    ("tools", ("source/varis/workbench/", "source/varis/services/", "source/varis/cli.d")),
 ]
 RANK = {"core": 0, "world model": 1, "narrative": 2, "tools": 3}
-IMPORT_LAYER = [("varis.workbench", "tools"), ("varis.narrative", "narrative"), ("varis.lib.narrative", "narrative"),
+IMPORT_LAYER = [("varis.workbench", "tools"), ("varis.services", "tools"), ("varis.narrative", "narrative"), ("varis.lib.narrative", "narrative"),
                 ("varis.lib.quality", "narrative"), ("varis.logic", "world model"), ("varis.lib.logic", "world model")]
 # The two aggregators that open every library for a state are allowed to name the upper layers.
 LAYER_EXEMPT = {"source/varis/package.d", "source/varis/lib/package.d"}
