@@ -102,6 +102,15 @@ def main():
         assert call("/api/eval", body=program)["output"] == "3\n"
         assert call("/api/continue", body="")["error"] == "not stopped"
 
+        # Completion: globals and keywords, table fields, and symbols (storylets and relations).
+        def names(text):
+            return [i["name"] for i in call("/api/complete", body=text)["items"]]
+        assert "narrative" in names("narr") and "string" in names("local x = str")
+        assert names("string.for") == ["format"]
+        assert "new_session" in names("s2 = G.new_")
+        assert "lamp" in names("narrative.explain(s, :la") and "at" in names("query a")
+        assert names("") == []
+
         # Files: listing, reading, the syntax check, and path safety.
         files = call("/api/files")["files"]
         assert "game.lua" in files and "content/lamp.lua" in files

@@ -157,7 +157,21 @@ $("toggleBreak").onclick = async () => {
   const data = await api("/api/breakpoints", {}, breakpoints.join("\n"));
   breakpoints = data.breakpoints.map(b => b.file + ":" + b.line); renderBreaks();
 };
+// Tab completes the name before the cursor (in the command window and the editor).
+async function completeIn(area) {
+  const at = area.selectionStart; const before = area.value.slice(0, at);
+  const line = before.slice(before.lastIndexOf("\n") + 1);
+  const data = await api("/api/complete", {}, line);
+  if (!data.items || !data.items.length) return false;
+  let common = data.items[0].name;
+  for (const item of data.items) { while (!item.name.startsWith(common)) common = common.slice(0, -1); }
+  const extra = common.slice(data.prefix.length);
+  if (extra) { area.setRangeText(extra, at, at, "end"); if (area === $("source")) markDirty(); }
+  if (data.items.length > 1) logLine(data.items.map(i => i.name).join("  ") + "\n");
+  return true;
+}
 $("input").addEventListener("keydown", event => {
+  if (event.key === "Tab") { event.preventDefault(); completeIn($("input")); return; }
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     const text = $("input").value; $("input").value = "";
@@ -283,7 +297,12 @@ $("run").onclick = async () => {
 let checkTimer = 0;
 $("source").addEventListener("input", () => { markDirty(); clearTimeout(checkTimer); checkTimer = setTimeout(check, 400); });
 $("source").addEventListener("keydown", event => {
-  if (event.key === "Tab") { event.preventDefault(); document.execCommand("insertText", false, "    "); }
+  if (event.key === "Tab") {
+    event.preventDefault();
+    const before = $("source").value.slice(0, $("source").selectionStart);
+    // After a name character Tab completes; otherwise it indents.
+    if (/[\w.:]$/.test(before)) completeIn($("source")); else document.execCommand("insertText", false, "    ");
+  }
   if ((event.metaKey || event.ctrlKey) && event.key === "s") { event.preventDefault(); saveFile(); }
 });
 

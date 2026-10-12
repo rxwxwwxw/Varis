@@ -199,6 +199,71 @@ function W.why(id)
         error = trace and trace.error and tostring(trace.error) or "", goals = goals, instances = instances })
 end
 
+-- Completion for the command window and editor: names reachable from the text before the cursor.
+-- "pre" completes globals, keywords and (after a colon) storylet ids and relation names;
+-- "a.b.pre" completes the fields of the table a.b. Read-only: it indexes with rawget only.
+local keywords = { "and", "break", "do", "else", "elseif", "end", "false", "for", "function", "goto", "if", "in",
+    "local", "nil", "not", "or", "repeat", "return", "then", "true", "until", "while",
+    "relation", "fact", "retract", "rule", "query", "transaction", "rollback", "storylet", "choice", "action",
+    "deck", "when", "effect", "title", "text", "priority", "set", "delete", "adjust", "logic" }
+function W.complete(text)
+    local symbol = text:match(":([%a_][%w_]*)$")
+    local found, seen = {}, {}
+    local function add(name, kind)
+        if type(name) == "string" and not seen[name] then seen[name] = true; found[#found + 1] = { name = name, kind = kind } end
+    end
+    local prefix
+    if symbol and not text:match("[%w_%]%)]:[%a_][%w_]*$") then
+        prefix = symbol
+        for _, id in ipairs(W.storyletIds()) do if id:sub(1, #prefix) == prefix then add(id, "storylet") end end
+        for name, value in pairs(_G) do
+            if type(value) == "userdata" then
+                local ok, list = pcall(W.relations, value)
+                if ok and list then
+                    for _, r in ipairs(list) do if r.name:sub(1, #prefix) == prefix then add(r.name, "relation") end end
+                end
+            end
+        end
+    else
+        local path, last = text:match("([%a_][%w_%.]*)%.([%w_]*)$")
+        if path then
+            prefix = last
+            local value = _G
+            for part in path:gmatch("[^%.]+") do
+                value = type(value) == "table" and rawget(value, part) or nil
+            end
+            if type(value) == "table" then
+                for name, field in pairs(value) do
+                    if type(name) == "string" and name:sub(1, #prefix) == prefix then add(name, type(field)) end
+                end
+            end
+        else
+            prefix = text:match("([%a_][%w_]*)$") or ""
+            if prefix ~= "" then
+                for name, value in pairs(_G) do
+                    if type(name) == "string" and name:sub(1, #prefix) == prefix and name ~= "__workbench" then add(name, type(value)) end
+                end
+                for _, word in ipairs(keywords) do if word:sub(1, #prefix) == prefix then add(word, "keyword") end end
+                for _, r in ipairs(W.worldRelationNames()) do if r:sub(1, #prefix) == prefix then add(r, "relation") end end
+            end
+        end
+    end
+    table.sort(found, function(a, b) return a.name < b.name end)
+    while #found > 60 do found[#found] = nil end
+    return encode({ prefix = prefix or "", items = found })
+end
+
+function W.worldRelationNames()
+    local names = {}
+    for _, value in pairs(_G) do
+        if type(value) == "userdata" then
+            local ok, list = pcall(W.relations, value)
+            if ok and list then for _, r in ipairs(list) do names[#names + 1] = r.name end end
+        end
+    end
+    return names
+end
+
 function W.contentList()
     return encode({ storylets = W.storyletIds() })
 end
@@ -1049,6 +1114,11 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
         return Disposition.done;
     case "/api/why":
         respond(socket, 200, "application/json", callView(state, "why", [LuaValue(parameter("id"))], ok));
+        return Disposition.done;
+    case "/api/complete":
+        respond(socket, 200, "application/json", callView(state, "complete", [
+            LuaValue(request.body_)
+        ], ok));
         return Disposition.done;
     case "/api/content":
         respond(socket, 200, "application/json", callView(state, "contentList", [], ok));
