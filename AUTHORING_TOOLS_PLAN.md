@@ -1,6 +1,6 @@
 # Authoring tools plan: project model, checker, language services, writer workflow
 
-Status: **proposed**, October 12, 2026. It details milestones 30, 31, 32 and 33 of
+Status: **proposed**, October 12, 2026; stage A0 implemented the same day (see §4). It details milestones 30, 31, 32 and 33 of
 [ROADMAP.md](ROADMAP.md) Phase 10. Section 2 says what exists; everything else is a plan. Command
 names, file names and formats below are proposals. Language behaviour is defined only by the
 [manual](docs/README.md).
@@ -142,7 +142,7 @@ Stage letters are `A` (authoring tools). Do them in this order. Each stage passe
 
 | Stage | Milestone | Deliverable | Needs | Exit test |
 | --- | --- | --- | --- | --- |
-| A0 | 30 | **Manifest, diagnostic record, ranges.** `project.lua` read by `check` and `serve`; the record of §3.4 in `check` output; end positions on AST nodes; a `check` suite in `tests/manifest.toml` with golden output. | Nothing | *Saltmarsh Light* has a manifest. `varis check --json` on it is a golden file. Its existing five fields are unchanged. |
+| A0 (done) | 30 | **Manifest, diagnostic record, ranges.** `project.lua` read by `check` and `serve`; the record of §3.4 in `check` output; end positions on AST nodes; a `check` suite in `tests/manifest.toml` with golden output. | Nothing | *Saltmarsh Light* has a manifest. `varis check --json` on it is a golden file. Its existing five fields are unchanged. |
 | A1 | 30, 32 | **Project index.** The four tables of §3.3. The symbol lint and go-to-definition are reimplemented on it and the token and line scanners are deleted. A debugging dump (`varis check --index`). | A0 | The index dump of the sample game is a golden file. The workbench suite's definition requests return what they return today, plus choices and qualities found through the AST. |
 | A2 | 31 | **Parser recovery.** In tool mode the parser records an error, skips to the next statement or definition boundary and continues, returning a partial AST and a list. In normal mode it behaves exactly as today. | A0 | A fixture with three independent mistakes reports three. Every existing rejection and error-message test is unchanged. `make bench-check` shows no load-time change. |
 | A3 | 30, 31 | **Static checks with writer-facing messages.** See the list below. | A1, A2 | One fixture per code, each with the expected record. The sample game reports nothing new except findings reviewed and recorded in the change. |

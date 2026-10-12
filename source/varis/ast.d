@@ -32,6 +32,9 @@ T as(T : AstNode)(AstNode node) @trusted {
 
 abstract class AstNode {
     SourceLoc loc;
+    /// Position just after the node's last token; line 0 when the parser did not record it.
+    /// Recorded for statements, definitions and string literals (tools report ranges).
+    SourceLoc end = SourceLoc(0, 0);
 
     this(SourceLoc loc = SourceLoc.init) {
         this.loc = loc;

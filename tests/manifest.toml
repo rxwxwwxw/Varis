@@ -167,6 +167,18 @@ cases = [
   { id = "check-sample-game", command = ["{candidate}", "check", "main.lua", "game.lua", "world.lua", "qualities.lua", "content/decks.lua", "content/endings.lua", "content/events.lua", "content/explore.lua", "content/keeper.lua", "content/lamp.lua", "content/market.lua", "tools/check.lua"], cwd = "sample-game" },
 ]
 
+# `varis check` output: the sample game's golden diagnostics and fixtures for the diagnostic record
+# (AUTHORING_TOOLS_PLAN.md stage A0 onward).
+[[suite]]
+id = "check"
+kind = "script"
+tier = "fast"
+tags = ["tools", "check"]
+timeout = 120
+cases = [
+  { id = "diagnostics", command = ["python3", "tests/check/check_test.py", "{candidate}"] },
+]
+
 [[suite]]
 id = "selftest"
 kind = "script"

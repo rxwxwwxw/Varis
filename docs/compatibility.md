@@ -52,6 +52,38 @@ Lua ABI: native error/yield continuations, arbitrary callbacks into the VM, and
 internal Lua structures must not be assumed compatible. No new Varis native ABI
 or public programmatic Lua rule/query builder is defined by this manual.
 
+### 8.3 — The project manifest and `varis check`
+
+`bin/varis check [--json] [files...]` compiles files without running them. Without
+file arguments it checks the files listed by the project manifest, or every `.lua`
+file under the current directory when there is no manifest.
+
+The **project manifest** is the file `project.lua` at the project root: one
+`return { ... }` of literals. It is parsed and **never executed**. Fields:
+
+| Field | Value | Meaning |
+| --- | --- | --- |
+| `id` | string | Package id. |
+| `language` | string | Language tag of the display text in the source. |
+| `entry` | string | Module that loads and seals the content. |
+| `session` | string | `"module.function"`: function of a seed that returns a session. |
+| `content` | list of patterns | Files that hold content. |
+| `scripts` | list of patterns | Engine scripts. |
+| `tests` | list of patterns | Author tests. |
+| `locales` | list of strings | Translations kept in the repository. |
+
+In a pattern `*` matches within one path segment, `**` across segments and `?` one
+character. An unknown field is a warning (`manifest-key`); a manifest that does not
+have this shape is an error (`manifest`).
+
+Every diagnostic has a stable `code`, a `severity` (`error`, `warning`, `note`), a
+`file`, a start `line` and `column` and an end `endLine` and `endColumn` (1-based
+byte columns; the end is just past the last byte; 0 when unknown), and a `message`.
+`--json` prints `{"files": N, "problems": [...]}`; the text form is
+`file:line:column: severity: message [code]`. Only errors give exit status 1.
+Codes in use: `syntax`, `io`, `manifest`, `manifest-key` and `symbol-once` (a
+symbol written once in the whole project and never as a plain name).
+
 ## 9 — Compatibility and implementation limits
 
 ### 9.1 — Relationship to Lua

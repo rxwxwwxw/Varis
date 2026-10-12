@@ -98,6 +98,8 @@ struct Token {
     double floatValue;
     SourceLoc loc;
     string raw; // source text of the token (for error messages)
+    int endLine; // position just after the token's last byte (tools report ranges)
+    int endColumn;
 
     string toString() const {
         import std.conv : to;
@@ -186,6 +188,8 @@ class Lexer {
     private Token scanToken() {
         auto token = scanTokenRaw();
         token.raw = token.type == TokenType.EOF ? "<eof>" : source[tokenStartPos .. cursor];
+        token.endLine = line;
+        token.endColumn = column;
         return token;
     }
 

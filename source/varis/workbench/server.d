@@ -1170,6 +1170,13 @@ private Disposition handle(LuaState state, int socket, ref Request request, stri
             }
             return Disposition.done;
         }
+    case "/api/project": {
+            import varis.services.manifest : loadManifest, manifestJson;
+
+            auto manifest = loadManifest(".");
+            respond(socket, 200, "application/json", manifestJson(manifest));
+            return Disposition.done;
+        }
     case "/api/workspace":
         respond(socket, 200, "application/json", callView(state, "workspace", [], ok));
         return Disposition.done;

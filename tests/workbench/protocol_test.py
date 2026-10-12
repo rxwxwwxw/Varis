@@ -117,6 +117,11 @@ def main():
         assert any(d["kind"] == "function" for d in call("/api/definition", {"name": "new_session"})["definitions"])
         assert call("/api/definition", {"name": "no_such_name_anywhere"})["definitions"] == []
 
+        # The project manifest is read without executing it.
+        project = call("/api/project")
+        assert project["present"] and project["id"] == "saltmarsh" and project["entry"] == "game", project
+        assert project["problems"] == [] and "content/*.lua" in project["content"], project
+
         # Files: listing, reading, the syntax check, and path safety.
         files = call("/api/files")["files"]
         assert "game.lua" in files and "content/lamp.lua" in files

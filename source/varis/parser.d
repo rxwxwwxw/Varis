@@ -120,7 +120,14 @@ class Parser {
         }
     }
 
+    /// The token a syntax error was reported at; tools read it to give the error a range.
+    /// Recording it changes nothing the error says.
+    Token errorToken;
+    bool hasErrorToken;
+
     private void syntaxError(string msg, Token tok) {
+        errorToken = tok;
+        hasErrorToken = true;
         throw new LuaException(LuaValue(format("%s:%d: %s near %s", formatSourceName(), tok.loc.line, msg, formatNear(
                 tok))));
     }
@@ -183,6 +190,13 @@ class Parser {
     }
 
     private Stmt parseStatement() {
+        auto stmt = parseStatementInner();
+        if (stmt !is null && previous.endLine > 0)
+            stmt.end = SourceLoc(previous.endLine, previous.endColumn);
+        return stmt;
+    }
+
+    private Stmt parseStatementInner() {
         enterLevel();
         scope (exit)
             --nestingLevel;
@@ -678,7 +692,9 @@ class Parser {
             return new LiteralFloatExpr(previous.floatValue, loc);
         }
         if (match(TokenType.String)) {
-            return new LiteralStringExpr(previous.text, loc);
+            auto literal = new LiteralStringExpr(previous.text, loc);
+            literal.end = SourceLoc(previous.endLine, previous.endColumn);
+            return literal;
         }
         if (match(TokenType.TripleDot)) {
             if (!varargContext[$ - 1])
@@ -809,7 +825,9 @@ class Parser {
         } else if (match(TokenType.LBrace)) {
             return [parseTableConstructor(loc)];
         } else if (match(TokenType.String)) {
-            return [new LiteralStringExpr(previous.text, loc)];
+            auto literal = new LiteralStringExpr(previous.text, loc);
+            literal.end = SourceLoc(previous.endLine, previous.endColumn);
+            return [literal];
         }
 
         syntaxError("function arguments expected", current);
@@ -1013,13 +1031,16 @@ class Parser {
             definition.fieldNames ~= field;
             if (field == "title" || field == "text") {
                 auto value = consume(TokenType.String, "template string literal expected");
-                definition.fieldValues ~= new LiteralStringExpr(value.text, value.loc);
+                auto literal = new LiteralStringExpr(value.text, value.loc);
+                literal.end = SourceLoc(value.endLine, value.endColumn);
+                definition.fieldValues ~= literal;
             } else
                 definition.fieldValues ~= parseExpr();
         }
         if (kind == "storylet") {
             while (check(TokenType.Identifier) && current.text == "choice")
                 definition.choices ~= parseNarrativeDefinition("choice", current.loc);
+            definition.choices[$ - 1].end = SourceLoc(previous.endLine, previous.endColumn);
             if (!definition.choices.length)
                 syntaxError("storylet requires at least one choice", current);
         } else {

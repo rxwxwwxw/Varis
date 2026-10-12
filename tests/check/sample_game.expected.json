@@ -1,0 +1,60 @@
+{
+ "files": 13,
+ "problems": [
+  {
+   "file": "content/events.lua",
+   "line": 36,
+   "severity": "warning",
+   "code": "symbol-once",
+   "message": "symbol :new_day appears only here; is it misspelled?",
+   "column": 24,
+   "endLine": 36,
+   "endColumn": 32,
+   "subject": "symbol :new_day"
+  },
+  {
+   "file": "content/events.lua",
+   "line": 92,
+   "severity": "warning",
+   "code": "symbol-once",
+   "message": "symbol :ellen_may appears only here; is it misspelled?",
+   "column": 55,
+   "endLine": 92,
+   "endColumn": 65,
+   "subject": "symbol :ellen_may"
+  },
+  {
+   "file": "content/explore.lua",
+   "line": 33,
+   "severity": "warning",
+   "code": "symbol-once",
+   "message": "symbol :moved appears only here; is it misspelled?",
+   "column": 28,
+   "endLine": 33,
+   "endColumn": 34,
+   "subject": "symbol :moved"
+  },
+  {
+   "file": "content/explore.lua",
+   "line": 51,
+   "severity": "warning",
+   "code": "symbol-once",
+   "message": "symbol :unlocked appears only here; is it misspelled?",
+   "column": 28,
+   "endLine": 51,
+   "endColumn": 37,
+   "subject": "symbol :unlocked"
+  },
+  {
+   "file": "content/keeper.lua",
+   "line": 32,
+   "severity": "warning",
+   "code": "symbol-once",
+   "message": "symbol :given appears only here; is it misspelled?",
+   "column": 28,
+   "endLine": 32,
+   "endColumn": 34,
+   "subject": "symbol :given"
+  }
+ ]
+}

@@ -11,7 +11,8 @@
 /// `varis check` (ROADMAP milestone 30, first version): compiles every source file of a project
 /// without running any of it and reports what does not compile, with file and line.
 ///
-/// This version finds syntax and compile-time errors, and warns about symbols written only once
+/// This version finds syntax and compile-time errors with a range, reads the project manifest
+/// (`project.lua`, services/manifest.d) and warns about symbols written only once
 /// in the whole project and never as a plain name (`:keepr` next to many `:keeper`s is almost
 /// always a typo, and a typo in a symbol makes a storylet silently never appear). The other checks the milestone calls for
 /// (unknown relations, unreachable storylets, the content tier) need the project to be loaded
@@ -23,19 +24,17 @@ import core.stdc.stdio;
 import varis.state;
 import varis.exception : LuaException;
 import varis.lexer : Lexer, Token, TokenType;
-import varis.workbench.server : jsonQuote, readFile, listFiles, sortStrings, errorText;
-
-private struct Diagnostic {
-    string file;
-    long line; // 0 when the message carries no line
-    string code;
-    string message;
-    bool warning;
-}
+import varis.parser : Parser;
+import varis.services.diagnostic;
+import varis.services.manifest;
+import varis.workbench.server : readFile, listFiles, sortStrings, errorText;
 
 private struct SymbolUse {
     string file;
-    long line;
+    int line;
+    int column;
+    int endLine;
+    int endColumn;
     size_t count;
 }
 
@@ -56,7 +55,8 @@ private void collectSymbols(string file, string content, ref SymbolUse[string] u
                     if (auto known = name.text in uses)
                         known.count++;
                     else
-                        uses[name.text] = SymbolUse(file, name.loc.line, 1);
+                        uses[name.text] = SymbolUse(file, token.loc.line, token.loc.column, name.endLine, name
+                                .endColumn, 1);
                 }
                 previous = name.type;
                 if (name.type == TokenType.EOF)
@@ -73,15 +73,12 @@ private void collectSymbols(string file, string content, ref SymbolUse[string] u
     }
 }
 
-/// Splits "chunk:12: message" as produced by the compiler for a chunk named "@file".
+/// Splits "chunk:12: message" as produced by the parser and compiler for a chunk named "@file".
 private Diagnostic diagnose(string file, string text) {
-    Diagnostic result;
-    result.file = file;
-    result.code = "syntax";
-    result.message = text;
+    auto result = makeDiagnostic("error", "syntax", file, 0, 0, 0, 0, text);
     if (text.length > file.length + 1 && text[0 .. file.length] == file && text[file.length] == ':') {
         size_t at = file.length + 1;
-        long line;
+        int line;
         while (at < text.length && text[at] >= '0' && text[at] <= '9')
             line = line * 10 + (text[at++] - '0');
         if (at < text.length && text[at] == ':') {
@@ -95,31 +92,63 @@ private Diagnostic diagnose(string file, string text) {
     return result;
 }
 
-/// Checks the given files, or every `.lua` file under the current directory when none is given.
+/// Checks the given files; with none given, the files the project manifest lists, or every `.lua`
+/// file under the current directory when there is no manifest.
 /// Prints one line per problem (or JSON with `json`) and returns the process exit status:
 /// 1 when a file does not compile, 0 otherwise (warnings do not fail the check).
 int checkProject(LuaState state, string[] files, bool json) {
+    auto manifest = loadManifest(".");
     if (files.length == 0) {
-        string[] found;
-        listFiles(".", "", 0, found);
-        foreach (name; found)
-            if (name.length > 4 && name[$ - 4 .. $] == ".lua")
-                files ~= name;
-        sortStrings(files);
+        if (manifest.present && (manifest.content.length || manifest.scripts.length || manifest.tests.length))
+            files = expandPatterns(".", manifest.content ~ manifest.scripts ~ manifest.tests);
+        else {
+            string[] found;
+            listFiles(".", "", 0, found);
+            foreach (name; found)
+                if (name.length > 4 && name[$ - 4 .. $] == ".lua")
+                    files ~= name;
+            sortStrings(files);
+        }
+        // The manifest is read, never executed; its own problems are reported above.
+        string[] kept;
+        foreach (name; files)
+            if (!(manifest.present && name == manifest.path))
+                kept ~= name;
+        files = kept;
     }
-    Diagnostic[] problems;
+    Diagnostic[] problems = manifest.problems.dup;
     SymbolUse[string] symbolUses;
     bool[string] identifiers;
     foreach (file; files) {
         string content;
         if (!readFile(file, content)) {
-            problems ~= Diagnostic(file, 0, "io", "cannot read file");
+            problems ~= makeDiagnostic("error", "io", file, 0, 0, 0, 0, "cannot read file");
             continue;
         }
         // A leading "#!" line is not part of the program.
         if (content.length > 1 && content[0] == '#') {
             content = "--" ~ content[2 .. $];
         }
+        // Parse first, to know where a syntax error is; then compile for the errors the
+        // compiler finds. Compiling parses again, which costs little against what it finds.
+        auto parser = new Parser(content, "@" ~ file);
+        bool parsed;
+        try {
+            parser.parse();
+            parsed = true;
+        } catch (LuaException failure) {
+            auto d = diagnose(file, errorText(failure.errorObject));
+            if (parser.hasErrorToken) {
+                auto at = parser.errorToken;
+                d.line = at.loc.line;
+                d.column = at.loc.column;
+                d.endLine = at.endLine;
+                d.endColumn = at.endColumn;
+            }
+            problems ~= d;
+        }
+        if (!parsed)
+            continue;
         try {
             state.loadString(content, "@" ~ file);
             collectSymbols(file, content, symbolUses, identifiers);
@@ -133,28 +162,27 @@ int checkProject(LuaState state, string[] files, bool json) {
         if (use.count == 1 && name !in identifiers)
             once ~= name;
     sortStrings(once);
-    size_t errors = problems.length;
     foreach (name; once) {
         auto use = symbolUses[name];
-        problems ~= Diagnostic(use.file, use.line, "symbol-once", "symbol :" ~ name ~ " appears only here; is it misspelled?", true);
+        problems ~= makeDiagnostic("warning", "symbol-once", use.file, use.line, use.column, use.endLine, use
+                .endColumn,
+                "symbol :" ~ name ~ " appears only here; is it misspelled?", "symbol :" ~ name);
     }
+    sortDiagnostics(problems);
+    size_t errors;
+    foreach (problem; problems)
+        if (problem.isError)
+            ++errors;
     if (json) {
         string text = `{"files":` ~ jsonNumber(files.length) ~ `,"problems":[`;
         foreach (i, problem; problems)
-            text ~= (i ? "," : "") ~ `{"file":` ~ jsonQuote(problem.file) ~ `,"line":` ~ jsonNumber(
-                    problem.line) ~ `,"severity":` ~ (problem.warning ? `"warning"` : `"error"`) ~ `,"code":` ~ jsonQuote(
-                    problem.code) ~ `,"message":` ~ jsonQuote(
-                    problem.message) ~ `}`;
+            text ~= (i ? "," : "") ~ diagnosticJson(problem);
         text ~= "]}\n";
         fwrite(text.ptr, 1, text.length, stdout);
     } else {
         foreach (problem; problems) {
-            if (problem.line)
-                printf("%s:%lld: %s [%s]\n", (problem.file ~ "\0").ptr, problem.line, (problem.message ~ "\0").ptr,
-                        (problem.code ~ "\0").ptr);
-            else
-                printf("%s: %s [%s]\n", (problem.file ~ "\0").ptr, (problem.message ~ "\0").ptr, (problem.code ~ "\0")
-                        .ptr);
+            auto line = diagnosticText(problem) ~ "\n";
+            fwrite(line.ptr, 1, line.length, stdout);
         }
         printf("%zu file(s) checked, %zu error(s), %zu warning(s)\n", files.length, errors, problems.length - errors);
     }
