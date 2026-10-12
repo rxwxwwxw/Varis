@@ -40,6 +40,16 @@ def rpg():
                                 cwd=ROOT, env=dict(ENV, **extra), capture_output=True, text=True, timeout=60)
         assert result.returncode == 0 and "checks passed" in result.stdout, (name, result.stdout + result.stderr)
         assert len(set(out.read_bytes()[offset:])) > 30, name
+    # Played by clicks alone, through the same widget tree the window shows: every click must
+    # change the game (a click that lands on the wrong row is a soft lock), for each build, on a
+    # large and on a small window.
+    for build, size in (("strength", "1920x1080"), ("wits", "1280x720"), ("charm", "420x800")):
+        out = ROOT / f"build/sdl/hollowbrook-play-{build}.bmp"
+        result = subprocess.run([str(BINARY), str(ROOT / "sample-rpg/presentation.json"), "--smoke", str(out)],
+                                cwd=ROOT, env=dict(ENV, VARIS_SMOKE_PLAY="ui", VARIS_SMOKE_BUILD=build,
+                                                   VARIS_SMOKE_SIZE=size),
+                                capture_output=True, text=True, timeout=120)
+        assert result.returncode == 0 and "ui play: finished" in result.stdout, (build, result.stdout + result.stderr)
     for leftover in ("autosave.json", "settings.json", "quicksave.json"):
         (ROOT / "sample-rpg" / leftover).unlink(missing_ok=True)
 

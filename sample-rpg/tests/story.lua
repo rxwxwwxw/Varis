@@ -253,3 +253,68 @@ test.case("a loss never takes more than you have", function()
     pick(t, "thief", "let_go")
     t:expect_quality(:player, :coins, 0)
 end)
+
+-- The intended road to the smith's ending, played through the rules rather than by setting facts:
+-- lift the anvil, learn leverage, earn the fee, find three clues, win two Trials.
+local function sleep_to(t, day)
+    while quality.get(:world, :day, t.session:world()) < day do
+        if quality.get(:world, :slot, t.session:world()) < 4 and t:shown("sleep") == nil then
+            error("cannot sleep here")
+        end
+        pick(t, "sleep", "sleep")
+    end
+end
+
+test.case("a patient strong build can reach the smith's ending", function()
+    local t = strong(start())
+    local w = t.session:world()
+    -- Day 1: chores for coin, the anvil, then the lesson.
+    pick(t, "chores", "work")
+    walk(t, :square)
+    walk(t, :forge)
+    pick(t, "anvil", "lift")
+    pick(t, "mentor", "learn")
+    t:expect_fact "technique(:leverage)"
+    walk(t, :square)
+    walk(t, :house)
+    sleep_to(t, 2)
+    -- Day 2: three jobs on the board, then the entry fee.
+    walk(t, :square)
+    for _, job in ipairs { :carry_barrels, :copy_ledgers, :greet_visitors } do
+        pick_with(t, "board", :take, {})  -- the first listed job; each can be taken once
+    end
+    pick(t, "fee", "pay")
+    t:expect_fact "flag(:entered)"
+    walk(t, :house)
+    sleep_to(t, 6)
+    -- Day 6: the banner, and the three witnesses.
+    walk(t, :square)
+    pick(t, "banner_theft", "push")
+    walk(t, :forge)
+    pick(t, "mara_clue", "ask")
+    walk(t, :square)
+    walk(t, :archive)
+    pick(t, "catalog", "sort")
+    pick(t, "pell_clue", "ask")
+    walk(t, :square)
+    walk(t, :market)
+    pick(t, "lost_child", "help")
+    walk(t, :square)
+    walk(t, :tavern)
+    pick(t, "tilly_clue", "ask")
+    t:expect_fact "clue_count(3)"
+    walk(t, :square)
+    walk(t, :house)
+    sleep_to(t, 10)
+    -- Midsummer: two more slots, then the Trials.
+    pick(t, "chores", "work")
+    pick(t, "read_books", "read")
+    t:expect_shown "to_trials"
+    pick(t, "to_trials", "go")
+    pick(t, "trial_strength", "lever")
+    pick(t, "trial_wits", "deduce")
+    pick(t, "trial_charm", "mumble")
+    t:expect_fact "ending(:smith)"
+    pick_with(t, "verdict", :accept, { e = :smith })
+    assert(t:is_over())
+end)

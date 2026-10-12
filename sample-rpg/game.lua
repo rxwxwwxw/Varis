@@ -63,7 +63,8 @@ local function attach(session)
             local key = tostring(t[1]) .. ":" .. tostring(t[2])
             local before = previous[key]
             previous[key] = nil
-            if before ~= nil and type(t[3]) == "number" and t[3] ~= before and G.started(w) then
+            -- The day is on the status bar already; it needs no notice of its own.
+            if t[2] ~= :day and before ~= nil and type(t[3]) == "number" and t[3] ~= before and G.started(w) then
                 G.toasts[#G.toasts + 1] = {entity = t[1], name = t[2], delta = t[3] - before, value = t[3]}
             end
         end,

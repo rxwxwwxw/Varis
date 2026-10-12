@@ -805,6 +805,7 @@ class Label : Widget {
 /// right-hand hint ("locked").
 final class Button : Widget {
     string text, prefix, hint;
+    string detail; // a second, quieter paragraph under the label (what the row means)
     FontRole role = FontRole.small;
     bool enabled = true, selected;
     bool fit; // as wide as its text needs rather than the row it is offered (a toolbar button)
@@ -839,7 +840,8 @@ final class Button : Widget {
         auto inner = maxW - 2 * padPx(ui) - prefixWidth(ui) - hintWidth(ui);
         auto s = ui.measure(text.length ? text : " ", role, wrap ? inner : 0);
         auto w = fit ? min(maxW, s.w + 2 * padPx(ui) + prefixWidth(ui) + hintWidth(ui)) : maxW;
-        return Size(w, s.h + 2 * padPx(ui));
+        auto extra = detail.length ? ui.measure(detail, FontRole.small, max(0, inner)).h + ui.u(3) : 0;
+        return Size(w, s.h + extra + 2 * padPx(ui));
     }
 
     override void draw(Ui ui) {
@@ -868,8 +870,12 @@ final class Button : Widget {
         label_.wrap = wrap;
         label_.overflow = wrap ? Overflow.grow : Overflow.ellipsis;
         label_.alignment = alignment;
-        label_.arrange(ui, Rect(x, inner.y, max(0, right - x), inner.h));
+        auto labelH = ui.measure(text.length ? text : " ", role, wrap ? max(0, right - x) : 0).h;
+        label_.arrange(ui, Rect(x, inner.y, max(0, right - x), min(inner.h, labelH)));
         label_.draw(ui);
+        if (detail.length)
+            ui.drawText(detail, FontRole.small, x, inner.y + labelH + ui.u(3), max(0, right - x),
+                    enabled && !locked ? ui.theme.dim : ui.theme.locked);
     }
 
     override bool event(Ui ui, ref UiEvent e) {
@@ -945,7 +951,7 @@ final class ImageBox : Widget {
 /// One child taller than the box, scrolled with the wheel; the thumb shows where you are.
 final class ScrollBox : Widget {
     Widget child;
-    float revealTop = -1, revealHeight; // a child span to bring into view on the next arrange
+    Widget revealTarget; // a descendant to bring into view on the next arrange
     private float contentHeight;
 
     this(Widget child) {
@@ -973,15 +979,25 @@ final class ScrollBox : Widget {
         contentHeight = s.h;
         auto st = &ui.state(id.length ? id : "scroll");
         auto overflow = max(0, contentHeight - r.h);
-        if (revealTop >= 0) {
-            if (revealTop < st.scroll)
-                st.scroll = revealTop;
-            else if (revealTop + revealHeight > st.scroll + r.h)
-                st.scroll = revealTop + revealHeight - r.h;
-            revealTop = -1;
-        }
         st.scroll = max(0, min(overflow, st.scroll));
-        child.arrange(ui, Rect(r.x, r.y - st.scroll, max(0, r.w - (overflow > 0 ? bar : 0)), max(contentHeight, r.h)));
+        auto content = Rect(r.x, r.y - st.scroll, max(0, r.w - (overflow > 0 ? bar : 0)), max(contentHeight, r.h));
+        child.arrange(ui, content);
+        if (revealTarget !is null) {
+            // Where the target sits in the content now; move the view the least that shows it.
+            auto top = revealTarget.rect.y - content.y, bottom = top + revealTarget.rect.h;
+            auto wanted = st.scroll;
+            if (top < wanted)
+                wanted = top;
+            else if (bottom > wanted + r.h)
+                wanted = bottom - r.h;
+            wanted = max(0, min(overflow, wanted));
+            if (wanted != st.scroll) {
+                st.scroll = wanted;
+                content.y = r.y - st.scroll;
+                child.arrange(ui, content);
+            }
+            revealTarget = null;
+        }
     }
 
     override void draw(Ui ui) {

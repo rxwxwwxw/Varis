@@ -206,4 +206,7 @@ The player has no fixed canvas: it lays widgets out for the window it has (`tool
 
 For testing, `--smoke` honours `VARIS_SMOKE_SIZE=WxH`, `VARIS_SMOKE_SCALE` (a text size index),
 `VARIS_SMOKE_LAYOUT=compact|regular|wide`, `VARIS_SMOKE_OVERLAY`, `VARIS_SMOKE_DRAWER=1` and
-`VARIS_SMOKE_SCREEN=title|scene`.
+`VARIS_SMOKE_SCREEN=title|scene`. `VARIS_SMOKE_PLAY=ui` plays a whole game by pointer and keyboard
+events alone, through the widget tree the window shows (`VARIS_SMOKE_BUILD=strength|wits|charm`,
+`VARIS_SMOKE_STOP_AT=<storylet id>` captures that screen, `VARIS_SMOKE_VERBOSE=1` logs each click); it fails
+when a click does not change the game.

@@ -229,7 +229,7 @@ class GamePlayer {
     Overlay overlay;
     bool drawerOpen;
     Row[] rows;
-    Button[] rowButtons;
+    Button[] rowButtons, menuButtons;
     int selected, menuIndex;
     bool revealSelected;
     ToastView[] toasts;
@@ -594,7 +594,6 @@ class GamePlayer {
             if (!host.advance())
                 return fail(host.error);
         }
-        selected = 0;
         input = "";
         rows = null;
         auto v = host.view;
@@ -615,6 +614,14 @@ class GamePlayer {
                     rows ~= row;
                 } else if (v.beat.kind == "say" || v.beat.kind == "narration")
             history ~= (v.beat.speaker.length ? v.beat.speaker ~ ": " : "") ~ v.beat.text;
+        // The highlighted row starts on the first one that can be taken.
+        selected = 0;
+        foreach (i, ref r; rows)
+            if (r.enabled) {
+                selected = cast(int) i;
+                break;
+            }
+        revealSelected = true;
         bool gained, lost;
         foreach (t; host.takeToasts()) {
             toasts ~= ToastView(t.text, t.good, v_ticks());
@@ -702,7 +709,7 @@ class GamePlayer {
             bar.add(menu);
         }
         auto place = text(placeLabel(), FontRole.heading, ui.theme.text, Overflow.ellipsis);
-        bar.add(place, 1);
+        bar.add(place, 1.8f);
         if (v.values.length) {
             if (!compact)
                 bar.add(text(format("Day %d, %s", cast(long) v.values.get("day", 1), timeLabel()), FontRole.body, ui
@@ -738,6 +745,13 @@ class GamePlayer {
         return p;
     }
 
+    private bool summerStarted() {
+        foreach (ref s; host.view.stories)
+            if (s.id == "look")
+                return true;
+        return false;
+    }
+
     private Box goalsPanel() {
         auto p = panel(true, 10);
         p.add(text("Goals", FontRole.small, ui.theme.accent));
@@ -763,7 +777,8 @@ class GamePlayer {
         if (selected >= 0 && selected < cast(int) rows.length) {
             auto r = rows[selected];
             auto story = v.stories[r.story];
-            detail = story.text;
+            // A question shows its own text above its answers; the panel need not repeat it.
+            detail = story.choices.length > 1 ? "" : story.text;
             if (!r.enabled)
                 reason = story.choices[r.choice].because;
             else if (story.choices[r.choice].text.length)
@@ -776,10 +791,13 @@ class GamePlayer {
     }
 
     private Box narrativePanel() {
-        auto p = panel(true, ui.theme.pad);
-        p.gap = 6;
         string reason;
         auto body = narrativeText(reason);
+        // Nothing to say (character creation): no empty panel; the room goes to the choices.
+        if (!body.length && !reason.length && !(notice.length && ui.now - noticeAt < 4000))
+            return null;
+        auto p = panel(true, ui.theme.pad);
+        p.gap = 6;
         auto label = text(body, FontRole.body, ui.theme.text, Overflow.scroll);
         label.id = "narrative";
         p.add(label, 1);
@@ -790,28 +808,51 @@ class GamePlayer {
         return p;
     }
 
-    private Widget choiceList() {
+    /// The choices as a list. A storylet that asks a question (several choices) is shown as a
+    /// heading with its text, so the question and its answers read together; a storylet with one
+    /// choice is one row, with its description under it when the column is wide enough to show it.
+    private Widget choiceList(bool describe) {
+        auto v = host.view;
         auto list = new Box(true);
         list.gap = 4;
         rowButtons = null;
-        foreach (i, ref r; rows) {
-            // A locked row still answers a click: the reason appears in the text panel.
-            auto b = new Button(r.label, { selected = cast(int) i; choose(i); });
-            b.role = FontRole.small;
-            b.prefix = i < 9 ? format("%d", i + 1) : "";
-            b.hint = r.enabled ? "" : "locked";
-            b.locked = !r.enabled;
-            b.selected = cast(int) i == selected;
-            b.id = format("row%d", i);
-            rowButtons ~= b;
-            list.add(b);
+        size_t index;
+        Widget target;
+        foreach (si, ref story; v.stories) {
+            auto question = story.choices.length > 1;
+            if (question) {
+                auto head = new Box(true);
+                head.gap = 2;
+                head.add(text(story.title, FontRole.body, ui.theme.accent));
+                if (story.text.length)
+                    head.add(text(story.text, FontRole.small, ui.theme.dim));
+                list.add(head);
+            }
+            foreach (ci, ref choice; story.choices) {
+                auto i = index++;
+                auto r = rows[i];
+                auto b = new Button(question ? choice.title : r.label, rowClick(i));
+                b.role = FontRole.small;
+                b.wrap = true;
+                b.prefix = i < 9 ? format("%d", i + 1) : "";
+                b.hint = r.enabled ? "" : "locked";
+                b.locked = !r.enabled;
+                b.selected = cast(int) i == selected;
+                b.id = format("row%d", i);
+                if (describe && !question && story.text.length && story.id != "look")
+                    b.detail = story.text;
+                if (question && !r.enabled && choice.because.length)
+                    b.detail = choice.because;
+                rowButtons ~= b;
+                list.add(b);
+                if (cast(int) i == selected)
+                    target = b;
+            }
         }
         auto scroll = new ScrollBox(list);
         scroll.id = "choices";
-        if (revealSelected && rows.length) {
-            auto rowHeight = ui.measure("Ag", FontRole.small).h + 2 * ui.u(ui.theme.rowPad) + ui.u(4);
-            scroll.revealTop = selected * rowHeight;
-            scroll.revealHeight = rowHeight;
+        if (revealSelected && target !is null) {
+            scroll.revealTarget = target;
             revealSelected = false;
         }
         return scroll;
@@ -821,6 +862,9 @@ class GamePlayer {
     void drawToasts(Ui ui, Rect area) {
         auto y = area.y + ui.u(8);
         ToastView[] alive;
+        // A burst shows its newest few; the rest are not queued up to scroll past.
+        if (toasts.length > 5)
+            toasts = toasts[$ - 5 .. $];
         foreach (ref t; toasts) {
             auto age = ui.now - t.born;
             if (age > 3600)
@@ -849,7 +893,7 @@ class GamePlayer {
     }
 
     private Widget hubBody(SizeClass cls) {
-        auto hint = text("Up/Down, 1-9, Enter: choose   C: sheet   J: journal   M: map   Esc: menu", FontRole.small,
+        auto hint = text("1-9 or Enter: choose   C sheet   J journal   M map   Esc menu", FontRole.small,
                 ui.theme.dim, Overflow.ellipsis);
         final switch (cls) {
         case SizeClass.wide: {
@@ -857,19 +901,22 @@ class GamePlayer {
                 side.gap = 10;
                 side.widthUnits = 300;
                 side.add(statPanel());
-                side.add(goalsPanel());
+                if (summerStarted())
+                    side.add(goalsPanel());
                 auto centre = new Box(true);
                 centre.gap = 0;
                 centre.add(topBar(false));
                 centre.add(stageArea(), 1);
                 auto narrative = narrativePanel();
-                narrative.heightUnits = 190;
-                centre.add(narrative);
+                if (narrative !is null) {
+                    narrative.heightUnits = 190;
+                    centre.add(narrative);
+                }
                 auto right = panel(true, ui.theme.pad);
-                right.widthUnits = 470;
+                right.widthUnits = 540;
                 right.gap = 8;
-                right.add(text("What now?", FontRole.heading, ui.theme.accent));
-                right.add(choiceList(), 1);
+                right.add(text(summerStarted() ? "What now?" : "Who are you?", FontRole.heading, ui.theme.accent));
+                right.add(choiceList(true), 1);
                 right.add(hint);
                 auto row = new Box(false);
                 row.gap = 0;
@@ -891,7 +938,7 @@ class GamePlayer {
                 bottom.heightPx = max(ui.u(250), ui.height * 0.4f);
                 bottom.add(narrativePanel(), 1);
                 auto choices = panel(true, ui.theme.pad);
-                choices.add(choiceList(), 1);
+                choices.add(choiceList(false), 1);
                 choices.add(hint);
                 choices.gap = 6;
                 bottom.add(choices, 1.25f);
@@ -911,7 +958,7 @@ class GamePlayer {
                 bottom.gap = 6;
                 // The text takes the room it needs (and shrinks first); the list takes the rest.
                 bottom.add(narrativePanel());
-                bottom.add(choiceList(), 1);
+                bottom.add(choiceList(false), 1);
                 column.add(bottom, 1.7f);
                 return column;
             }
@@ -928,16 +975,15 @@ class GamePlayer {
         if (v.kind == "menu") {
             auto menu = panel(true, ui.theme.pad);
             menu.gap = 6;
+            menuButtons = null;
             foreach (i, ref c; v.choices) {
-                auto b = new Button(c.text, {
-                    selected = cast(int) i;
-                    advance(host.view.beat.choices[i].id);
-                });
+                auto b = new Button(c.text, menuClick(i));
                 b.role = FontRole.body;
                 b.wrap = true;
                 b.prefix = format("%d", i + 1);
                 b.selected = cast(int) i == selected;
                 b.id = format("menu%d", i);
+                menuButtons ~= b;
                 menu.add(b);
             }
             page.add(menu);
@@ -975,6 +1021,19 @@ class GamePlayer {
         return page;
     }
 
+    // Delegates made in a loop must not share the loop variable: each gets its own copy here.
+    private void delegate() rowClick(size_t i) {
+        return{ selected = cast(int) i; choose(i); };
+    }
+
+    private void delegate() menuClick(size_t i) {
+        return{ selected = cast(int) i; advance(host.view.beat.choices[i].id); };
+    }
+
+    private void delegate() drawerClick(string target) {
+        return{ drawerOpen = false; openOverlay(target); };
+    }
+
     private Widget playScreen() {
         auto cls = ui.sizeClass;
         auto layers = new Stack;
@@ -996,7 +1055,7 @@ class GamePlayer {
                     ["Menu", "pause"]
                 ]) {
                 auto target = entry[1];
-                d.add(button(entry[0], { drawerOpen = false; openOverlay(target); }));
+                d.add(button(entry[0], drawerClick(target)));
             }
             auto drawer = new Drawer(d);
             drawer.onClose = { drawerOpen = false; };
@@ -1625,6 +1684,8 @@ private int smokeGame(GamePlayer player, string screenshot) {
         player.frame();
         return v_capture(screenshot.toStringz) ? 0 : 1;
     }
+    if (environment.get("VARIS_SMOKE_PLAY", "") == "ui")
+        return uiPlaythrough(player, screenshot);
     if (!player.newGame())
         return 1;
     bool captured, project = !player.sceneOnly;
@@ -1741,5 +1802,201 @@ private int smokeGame(GamePlayer player, string screenshot) {
     }
     writeln(project ? "SDL game, hub, overlays, input and save/load checks passed"
             : "SDL scene, assets, input/menu and save/load checks passed");
+    return 0;
+}
+
+/// A whole game played the way a person plays it: only pointer and keyboard events go in, through
+/// the same widget tree the window shows. Every click must change the game; one that does not is
+/// reported (a soft lock). Prints a summary and writes a screenshot of the last screen.
+private int uiPlaythrough(GamePlayer player, string screenshot) {
+    import std.process : environment;
+
+    auto verbose = environment.get("VARIS_SMOKE_VERBOSE", "") == "1";
+    // The build the player makes: strength (default), wits or charm.
+    auto build = environment.get("VARIS_SMOKE_BUILD", "strength");
+    string wantFamily = build == "wits" ? "scholar" : build == "charm" ? "merchant" : "farm";
+    string wantTemper = build == "wits" ? "nerdy" : build == "charm" ? "charming" : "athletic";
+    string wantPoints = build;
+    player.mode = Mode.title;
+    player.menuIndex = 0;
+    player.frame();
+    // "New game" is a button on the title screen: click it.
+    int[string] chosen, visits;
+    string[] scenesSeen;
+    size_t steps;
+    size_t unchanged;
+    bool paid;
+
+    void click(Rect r) {
+        player.event(7, 0, r.x + r.w / 2, r.y + r.h / 2, "");
+        player.event(5, 0, r.x + r.w / 2, r.y + r.h / 2, "");
+    }
+
+    string signature() {
+        auto v = player.host.view;
+        return format("%s|%s|%s|%s|%s|%s", player.mode, v.turn, v.beat.scene, v.beat.index, v.stories.length,
+                v.values.length ? to!string(v.values) : "");
+    }
+
+    // Title: the first button.
+    player.frame();
+    if (player.mode != Mode.title) {
+        writeln("ui play: expected the title screen");
+        return 1;
+    }
+    player.event(2, 13, 0, 0, "");
+    if (player.mode != Mode.play) {
+        writeln("ui play: New game did nothing");
+        return 1;
+    }
+    while (steps++ < 3000 && player.mode == Mode.play) {
+        player.frame();
+        auto before = signature();
+        auto v = player.host.view;
+        string what;
+        // VARIS_SMOKE_STOP_AT=<storylet id>: capture the first screen that offers it, and stop.
+        auto stopAt = environment.get("VARIS_SMOKE_STOP_AT", "");
+        if (stopAt.length && !v.inScene)
+            foreach (ref st; v.stories)
+                if (st.id == stopAt) {
+                    if (environment.get("VARIS_SMOKE_SKIP", "") != "1" || (stopAt == "points" && v.values.get("points", 6) < 4)) {
+                        if (screenshot.length)
+                            v_capture(screenshot.toStringz);
+                        writeln("ui play: stopped at ", stopAt);
+                        return 0;
+                    }
+                }
+        if (v.inScene) {
+            auto kind = v.beat.kind;
+            what = "scene " ~ v.beat.scene ~ " " ~ kind;
+            if (v.beat.scene.length && (scenesSeen.length == 0 || scenesSeen[$ - 1] != v.beat.scene))
+                scenesSeen ~= v.beat.scene;
+            if (kind == "input") {
+                player.event(4, 0, 0, 0, "Rowan Kestrel");
+                player.event(2, 13, 0, 0, "");
+            } else if (kind == "menu") {
+                if (player.menuButtons.length)
+                    click(player.menuButtons[0].rect);
+            } else
+                player.event(5, 0, player.ui.width / 2.0f, player.ui.height / 3.0f, "");
+        } else {
+            size_t pick = size_t.max;
+            int best = int.min;
+            auto at = v.beat.background;
+            auto slot = cast(int) v.values.get("slot", 1);
+            auto coins = cast(int) v.values.get("coins", 0);
+            auto points = cast(int) v.values.get("points", 0);
+            foreach (i, ref r; player.rows) {
+                if (!r.enabled)
+                    continue;
+                auto story = v.stories[r.story];
+                auto choice = story.choices[r.choice];
+                auto sid = story.id, cid = nameOf(choice.id);
+                int score = 0;
+                string key = sid ~ "/" ~ cid;
+                switch (sid) {
+                case "family":
+                    score = cid == wantFamily ? 100 : 0;
+                    break;
+                case "temper":
+                    score = cid == wantTemper ? 100 : 0;
+                    break;
+                case "quirk_first":
+                case "quirk_second":
+                    score = 50;
+                    break;
+                case "points":
+                    score = cid == wantPoints ? 80 : cid == "done" ? 100 : 10;
+                    break;
+                case "look_choice":
+                    score = cid == "sporty" ? 100 : 0;
+                    break;
+                case "confirm":
+                    score = cid == "begin" ? 100 : 0;
+                    break;
+                case "verdict":
+                case "to_trials":
+                    score = 100;
+                    break;
+                case "fee":
+                    score = 90;
+                    break;
+                case "sleep":
+                    score = slot >= 4 ? 95 : 1;
+                    break;
+                case "walk":
+                    auto to = story.bindings.get("to", "");
+                    if (slot >= 4)
+                        score = to == "house" ? 90 : (at != "house" && to == "square" ? 80 : -50);
+                    else if (coins >= 30 && !paid)
+                        score = to == "square" || at == "square" ? 85 : -20;
+                    else
+                        score = 6 - 3 * visits.get(to, 0);
+                    break;
+                case "look":
+                case "barred":
+                    score = -100;
+                    break;
+                default:
+                    score = 40 - 14 * chosen.get(key, 0);
+                    if (sid.length > 6 && sid[0 .. 6] == "trial_")
+                        score = 100;
+                    if (coins < 30 && (sid == "unload" || sid == "stall_work" || sid == "haggle" || sid == "board"))
+                        score += 10;
+                    if (slot >= 4)
+                        score = -60;
+                }
+                if (score > best) {
+                    best = score;
+                    pick = i;
+                }
+            }
+            if (pick == size_t.max) {
+                writeln("ui play: no enabled choice at turn ", v.turn);
+                return 1;
+            }
+            auto story = v.stories[player.rows[pick].story];
+            auto cid = nameOf(story.choices[player.rows[pick].choice].id);
+            what = story.id ~ "/" ~ cid;
+            if (story.id == "fee")
+                paid = true;
+            chosen[what] = chosen.get(what, 0) + 1;
+            if (story.id == "walk")
+                visits[story.bindings.get("to", "")] = visits.get(story.bindings.get("to", ""), 0) + 1;
+            if (pick < player.rowButtons.length)
+                click(player.rowButtons[pick].rect);
+        }
+        if (player.failed) {
+            writeln("ui play: the player failed: ", player.host.error);
+            return 1;
+        }
+        auto after = signature();
+        if (verbose)
+            writeln(steps, " ", what, " -> ", after != before ? "ok" : "NO EFFECT");
+        if (after == before) {
+            if (++unchanged > 2) {
+                writeln("ui play: soft lock: an action had no effect: ", what, " (", before, ")");
+                return 1;
+            }
+        } else
+            unchanged = 0;
+    }
+    if (player.mode != Mode.over) {
+        writeln("ui play: did not reach the end in ", steps, " steps");
+        return 1;
+    }
+    player.frame();
+    if (screenshot.length)
+        v_capture(screenshot.toStringz);
+    auto v = player.host.view;
+    string ending;
+    foreach (s; scenesSeen)
+        if (s.length > 4 && s[0 .. 4] == "end_")
+            ending = s;
+    writeln("ui play: finished after ", steps, " steps: day ", cast(long) v.values.get("day", 0), ", ending ", ending,
+            ", strength ", cast(long) v.values.get("strength", 0), ", wits ", cast(long) v.values.get("wits", 0), ", charm ",
+            cast(long) v.values.get("charm", 0), ", grit ", cast(long) v.values.get("grit", 0), ", coins ",
+            cast(long) v.values.get("coins", 0));
+    writeln("SDL game, hub, overlays, input and save/load checks passed");
     return 0;
 }
