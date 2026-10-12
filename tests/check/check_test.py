@@ -68,6 +68,24 @@ def main():
     assert (syntax["column"], syntax["endLine"], syntax["endColumn"]) == (11, 2, 12), syntax
     assert ("fine.lua", "symbol-once") not in found  # :alpha appears twice
 
+    # One fixture holding each static check (stage A3), with the suggestion where there is one.
+    code, out = run(binary, HERE / "fixtures" / "static", "--json")
+    assert code == 1, out
+    found = [(p["file"], p["line"], p["code"], p.get("suggestion", "")) for p in json.loads(out)["problems"]]
+    assert found == [
+        ("content.lua", 2, "relation-arity", ""),
+        ("content.lua", 3, "unknown-deck", "market"),
+        ("content.lua", 4, "unknown-placeholder", "room"),
+        ("content.lua", 5, "unknown-placeholder", ""),
+        ("content.lua", 7, "unknown-quality", "oil"),
+        ("content.lua", 7, "unknown-relation", ""),
+        ("content.lua", 11, "duplicate-id", ""),
+        ("content.lua", 17, "duplicate-id", ""),
+        ("world.lua", 6, "duplicate-id", ""),
+    ], found
+    again = [p for p in json.loads(out)["problems"] if p["code"] == "duplicate-id"][0]
+    assert again["related"][0]["line"] == 6 and again["subject"] == "choice lamp.light", again
+
     # Parser recovery: four independent mistakes in one file are all reported, with no cascade.
     code, out = run(binary, HERE / "fixtures" / "recover", "--json")
     assert code == 1, out

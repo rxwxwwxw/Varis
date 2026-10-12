@@ -1,0 +1,246 @@
+/*
+** Lua - A Scripting Language
+** Lua.org, PUC-Rio, Brazil (http://www.lua.org)
+**
+** Varis - a Lua 5.4 derivative, written in D
+** Copyright (C) 1994-2026 Lua.org, PUC-Rio.
+** Copyright (C) 2026 Varis contributors.
+** See LICENSE for license details.
+*/
+
+/// Static checks over the project index (AUTHORING_TOOLS_PLAN stage A3). They run nothing.
+/// Rule for all of them: when a check cannot be sure, it stays silent or reports a warning. A
+/// false error teaches writers to ignore the checker.
+module varis.services.checks;
+
+import varis.services.diagnostic;
+import varis.services.index;
+
+/// Edit distance, capped: returns `cap + 1` when it exceeds `cap`.
+private int editDistance(string a, string b, int cap) {
+    if (a.length > b.length + cap || b.length > a.length + cap)
+        return cap + 1;
+    auto previous = new int[b.length + 1];
+    auto current = new int[b.length + 1];
+    foreach (j; 0 .. b.length + 1)
+        previous[j] = cast(int) j;
+    foreach (i; 1 .. a.length + 1) {
+        current[0] = cast(int) i;
+        foreach (j; 1 .. b.length + 1) {
+            int cost = a[i - 1] == b[j - 1] ? 0 : 1;
+            int best = previous[j - 1] + cost;
+            if (previous[j] + 1 < best)
+                best = previous[j] + 1;
+            if (current[j - 1] + 1 < best)
+                best = current[j - 1] + 1;
+            current[j] = best;
+        }
+        auto swap = previous;
+        previous = current;
+        current = swap;
+    }
+    int result = previous[b.length];
+    return result > cap ? cap + 1 : result;
+}
+
+/// The nearest of `candidates` to `name`, or null when none is close. Names tolerate one
+/// edit, long names two; a name is never its own suggestion.
+string nearestName(string name, const(string)[] candidates) {
+    int cap = name.length >= 10 ? 2 : (name.length >= 3 ? 1 : 0);
+    string best;
+    int bestDistance = cap + 1;
+    foreach (candidate; candidates) {
+        if (candidate == name)
+            continue;
+        int d = editDistance(name, candidate, cap);
+        if (d < bestDistance || (d == bestDistance && d <= cap && candidate < best)) {
+            bestDistance = d;
+            best = candidate;
+        }
+    }
+    return bestDistance <= cap ? best : null;
+}
+
+private string join(const(string)[] items, string separator = ", ") {
+    string text;
+    foreach (i, item; items)
+        text ~= (i ? separator : "") ~ item;
+    return text;
+}
+
+private string place(string file, int line) {
+    char[16] buffer;
+    import core.stdc.stdio : snprintf;
+
+    auto n = snprintf(buffer.ptr, buffer.length, "%d", line);
+    return file ~ ":" ~ buffer[0 .. n].idup;
+}
+
+private Diagnostic at(string severity, string code, string file, Range r, string message, string subject) {
+    return makeDiagnostic(severity, code, file, r.line, r.column, r.endLine, r.endColumn, message, subject);
+}
+
+/// Appends the findings to `found`.
+void staticChecks(ref const ProjectIndex index, ref Diagnostic[] found) {
+    // Pools of what the project declares.
+    bool[string] decks = ["default": true];
+    bool[string] qualities;
+    bool computedQuality;
+    bool[string] relationKnown; // declared, asserted or derived somewhere
+    int[string] declaredArity;
+    string[string] declaredAt; // relation name -> "file:line"
+    bool[string] localRelations;
+    bool[string] anyRelation;
+    string[] deckNames = ["default"];
+    string[] qualityNames;
+    string[] topLevelNames;
+    foreach (ref f; index.files)
+        foreach (ref d; f.declarations) {
+            if (d.kind == "deck" && d.name !in decks) {
+                decks[d.name] = true;
+                deckNames ~= d.name;
+            }
+            if (d.kind == "quality") {
+                if (d.computed)
+                    computedQuality = true;
+                else if (d.name !in qualities) {
+                    qualities[d.name] = true;
+                    qualityNames ~= d.name;
+                }
+            }
+            if (d.kind == "relation" || d.kind == "rule" || d.kind == "local-relation") {
+                relationKnown[d.name] = true;
+                if (d.kind == "local-relation")
+                    localRelations[d.name] = true;
+                if (d.kind == "relation" && d.name !in declaredArity) {
+                    declaredArity[d.name] = d.arity;
+                    declaredAt[d.name] = place(d.file, d.range.line);
+                }
+            }
+            if (d.kind == "storylet" || d.kind == "action" || d.kind == "deck" || d.kind == "relation" || d.kind == "quality")
+                topLevelNames ~= d.name;
+        }
+    // Relations the engine declares in every session world: `quality(entity, name, value)`
+    // (lib/quality.d) and `narrative_event(seq, turn, kind, args)` (narrative/session.d).
+    relationKnown["quality"] = true;
+    relationKnown["narrative_event"] = true;
+    foreach (ref f; index.files)
+        foreach (ref r; f.references)
+            if (r.kind == "relation" && (r.role == "assert" || r.role == "update"))
+                relationKnown[r.name] = true;
+
+    // duplicate-id: two storylets, actions or decks with one name; two choices of one storylet.
+    struct First {
+        string file;
+        int line;
+    }
+
+    First[string] seen;
+    foreach (ref f; index.files)
+        foreach (ref d; f.declarations) {
+            if (d.computed || d.name.length == 0)
+                continue;
+            string key;
+            if (d.kind == "storylet" || d.kind == "action" || d.kind == "deck")
+                key = d.kind ~ " " ~ d.name;
+            else if (d.kind == "choice")
+                key = "choice " ~ d.owner ~ "." ~ d.name;
+            else
+                continue;
+            if (auto first = key in seen) {
+                auto diagnostic = at("error", "duplicate-id", d.file, d.range, d.subject ~ " is declared twice (first at " ~ place(
+                        first.file, first.line) ~ ")", d.subject);
+                diagnostic.related ~= Related(first.file, first.line, 1, "first declaration");
+                found ~= diagnostic;
+            } else
+                seen[key] = First(d.file, d.range.line);
+        }
+
+    // Parameters by definition, for unknown-placeholder.
+    string[][string] parameters; // subject -> names
+    foreach (ref f; index.files)
+        foreach (ref d; f.declarations)
+            if (d.kind == "storylet" || d.kind == "action")
+                parameters[d.subject] ~= d.parameters;
+    foreach (ref f; index.files)
+        foreach (ref d; f.declarations)
+            if (d.kind == "choice") {
+                auto owner = "storylet " ~ d.owner;
+                string[] names = d.parameters.dup;
+                if (auto inherited = owner in parameters)
+                    names ~= *inherited;
+                parameters[d.subject] = names;
+            }
+
+    foreach (ref f; index.files) {
+        foreach (ref d; f.declarations) {
+            // unknown-deck
+            if (d.kind == "storylet" && d.deck.length && d.deck !in decks) {
+                // Find the reference to place the diagnostic on the symbol.
+                Range where = d.range;
+                foreach (ref r; f.references)
+                    if (r.kind == "deck" && r.inside == d.subject && r.name == d.deck)
+                        where = r.range;
+                auto diagnostic = at("error", "unknown-deck", f.path, where, d.subject ~ " is in deck :" ~ d.deck
+                        ~ ", which no `deck :" ~ d.deck ~ " {...}` declares", d.subject);
+                diagnostic.suggestion = nearestName(d.deck, deckNames);
+                found ~= diagnostic;
+            }
+        }
+        foreach (ref r; f.references) {
+            // unknown-placeholder
+            if (r.kind == "placeholder") {
+                if (auto names = r.inside in parameters) {
+                    bool known;
+                    foreach (n; *names)
+                        if (n == r.name)
+                            known = true;
+                    if (!known) {
+                        auto diagnostic = at("error", "unknown-placeholder", r.file, r.range, "{" ~ r.name ~ "} in "
+                                ~ r.inside ~ " is not one of its parameters" ~ (names.length ? " (" ~ join(
+                                    *names) ~ ")" : ""), r.inside);
+                        diagnostic.suggestion = nearestName(r.name, *names);
+                        found ~= diagnostic;
+                    }
+                }
+            }
+            if (r.kind == "relation") {
+                bool local = r.name in localRelations || r.qualifier.length > 0;
+                // relation-arity: a use that disagrees with the declaration.
+                // `set`, `adjust` and a key-only `delete` name fewer columns by design.
+                if (!local && r.role != "update")
+                    if (auto arity = r.name in declaredArity)
+                        if (r.arity >= 0 && r.arity != *arity) {
+                            auto diagnostic = at("error", "relation-arity", r.file, r.range, "relation " ~ r.name ~ " has "
+                                    ~ numberText(
+                                        *arity) ~ " column(s) (declared at " ~ declaredAt[r.name] ~ ") but is used with "
+                                    ~ numberText(r.arity), r.inside.length ? r.inside : "relation " ~ r.name);
+                            found ~= diagnostic;
+                        }
+                // unknown-relation: read, never declared, asserted or derived.
+                if (!local && (r.role == "read" || r.role == "negated") && r.name !in relationKnown) {
+                    auto diagnostic = at("warning", "unknown-relation", r.file, r.range, "relation " ~ r.name
+                            ~ " is read here but nothing in the project declares, asserts or derives it",
+                            r.inside.length ? r.inside : "relation " ~ r.name);
+                    diagnostic.suggestion = nearestName(r.name, topLevelNames);
+                    found ~= diagnostic;
+                }
+            }
+            // unknown-quality: only when every quality.define is statically known.
+            if (r.kind == "quality" && !computedQuality && r.name !in qualities) {
+                auto diagnostic = at("warning", "unknown-quality", r.file, r.range, "quality :" ~ r.name
+                        ~ " is never defined by quality.define", r.inside.length ? r.inside : "quality :" ~ r.name);
+                diagnostic.suggestion = nearestName(r.name, qualityNames);
+                found ~= diagnostic;
+            }
+        }
+    }
+}
+
+private string numberText(long value) {
+    import core.stdc.stdio : snprintf;
+
+    char[24] buffer;
+    auto n = snprintf(buffer.ptr, buffer.length, "%lld", value);
+    return buffer[0 .. n].idup;
+}

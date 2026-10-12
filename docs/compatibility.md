@@ -88,7 +88,13 @@ byte columns; the end is just past the last byte; 0 when unknown), and a `messag
 Codes in use: `syntax`, `io`, `manifest`, `manifest-key`, `symbol-once` (a
 symbol written once in the whole project and never as a plain name) and
 `computed-text` (a label or name whose text is not a string literal, so it cannot
-be extracted for translation). `varis check --index` prints the project index:
+be extracted for translation), `duplicate-id` (error: two storylets, actions or
+decks of one name, or two choices of one storylet), `unknown-deck` (error: `deck :x`
+with no `deck :x {...}`), `unknown-placeholder` (error: `{name}` that is not a
+parameter of the storylet or choice), `relation-arity` (error: a use that disagrees
+with the declared columns), `unknown-relation` and `unknown-quality` (warnings: a
+relation read that nothing declares, asserts or derives; a quality no
+`quality.define` names). A finding that carries a near name has a `suggestion`. `varis check --index` prints the project index:
 the declarations, references and display messages read from the source files.
 
 

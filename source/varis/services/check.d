@@ -24,6 +24,7 @@ import core.stdc.stdio;
 import varis.state;
 import varis.exception : LuaException;
 import varis.services.diagnostic;
+import varis.services.checks;
 import varis.services.index;
 import varis.services.manifest;
 import varis.workbench.server : readFile, listFiles, sortStrings, errorText;
@@ -111,12 +112,22 @@ int checkProject(LuaState state, string[] files, bool json, bool dumpIndex = fal
                 symbolUses[r.name] = SymbolUse(r.file, r.range, 1);
         }
     }
+    staticChecks(index, problems);
     // Display text built by code cannot be extracted for translation.
     foreach (ref f; index.files)
         foreach (ref m; f.messages)
             if (m.computed)
                 problems ~= makeDiagnostic("warning", "computed-text", m.file, m.range.line, m.range.column, m.range.endLine,
                         m.range.endColumn, "display text built by code cannot be extracted for translation", m.owner);
+    // Names a typo is likely to have meant: symbols used more than once, and declared names.
+    string[] familiar;
+    foreach (name, use; symbolUses)
+        if (use.count > 1)
+            familiar ~= name;
+    foreach (ref f; index.files)
+        foreach (ref d; f.declarations)
+            if (d.kind != "choice" && d.name.length)
+                familiar ~= d.name;
     string[] once;
     foreach (name, use; symbolUses)
         if (use.count == 1 && name !in identifiers)
@@ -124,8 +135,17 @@ int checkProject(LuaState state, string[] files, bool json, bool dumpIndex = fal
     sortStrings(once);
     foreach (name; once) {
         auto use = symbolUses[name];
-        problems ~= makeDiagnostic("warning", "symbol-once", use.file, use.range.line, use.range.column, use.range.endLine,
-                use.range.endColumn, "symbol :" ~ name ~ " appears only here; is it misspelled?", "symbol :" ~ name);
+        auto diagnostic = makeDiagnostic("warning", "symbol-once", use.file, use.range.line, use.range.column,
+                use.range.endLine, use.range.endColumn, "symbol :" ~ name ~ " appears only here; is it misspelled?",
+                "symbol :" ~ name);
+        diagnostic.suggestion = nearestName(name, familiar);
+        // A symbol another check already names (an unknown quality) is not reported twice.
+        bool covered;
+        foreach (ref other; problems)
+            if (other.file == diagnostic.file && other.line == diagnostic.line && other.column == diagnostic.column)
+                covered = true;
+        if (!covered)
+            problems ~= diagnostic;
     }
     sortDiagnostics(problems);
     size_t errors;
