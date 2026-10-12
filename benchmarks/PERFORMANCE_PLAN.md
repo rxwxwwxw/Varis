@@ -484,6 +484,14 @@ after a collection is about 45 MB, of which roughly 8 MB is fingerprint text kep
 (W0). The memory budget therefore needs both a smaller live heap and a host-driven collection
 policy, not just a different factor.
 
+**Done October 11, 2026:** `Session.present` collects between turns once the heap has grown past
+1.5× the size that survived the previous collection plus 4 MB (`collectAtTurnBoundary` in
+`narrative/session.d`; skipped during bounded analysis). The interpreter's factor stays 4, so core
+workloads are unaffected. Peak RSS on the reference-scale game: 150 MB → 53 MB (before the whole
+restructuring: 76–94 MB; budget 64 MB); the 200-storylet game peaks at 21 MB. Pauses stay under
+5 ms and now fall at the start of a presentation instead of at arbitrary points. A host-facing
+"idle now" call remains to be added with the host interface (milestone 36).
+
 - Re-measure RSS after W1–W2 and L2; most of today's heap is garbage produced by copying. Then
   revisit `heapSizeFactor:4` in `cli.d`, which was chosen for the Phase 8 work and trades memory
   for fewer collections.

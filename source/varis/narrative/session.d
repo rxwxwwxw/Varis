@@ -49,6 +49,22 @@ struct ScheduledEvent {
     LuaValue arguments;
 }
 
+/// Collects garbage between turns once the heap has grown well past what survived the last
+/// collection. The interpreter runs the collector with a large growth factor (good for scripts
+/// that allocate heavily); a session produces little garbage per turn, so without this the heap
+/// drifts up to that factor before anything is reclaimed. Collecting here keeps the pause out of
+/// the middle of a turn (benchmarks/PERFORMANCE_PLAN.md, stage M).
+private void collectAtTurnBoundary() {
+    import core.memory : GC;
+
+    static size_t liveAfterCollection;
+    auto used = GC.stats().usedSize;
+    if (liveAfterCollection == 0 || used > liveAfterCollection + liveAfterCollection / 2 + (4 << 20)) {
+        GC.collect();
+        liveAfterCollection = GC.stats().usedSize;
+    }
+}
+
 class SessionData {
     ulong turn;
     ulong rng;
@@ -453,6 +469,9 @@ class Session : TransactionParticipant {
         busy = true;
         scope (exit)
             busy = false;
+        // Not during bounded analysis: it presents hundreds of cloned sessions in a row.
+        if (state.analysisBudget is null)
+            collectAtTurnBoundary();
         size_t eventCount;
         runPhase("pre", eventCount);
         auto snapshot = world.cloneSnapshot();

@@ -255,7 +255,7 @@ second is not yet):
    rewrite: 0.7 ms per presentation with 100 rooms and 200 storylets and 3.2 ms with 1000
    storylets, with or without a recursive rule over the map (before: 3 ms, 15 ms, and 0.84 s with
    the recursive rule). Facts are shared instead of copied, joins use indexes, recursion is
-   semi-naive and derived relations are cached. Peak memory (about 150 MB) is still over budget.
+   semi-naive and derived relations are cached. Peak memory on that game is 53 MB (was 76–94 MB).
 2. **Lua core: never slower than C Lua 5.4, then faster.** Measured against stock C Lua 5.4.9
    (`-O2`) in the same session, the core workloads are at 0.6–2.3× today (function calls and
    string operations are the slowest; caught errors went from 37× to 1.3× and deep recursion from
