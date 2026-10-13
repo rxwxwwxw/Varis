@@ -23,10 +23,10 @@ are:
   paths, little Phobos, and one garbage collector (D's).
 
 [ROADMAP.md](ROADMAP.md) states the goals, records who decided what and why, and defines
-the planned phases. [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md) is the
+the remaining work. [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md) is the
 staged performance plan and [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md) the tool design.
-The plans contain both implemented stages and remaining work; their status notes and the
-sections below distinguish them.
+Completed milestone details live in [MILESTONE_HISTORY.md](MILESTONE_HISTORY.md);
+the detailed plans retain design rationale and dated measurement evidence.
 
 The [Varis Reference Manual](docs/README.md) is the single source of truth for the
 current language: procedural programming, symbols, finite relations, keyed state,
@@ -42,14 +42,14 @@ mid-scene saves, with an optional [SDL3 player](docs/presentation.md).
 ## Implementation Highlights
 
 This is the implementation **as it stands**. Several of these points are planned to change
-(value representation, error handling, the split between the Lua core and the world model);
+(error handling, execution encoding and the call path);
 [AGENTS.md](AGENTS.md) §5 lists today's state against the target.
 
 - **Relational and Narrative Runtime**: A finite Datalog engine (worlds, stratified negation, snapshot queries, aggregates), keyed state with transactions, and a narrative runtime (storylets, choices, actions, decks, templates, qualities, events, portable saves and replay) in `source/varis/logic/` and `source/varis/narrative/`.
 - **D Implementation**: Written in D for LDC. Existing code leans on Phobos; the project's style is now C-like D (return values, `@nogc nothrow` hot paths, plain structs), and the code is being moved to it by planned stages, not piecemeal.
-- **Value Representation**: `LuaValue` is a 16-byte tagged payload with allocation-free string slices and Lua equality/hashing (`1 == 1.0`, NaN handling, reference identity). The compatibility `match!` helper still converts to `std.sumtype`; removing those remaining uses is planned.
+- **Value Representation**: `LuaValue` is a 16-byte tagged payload with allocation-free string slices and Lua equality/hashing (`1 == 1.0`, NaN handling, reference identity). The compatibility `match!` helper switches on the tag; no module imports `std.sumtype`.
 - **One Garbage Collector**: All objects live on D's garbage collector (`core.memory.GC`), so host D code can hold tables, worlds and sessions as ordinary references. This is permanent.
-- **Errors**: Lua errors remain `LuaException` objects, but the recursive executor propagates them between Lua frames by return and handles `error` without throwing. Natives, out-of-line helpers and some boundaries still throw. Complete status-returning error handling remains planned; the first step reduced caught-error cost from about 37× to about 1.3× C Lua in the recorded measurements.
+- **Errors**: Lua errors remain `LuaException` objects, but the recursive executor propagates them between Lua frames by return and handles `error` without throwing. Natives in `lib/math.d`, `lib/table.d` and `lib/base.d` report errors through `raise` and `state.raisedError`; other natives, throwing helpers and some boundaries still use exceptions. Complete status-returning error handling remains planned; the first step reduced caught-error cost from about 37× to about 1.3× C Lua in the recorded measurements.
 - **Fiber-Backed Coroutines**: Coroutines and Lua threads are backed by D's `core.thread.Fiber`, enabling yields across native boundaries. The declarative engine evaluates finite relations to a fixed point; guards cannot yield during inference.
 - **Typed AST Intermediate Representation**: Replaces Lua's single-pass intertwined parser/compiler with a modular pipeline (`Lexer -> AST -> Compiler -> VM`), making AST transforms and grammar modifications straightforward.
 - **Lua Pattern Engine**: Ports Lua's pattern matching engine to D, targeting compatibility with Lua string patterns (`%a`, `%b`, frontier patterns `%f[]`, and captures).
@@ -107,7 +107,8 @@ varis/
 ├── Makefile                     # Build and test orchestration using ldc2
 ├── README.md                    # Project overview and quick start
 ├── AGENTS.md                    # Architecture guide and instructions for AI agents
-├── ROADMAP.md                   # Direction, decision record, order of work, planned phases
+├── ROADMAP.md                   # Direction, decisions and remaining work
+├── MILESTONE_HISTORY.md         # Delivered scope and retired milestones
 ├── WORKBENCH_PLAN.md            # Workbench implementation status and remaining design
 ├── AUTHORING_TOOLS_PLAN.md      # Implemented A0–A6 and authoring workflow
 ├── NARRATIVE_LOCALIZATION_PLAN.md # Implemented T1–T4 and remaining text presentation work
@@ -282,8 +283,8 @@ second is not yet):
    semi-naive, derived relations are cached, and storylets whose required fact is absent are
    skipped. Peak memory on that game is 53 MB (was 76–94 MB).
 2. **Lua core: never slower than C Lua 5.4, then faster.** Measured against stock C Lua 5.4.9
-   (`-O2`) in the same session, the core workloads are at 0.62–2.67× in the October 12 run
-   (caught errors 1.22×, deep recursion 2.67×, function calls 2.28×).
+   (`-O2`) in the recorded run at commit `6f10daa`, the core workloads are at 0.60–2.09×
+   (caught errors 1.22×, deep recursion 2.09×, function calls 1.93×).
    Every workload with a C Lua comparator has `goal.clua = 1.0` in `benchmarks/targets.toml`.
 
 Current per-workload ratios are in the generated [docs/STATUS.md](docs/STATUS.md).
@@ -295,8 +296,8 @@ History: Phase 8 pursued "no more than 2× C Lua" by tuning the existing design 
 October 11, 2026 with most workloads inside that bound.
 [benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md) records its methodology, changes
 and remaining costs. The current target is stricter (1.0×) and the method is restructuring:
-errors as values, a smaller value, a compact execution encoding, and separating the Lua core
-from the world model.
+finishing errors as values and measuring the call path and execution encoding. The
+16-byte value and separation of the Lua core from the world model are already delivered.
 
 ### Lua compatibility status
 
@@ -320,62 +321,25 @@ known unsupported cases remain visible rather than being counted as successes.
 
 ---
 
-## Roadmap
+## Project status and remaining work
 
-- [x] **Phase 1: Foundation**: Core values (`LuaValue`), dual-storage table (`LuaTable`), state management (`LuaState`), exceptions (`LuaException`), build system, and unit tests.
-- [x] **Phase 2: Frontend**: Lexer, typed AST, and recursive descent parser.
-- [x] **Phase 3: VM & Execution**: Typed instruction set, AST-to-bytecode compiler, VM execution engine, upvalues/closures, and fiber coroutines.
-- [x] **Phase 4: Standard Libraries**: Base, math, string (with Lua pattern engine), table, coroutine, io, os, utf8, package, and debug libraries.
-- [x] **Phase 5: CLI & Conformance**: CLI and runner implemented; the official suite reports 31 pass / 1 partial / 1 skipped / 0 fail (skip and partial documented in [tests/official/README.md](tests/official/README.md)).
-- [x] **Phase 6: Declarative Extensions v0.1**: Finite Datalog relations, symbols, runtime facts/rules, stratified negation, lexical local relations, independent worlds, and snapshot query iterators.
-- [x] **Phase 7: Stateful and Narrative Extensions**: Named/keyed relations, atomic updates, transactions, storylets and choices, automatic actions, decks, templates, qualities, events, deterministic saves/replay, authoring diagnostics, custom display formatters, and deterministic weighted text variants. Optional aggregates, subscriptions, and bounded state-space analysis are implemented.
-- [x] **Phase 8: Core-Lua Performance & Conformance (closed)**: The conformance gate is met for all executable official files and most core workloads run within about 2× of C Lua (see Performance Benchmarks). Closed October 11, 2026; milestones 21–25 are retired. Core performance continues under a stricter target in Phase 11.
-- [ ] **Phase 9: Authoring Language v1**: Content/engine file tiers, syntax triage and freeze, the authoring gaps found by the sample game, declared symbols, scenes and beats.
-- [ ] **Phase 10: Authoring Tools and the Workbench**: `varis check` with source-ranged diagnostics, parser error recovery, language services and a language server built on the Varis frontend, writer playtest and CI workflow, and a web workbench served by `varis serve` (command window, editor, workspace, story panel) with debugging at source and story level.
-- [ ] **Phase 11: Fast Runtime & Host Interface**: The sample game and a reference game as enforced checks, the seam between the Lua core and the world model, indexed semi-naive cached inference, the Lua core at parity with C Lua and then beyond, a documented D host API and a standard SDL3 presentation layer, builds for Windows, macOS and Linux (Android as a stretch).
-- [ ] **Phase 12: Ergonomics**: Undo and persistent data, localization tooling and a publisher handoff kit, Twine-class conveniences, writer documentation.
+The v1 authoring language, content tiers, readable scenes, authoring tools, workbench
+and debugger are implemented. So are undo/profile/saves, the writer guide, the
+world-model rewrite, the D host contract, and the native battle engine and samples.
 
-Phases 9–12 are partially implemented; see [ROADMAP.md](ROADMAP.md) for each milestone.
-Current additions include declarative scenes/characters and scene saves, static content-tier
-checks and manifest symbol declarations, authoring stages A0–A6, localization T1–T4,
-the workbench and its initial debugger, the world-model rewrite, and an optional SDL3 scene
-player. Syntax freeze, complete runtime tier enforcement, core parity, full presentation
-parity, undo, and cross-platform validation remain work to do.
+The active work is:
 
-Phase 6 follows the milestones in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md):
+- Lua core parity and then performance beyond C Lua (46–47);
+- full SDL presentation and typography (36);
+- Windows/Linux builds and real low-end hardware validation (37);
+- production localization, CJK rendering and native-reader review (39).
 
-| Milestone | Deliverable |
-| --- | --- |
-| 0 | Record Lua compatibility baseline and resolve semantic edges |
-| 1 | Symbols and correct relational equality/hashing |
-| 2 | Worlds, relation storage, atomic mutations, and inheritance |
-| 3 | Safety/stratification validation and fixed-point evaluation |
-| 4 | Snapshot iterators, immutable bindings, and the `logic` library |
-| 5 | Contextual syntax, lexer additions, and typed declarative AST |
-| 6 | Compiler/VM integration and lexical relation/world capture |
-| 7 | Guard captures, errors, and coroutine yield restrictions |
-| 8 | Acceptance tests, full conformance coverage, and documentation |
+[ROADMAP.md](ROADMAP.md#remaining-work) records the order, limits and completion
+criteria. [MILESTONE_HISTORY.md](MILESTONE_HISTORY.md) preserves completed phases
+and stable milestone IDs, including retired Phase 8 work. Recorded test results
+and benchmark ratios are in [docs/STATUS.md](docs/STATUS.md).
 
-The engine keeps logic variables separate from Lua values and uses raw equality for tuple sets. Shared immutable fact tables, indexed slot plans, semi-naive recursion and dependency-based derived caches implement inference; the original naive evaluator remains a test oracle. Query snapshots capture relational state at construction, with evaluation deferred until the first iterator call. World defaults follow lexical closure capture, and rule guards capture ordinary Lua values by value at registration.
-
-Compound terms, Prolog cuts/backtracking, aggregation, non-stratified negation, cross-world rule dependencies, and individual rule deletion are outside the base v0.1. Optional aggregates are implemented under the companion reference. Indexing, semi-naive evaluation, and structural sharing are implemented and checked against the naive oracle.
-
-### Companion implementation status
-
-[The narrative chapter](docs/narrative.md) defines effects separately from Datalog inference. Milestones 9–18 in the [implementation plan](LANGUAGE_EXTENSIONS_PLAN.md#phase-7--stateful-relations-and-narrative-extensions) cover:
-
-| Milestone | Deliverable/status |
-| --- | --- |
-| 9 | Complete: baseline, interfaces and semantic decisions |
-| 10 | Implemented: named columns, extensional keyed relations, atomic `set`/`delete`/`adjust` |
-| 11 | Implemented: world-scoped transactions, nested savepoints, rollback and iterator validity |
-| 12 | Implemented: safe, lower-stratum `count`/`sum`/`min`/`max` goals |
-| 13 | Implemented: definitions/registry/compiler, independent sessions and canonical instances |
-| 14 | Implemented: templates, deterministic decks, presentation, tokens, atomic choices, custom display formatters, and weighted text variants |
-| 15 | Implemented: actions, qualities/constraints, events/schedules and deferred callbacks |
-| 16 | Implemented: portable saves/restoration, authored-rule validation, migrations and replay input logs |
-| 17 | Implemented: explanations, committed-set subscriptions and isolated bounded choice analysis |
-| 18 | Complete: separate conformance gates, requirement/error matrix, bounded replay/stress and documentation |
+### Stateful programming
 
 The implemented stateful syntax can be used now:
 

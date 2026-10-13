@@ -1,15 +1,28 @@
 # Performance plan: a fast Lua core and a fast world model
 
-Status: **partially implemented plan**, audited October 12, 2026. S0 (complete since
-October 13, 2026), stage S1 (complete since October 13, 2026), W0–W4 and W5(a),
-the first L1 step, the main L2 step and initial X1 caches are implemented. Turn-boundary
-collection and an initial SDL3 scene-host slice also exist. Remaining stage exit criteria
-are not complete; status notes below give the details. This replaces the
-earlier October 11 plan (which covered only turn latency and ruled out interpreter work)
-and details milestones 34, 35, 37, 45, 46 and 47 of [ROADMAP.md](../ROADMAP.md) Phase 11.
-[PERFORMANCE_WORK.md](PERFORMANCE_WORK.md) remains the record of the Phase 8 tuning work.
+Status: **active work is L1/parity, X and real-hardware/platform validation**,
+audited October 13, 2026. S0, S1, W0–W4/W5(a) and L2 are delivered; L3 met its
+recorded stage exit without compact encoding, and L4's measurement account is
+closed. Those stage exits do **not** establish milestone 46's parity target.
 
-Decisions this plan implements are cited as D1–D14; they are in the ROADMAP decision record.
+## Remaining work at a glance
+
+- **L1:** continue the authorized conversion of native libraries, throwing helpers
+  and executor boundaries; then measure the lean-frame/executor design (§5a).
+  The native error channel and math/table/base native conversions already exist.
+- **Parity / X:** use the current per-workload gaps, not old baseline ratios, to
+  choose cache, string, call-path and dispatch work. Compact encoding and cached
+  string objects are conditional experiments, not missing completed-stage requirements.
+- **M:** Windows/Linux builds, real low-end budgets and collector-pause validation.
+  Turn-boundary collection, host idle calls, the D embedding contract and the
+  macOS footprint audit already exist. Full player rendering is roadmap 36.
+- **W5(b):** only if measurements justify partial availability caching; the existing
+  reference workload already meets the stand-in budget.
+
+The rest of this document retains stage designs and dated measurement evidence.
+Historical baselines are not claims about today's implementation. This plan replaces
+Phase 8's retired tuning approach; [ROADMAP.md](../ROADMAP.md) records priorities and
+[MILESTONE_HISTORY.md](../MILESTONE_HISTORY.md) indexes delivered scope.
 
 ## 1. Two targets
 
@@ -21,8 +34,8 @@ Varis has two engines with different jobs, so it has two performance targets.
 | **Lua core** (values, tables, compiler, virtual machine, standard libraries) | Engine scripts, mods, effect bodies, guards | Never slower than C Lua, then faster (D4) | `core`, `programs`, `regression`, `startup` benchmark groups against C Lua |
 
 Why both: the world model is what a player waits for, and the Lua core is what a modder writes
-against. Why separately: they share almost no hot code, and today they are tangled in a way that
-slows the core (§2.3).
+against. They share little hot code; stage S1 separated the runtime call path.
+Section 2.3 records the coupling that existed before that work.
 
 ## 2. Baseline before restructuring (October 11, 2026)
 
@@ -506,7 +519,7 @@ by natives and by out-of-line helpers still use one D throw to reach the nearest
 core) is still to do.
 
 *Remainder started October 13, 2026 (owner decision, see §5a).* The channel for native errors
-exists and one module uses it:
+exists and the math, table and base natives use it:
 
 - A native reports an error with `return raise(state, error)` (`varis.state`): the error goes
   into the state's slot `raisedError` and the native returns. `VM.callValue(..., statusReturn)`
@@ -553,8 +566,8 @@ of `try`/`catch` from the executor.
   today is `LuaValue[] delegate(void* state, LuaValue[] args)`). `lib/fastcall.d` already works
   this way for hot built-ins.
 - Migration is incremental: an adapter at the native-call boundary catches `LuaException` from
-  natives that have not been converted and turns it into a status. Convert module by module
-  (about 570 `throw` sites). Remove the adapter when the last one is converted.
+  natives that have not been converted and turns it into a status. Convert module by module;
+  the original design counted about 570 `throw` sites before the conversions above. Remove the adapter when the last one is converted.
 - The executor loop then has no `try`/`catch` and no scope guards; cleanup follows rule 4.
 - Transaction rollback on an escaping error, upvalue closing, to-be-closed values and the
   no-yield scopes must behave exactly as before; each has tests in `test_stateful`, `test_vm` and
@@ -663,16 +676,18 @@ run that followed the fast loop (release build, M1; the earlier account's number
 | `core.pcall_error` | 1.20 (1.23) | One D throw per error raised inside a native | L1 remainder |
 | `core.numeric_loop`, `core.array_access`, `programs.matmul`, `core.sieve` | 1.16, 1.17, 1.18, 1.06 (1.43, 1.45, –, 1.16) | What is left of dispatch: 32-byte instructions, run-time operand-kind tests | L3 proper, if a new measurement supports it |
 
-At or below 1.0×: `core.gc_churn` 0.97, `core.table_insert_remove` 1.01, `core.table_sort` 0.71,
+At or below 1.0×: `core.gc_churn` 0.97, `core.table_sort` 0.71,
 `core.string_manip` 0.58, `programs.pairs` 0.45, `programs.sort` 0.15.
+`core.table_insert_remove` was 1.01×, still slightly behind the goal. These are the
+dated stage-exit measurements; [docs/STATUS.md](../docs/STATUS.md) records the latest
+full run, whose individual ratios can differ (for example `array_access` at 1.21×).
 
-**Milestone 46 is not complete.** Its stages stand as follows: L2 done; L3's exit met (above); L4
-closed by this account; **L1's exit is not met** ("no `throw` in core modules": natives still
-throw, the adapter does not exist) and its remainder is deferred by §5a; the milestone's own exit
-(every workload at or below 1.0×) is not met and, on calls, is not reachable without the lean
-frame, which depends on L1. The next step that would move the largest rows is therefore L1's
-remainder followed by a record-based executor, in that order; both need the owner's go-ahead
-because §5a records them as deferred.
+**Milestone 46 is not complete.** L2 is done, L3 met its recorded stage exit, and L4
+is closed by the measurement account. L1's no-throw exit and the milestone's
+all-workloads-at-parity exit are unmet. The owner authorized the L1 remainder on
+October 13: the native status channel/adapters and math/table/base native conversions
+exist. Continue that conversion; then measure the lean-frame/executor design while
+preserving the recorded call-stack and cleanup requirements (§5a).
 
 ### Track X — Lua core beyond C Lua (milestone 47)
 
@@ -721,7 +736,7 @@ policy, not just a different factor.
 workloads are unaffected. Peak RSS on the reference-scale game: 150 MB → 53 MB (before the whole
 restructuring: 76–94 MB; budget 64 MB); the 200-storylet game peaks at 21 MB. Pauses stay under
 5 ms and now fall at the start of a presentation instead of at arbitrary points. A host-facing
-"idle now" call remains to be added with the host interface (milestone 36).
+"idle now" call was added on October 13 (below).
 
 **Host idle call and footprint, October 13, 2026.** `session:idle()` (and `GameHost.idle()`,
 which the SDL player calls after a frame has been drawn, never during a battle) collects when the
@@ -753,15 +768,15 @@ direct substitute. That is not attempted here: it cannot be verified without a W
   run the reference game there, and replace the stand-in column in §3.1 with measured budgets.
 - Leave content load alone unless this stage shows a problem.
 
-## 5a. What the measurements and the owner's decisions leave open (October 12, 2026)
+## 5a. What the measurements and the owner's decisions leave open (updated October 13, 2026)
 
 Read this before starting any of the stages below; several are no longer worth doing as written.
 
 | Stage | Status | Why |
 | --- | --- | --- |
-| L4, calls at 1.0× C Lua | **Not reachable under current decisions.** | The owner kept exact call records and exact register clearing (ROADMAP, decisions of October 12). The measurements in L4 put the per-call cost of what is kept at roughly half of today's overhead, and the existing record-based executor is slower per call than native recursion. Expect 1.5–2× on call-heavy code. Reopen only if the owner allows lazy call records. |
+| L4, calls at 1.0× C Lua | **Reopened and closed by measurement October 13; parity remains open.** | The lazy-record experiment below did not reach parity. Production retains exact call records and register clearing. A lean frame needs L1 first and a new measurement; the existing record-based executor is slower per call than native recursion. |
 | Coroutines without fibers | **Deferred, specified.** | The owner's specification is "yield from Lua and across `pcall`". It needs frames kept as records, and today that executor is about 30 % slower per Lua call, so coroutine bodies would get slower while switches got faster. Fibers are also the key for transactions (`activeTransactions[Fiber.getThis()]`), no-yield scopes and per-coroutine debug stacks. Do it only together with a record-based executor that is at least as fast as native recursion. |
-| L1 remainder, natives returning statuses | **Started October 13, 2026 by owner decision** (asked when milestone 46 could not otherwise be completed; the owner chose "start L1 remainder"). Previously deferred: | Errors raised by `error` and errors crossing Lua frames no longer throw, and `core.pcall_error` is at 1.3×. What is left costs one throw per error raised inside a native, which is not on any measured hot path. Convert a library when it is rewritten for another reason. |
+| L1 remainder, natives returning statuses | **Authorized and started October 13, 2026.** | Continue module by module using the conversion recipe above. The native error channel and math/table/base native conversions have landed; other libraries, helpers, deep-frame and coroutine boundaries still throw. The earlier deferral no longer applies to this conversion. |
 | L3, compact execution encoding | **Exit met without it (October 13, 2026); the encoding is open, low expected value.** | Loops are at 1.06–1.18× after the fast loop of stage S1 (they were 1.2–1.5× after the 16-byte value); halving the instruction size helps cache density but not the dependency chain of dispatch. Measure on one handler group, from the new baseline, before converting all of them. |
 | X1–X4 | **Open** (arithmetic: October 13, 2026, mixed integer/float operands and `/` have inline paths in the shared handlers: `programs.mandel` 1.92× → 1.80×; the loops themselves are at the dispatch floor and need L3; string natives: October 13, 2026, `string.find` of a plain pattern, `string.char` and `string.rep` have allocation-light fast entry points and `gsub` reuses one match state and copies runs: `core.string_ops` 1.76× → 1.40×, gate 2.0 → 1.7). | Inline caches for method dispatch (`core.method_dispatch` 1.7×) and string operations (`core.string_ops` 2.1×) are now the largest remaining gaps that are not calls. |
 
@@ -779,8 +794,9 @@ Everything lazy call records and a transaction-free frame could remove is theref
 `debug.getinfo`, hooks and the weak-table emulation read it). The rest is per-instruction cost
 (`numeric_loop` is 1.44× with no calls at all), so the route to 1.0× on calls runs through L3
 (compact `execCode`, 8-byte instructions, fused compare-and-jump) *and* a lean frame together.
-Neither was started: L3 is a rewrite of every handler group and has to be measured on one group
-first (this section, L3), and the lean frame is worth building only on top of it.
+At the time of that experiment neither rewrite had started. The fast loop subsequently
+met L3's recorded exit without compact encoding; the lean frame still needs L1. Measure
+from that new baseline before selecting either rewrite.
 
 ## 6. Deliberately not planned
 

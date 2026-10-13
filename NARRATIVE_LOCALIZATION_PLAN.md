@@ -1,12 +1,12 @@
 # Narrative localization plan
 
-Status: design plan, rewritten October 11, 2026 for the project's actual targets.
-T1–T4 and the first scene-line catalog integration are implemented (October 12, 2026);
-scene keys are `scene.<line-id>.text`, character names `character.<id>.name`.
-Menu label and character-name rendering in scenes remain authored-text only.
-The historical inventory below predates these implementations. The [Varis Reference Manual](docs/README.md) remains authoritative for current
-semantics. Later sections retain the target design; implemented commands and template
-syntax are documented in the manual, while remaining proposals are identified below.
+Status: **T0–T4 delivered; T5 and production refinements remain open**, audited
+October 13, 2026. The active work is full CJK layout, ruby drawing, fallback fonts
+within a run, native-reader review, publisher font subsetting and per-locale release
+policy. `GameHost` translates character names; raw scene speaker metadata and
+`SceneHost` still use authored names. Font coverage checks and per-language fonts
+already exist. The [manual](docs/README.md) defines current semantics; the design
+and workflows below retain the full target, with implementation limits in §1a.
 
 The first version of this plan (commit `dbb0960` and earlier) was a general design centred on an
 English/Arabic slice, MessageFormat 2 and UUID annotations. Its right-to-left, bidi and
@@ -24,8 +24,8 @@ which also gives the combined order of the two plans.
 
 | Piece | Today | Remaining limits |
 | --- | --- | --- |
-| Display text and keys | Storylet/choice fields, quality labels, named symbols, scene lines and character names are indexed when literal. Scene line keys are `scene.<line-id>.text`. | Computed text cannot be extracted; scene menu labels are not cataloged. Explicit scene ids are recommended over positional defaults. |
-| Rendering | Selection captures bindings, condition outcomes and variant draws. `session:render` and `set_language` re-render without changing tokens, turns or RNG. Scene line text is translated. | Scene menu labels and character metadata still render authored text; structured rich-text spans are unfinished. |
+| Display text and keys | Storylet/choice fields, quality labels, named symbols, scene lines and character names are indexed when literal. Scene line keys are `scene.<line-id>.text`, menu labels `scene.<label-id>.label`. | Computed text cannot be extracted. Readable scenes require authored ids; legacy beat tables retain positional defaults. |
+| Rendering | Selection captures bindings, condition outcomes and variant draws. `session:render` and `set_language` re-render without changing tokens, turns or RNG. Scene lines and menu labels are translated; `GameHost` translates character display names. `narrative.spans` parses portable rich text. | Raw scene speaker metadata and `SceneHost` retain authored names. Full span rendering/typography remains host work. |
 | Variants and templates | Named variants, plural and select blocks, generated plural rules, translated names and pseudo-localization exist. | Legacy unnamed variants retain positional identity. |
 | Fingerprints and saves | Wording is excluded from format 2/3 content identity; template structure remains significant. Format 1 retains legacy validation. Translations are never saved or fingerprinted. | Structural edits still invalidate content identity; scene saves use format 3. |
 | Catalogs and handoff | Extract/status, CSV/JSON/XLIFF, revision tracking, kits/delta kits, glossary, import/review, checks, packs and character-set output. | Font subsetting itself and configurable per-locale manifest coverage remain unfinished. |
@@ -61,22 +61,24 @@ which also gives the combined order of the two plans.
    the presentation layer. The target output is structured spans in logical order; current presentations
    still carry rendered strings.
 
-## 3. Decisions to freeze with the syntax (ROADMAP milestones 27 and 29)
+## 3. Design decisions and production targets (ROADMAP milestones 27 and 29)
 
-These are cheap to decide now and expensive to retrofit. None of them requires a translation to
-exist.
+V1 choices were settled with milestones 27/29. The numbered design below also
+retains broader production targets (notably spans and package handling); §1a
+distinguishes those targets from current support.
 
 1. **Keys come from authored names.** A storylet's title is `topic_lamp.title`, a choice's is
    `topic_lamp.nod.title`, a scene line uses the stable line id of milestone 29. Renaming a
    storylet already breaks saves, so these names are already permanent; no generated identifiers
    appear in content files. The language services' rename operation (ROADMAP milestone 32, exposed through the
-   language server) rewrites catalogs; workbench UI rename is unfinished. Two messages with the
+   language server and workbench) rewrites catalogs; the workbench previews edits in drafts before saving. Two messages with the
    same English text stay separate.
 2. **Scene lines need an id that survives editing.** Lines have no authored name, and an id
    derived from position breaks when a line is inserted. The implemented declarative beats use an explicit `id` field, falling back to
    `<scene>.<beat-index>`. Positional ids do not survive insertion, so authors should set
-   explicit ids. Registry validation rejects duplicate text ids. Automatic tool-written
-   tags for a future compact syntax remain proposed.
+   explicit ids. Readable scene statements require explicit scene-scoped ids, including
+   option ids for menu labels. Registry/parser validation rejects duplicates. The old
+   extractor-written `#tag` proposal was not adopted.
 3. **One template grammar.** The Varis template language gains named placeholders (already
    present), a `select` on a declared value with a required fallback branch, a plural select on a
    number, and **named** variant alternatives. Translators write the same grammar as writers.
@@ -357,27 +359,29 @@ incomplete language is playable but never ships by accident.
 - The chosen language may be stored as a preference alongside a save. It is never an input to
   eligibility or compatibility. Gameplay replay is independent of language.
 
-## 9. Stages
+## 9. Stage disposition
 
 Stage letters are `T` (translation). Earlier revisions of this plan called them `L0`–`L4`; the
 old `L0` is now T0 and T2, `L1` is part of T3, `L2` is T1 and T3, `L3` is T4 and `L4` is T5.
 
 | Stage | Deliverable | Needs | Changes the runtime or saves | Exit evidence |
 | --- | --- | --- | --- | --- |
-| T0 | **Decisions.** The §3 decisions written into the grammar and the manual with milestone 27; the scene-line id scheme with milestone 29; the owner choices of §12. | Owner | No | Each §3 item is recorded as accepted, changed or rejected. |
+| T0 (done for v1) | **Decisions.** The §3 decisions written into the grammar and the manual with milestone 27; the scene-line id scheme with milestone 29; the owner choices of §12. | Owner | No | Each §3 item is recorded as accepted, changed or rejected. |
 | T1 (done) | **Extraction.** The message table of the project index; key derivation for storylets, choices, quality labels and named symbols; the catalog model and canonical JSON; the CSV adapter; `varis l10n extract`, `extract --check` and `status`; the `computed-text` diagnostic; cosmetic versus substantive change detection. | Stages A0 and A1 of the authoring tools plan | No | Every title, text and label of *Saltmarsh Light* has a key or a diagnostic. Extraction is deterministic (golden file). Editing one source string marks exactly its translations stale in a fixture catalog. CSV export and import round-trip. |
 | T2 (done) | **Wording out of the gameplay fingerprint; named variants.** A new save-format revision behind a versioned reader (§8). | T0, and the owner's approval of the save-format change (AGENTS §8.1 item 5) | **Yes** | A wording edit no longer changes the gameplay fingerprint. Old save fixtures load as before. A replay log names its variants, and reordering alternatives replays identically. The sample game's golden file is regenerated once, in its own reviewed commit. |
-| T3 (done for storylets; scene lines implemented, menus/metadata/spans incomplete) | **Translated rendering.** Selection separated from rendering; a session language that can be switched and re-rendered; catalog lookup with whole-message fallback; the pseudo-locale; `select` and plural in templates with the generated plural table; translatable names with grammatical attributes; `varis check --locale`; the workbench language selector and translation panel (§7.7). Span output arrives with beat-stream presentations (milestone 29) and is not required for this stage's exit. | T1, T2; stage A3 for the checker | Yes (additive: presentations gain what re-rendering needs) | Re-rendering changes no token, draw, turn or replay log. French and Russian translations of *Saltmarsh Light* pass the checker and read correctly to the owner; every plural category and a case-inflected name are exercised. A gameplay replay in two languages produces identical logs. |
+| T3 (delivered; host limits in §1a) | **Translated rendering.** Selection separated from rendering; a session language that can be switched and re-rendered; catalog lookup with whole-message fallback; the pseudo-locale; `select` and plural in templates with the generated plural table; translatable names with grammatical attributes; `varis check --locale`; the workbench language selector and translation panel (§7.7). Span output arrives with beat-stream presentations (milestone 29) and is not required for this stage's exit. | T1, T2; stage A3 for the checker | Yes (additive: presentations gain what re-rendering needs) | Re-rendering changes no token, draw, turn or replay log. French and Russian translations of *Saltmarsh Light* pass the checker and read correctly to the owner; every plural category and a case-inflected name are exercised. A gameplay replay in two languages produces identical logs. |
 | T4 (implemented; remaining production refinements below) | **Handoff.** Kit export with context and glossary, kit ids and delta kits, the XLIFF adapter, import with review states, `varis l10n check --kit`, loadable packs with whole-pack rejection, the key overlay, the release gate. | T3 | No | A pack built only from an exported kit loads into a release build. A deliberately broken pack is rejected with diagnostics by key. A delta kit after a source edit contains exactly the stale and new messages. |
-| T5, with milestone 36 | **Presentation.** Line breaking, per-language fonts, ruby, the Korean particle formatter, character-set output for font subsetting. | T4; the SDL3 presentation layer | No | A Chinese, a Japanese and a Korean sample render correctly in the SDL3 layer, reviewed by a reader of each language; fonts are subset from the emitted character sets. |
+| **T5 (partial), with milestone 36** | **Presentation.** Line breaking, per-language fonts, ruby, the Korean particle formatter, character-set output for font subsetting. | T4; the SDL3 presentation layer | No | A Chinese, a Japanese and a Korean sample render correctly in the SDL3 layer, reviewed by a reader of each language; fonts are subset from the emitted character sets. |
 
-**Status, October 12, 2026.** T1–T4 are implemented within the limits in §1a.
+**Status, October 13, 2026.** T0–T4 are implemented within the limits in §1a.
 T2 was approved by the owner on October 12: format 2 removes wording from gameplay
 identity, with legacy format 1 validation; named variants, `{#plural}` and `{#select}`
 use block tags. Format 3 adds scene positions/stage. The first scene slice supplies
-line ids, catalog extraction and translated line rendering; menus and character metadata
-remain authored text. The proposed generated `#tag` line annotation is not implemented:
-current declarative beat records use an `id` field, with a positional fallback.
+line ids, catalog extraction and translated line rendering. Readable scene syntax and
+menu-label extraction/rendering followed on October 13. `GameHost` translates character
+display names; the scene-only adapter and raw speaker metadata still use authored names.
+The generated `#tag` proposal was not adopted: readable scenes use explicit ids; legacy
+beat records use an `id` field with a positional fallback.
 
 The workbench language selector, draft editor and branch previews work. T4 includes
 kits with context/glossary/character sets/ids, delta kits, CSV/JSON/XLIFF adapters,
@@ -422,7 +426,7 @@ Use the default until decided, and say so in the change.
 
 | Choice | Default | Reason for the default |
 | --- | --- | --- |
-| Scene-line ids (§3.2), future compact syntax | Tool-written short tag remains a proposal; current beat tables use explicit `id`, with a positional fallback | Explicit ids survive wording edits and insertion. Automatic annotation is not implemented. |
+| Scene-line ids (§3.2), decided | Explicit authored ids in readable scenes; legacy beat tables retain `id` with a positional fallback | Explicit ids survive wording edits and insertion. Extractor-written tags were not adopted. |
 | Translator notes | A `note "…"` field, decided with milestone 27 | Context that structure cannot supply has to come from the writer. |
 | Where catalogs live | `l10n/` in the game's repository, one JSON file per locale | Diffs and history for free. |
 | Who may set `reviewed` | Implemented: `varis l10n review`; workbench edits save drafts, imports cannot approve | A returned file saying "final" has not been read by anyone on the project. |

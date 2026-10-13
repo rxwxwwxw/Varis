@@ -39,6 +39,7 @@ bin/varis-sdl sample-vn/presentation.json
 See [the presentation guide](../docs/presentation.md) for dependencies, controls,
 asset matching, fonts and current limits. `make test-sdl` renders and tests it headlessly.
 
-The first scene implementation uses declarative beat records. Procedural blocks
-between beats, rollback history, and full RPG Maker/Ren'Py presentation parity
-remain later work. The semantics are in the reference manual, section 6.11.
+Readable scene statements lower to declarative beat records. Explicit effect blocks,
+branching, input and beat undo are implemented; arbitrary Lua between beats is deferred.
+Full RPG Maker/Ren'Py presentation parity remains milestone 36 work. The semantics are
+in the reference manual, sections 6.9a and 6.11–6.11a.

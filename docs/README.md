@@ -1,6 +1,6 @@
 # Varis Reference Manual
 
-**Current interpreter edition · October 12, 2026**
+**Current interpreter edition · October 13, 2026**
 
 Varis is a language for authoring visual novels and story games. It is dynamically
 typed and combines procedural programming, finite relational inference,
@@ -8,11 +8,10 @@ transactional state, and a deterministic narrative runtime. Its procedural
 foundation comes from Lua 5.4. This manual defines the language implemented in
 this repository, including the facilities previously described as Lua extensions.
 
-The implementation is built as `bin/varis`, uses `.lua` source files, and reports a
-Lua compatibility version. This manual describes **only what is implemented**. The
-project's goals and planned changes, including a restricted tier for content
-files and a distinct source extension, are in the [roadmap](../ROADMAP.md) and are not
-part of the language until they appear here. The procedural core stays a complete
+The implementation is built as `bin/varis`, accepts `.varis` and legacy `.lua` source
+files, and reports a Lua compatibility version. Manifest-backed projects enforce
+content/engine file tiers (section 8.3). This manual describes **only what is
+implemented**; the [roadmap](../ROADMAP.md) tracks remaining work. The procedural core stays a complete
 Lua-derived language so that games can be modded with all of it; passing more of
 the official Lua 5.4 test suite is not a goal of Varis. Section 9 states the
 relationship.

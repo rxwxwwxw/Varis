@@ -794,7 +794,11 @@ end
 scoped to the scene and registered as `scene.name` (so `id hello` in `greeting` is
 `greeting.hello`, the catalog key `scene.greeting.hello.text`). A missing id and a duplicate
 id inside one scene are syntax errors at the line. Moving or inserting statements keeps
-every line's identity. Option labels are not yet translated.
+every line's identity. A menu option's authored id is also scene-scoped: `option yes`
+in `greeting` has the catalog key `scene.greeting.yes.label`. Menu labels are
+extracted and translated with whole-message fallback. Character display names are
+extracted as `character.<id>.name`; `GameHost` translates them, while raw scene
+`speaker` metadata and the scene-only `SceneHost` retain authored names.
 
 **Conditions.** `if` compares one scene local with a value: `==` and `~=` use raw equality;
 the orderings need two numbers or two strings, and a nil or mismatched pair is an error

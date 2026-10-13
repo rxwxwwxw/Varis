@@ -159,11 +159,13 @@ the declarations, references and display messages read from the source files.
 ### 8.4 — Message catalogs: `varis l10n`
 
 `bin/varis l10n` reads the project like `varis check` (the manifest, else every
-`.lua` file) and runs nothing. Every display text that is a string literal has a
+`.varis` or `.lua` file) and runs nothing. Every display text that is a string literal has a
 **message key** built from authored names: a storylet's `title` is `lamp.title`,
 a choice's is `lamp.light.title`, a quality's label `quality.oil.label`, a
 `narrative.name` label `name.keeper`, a scene line `scene.<line-id>.text`,
-and a character name `character.<id>.name`. Scene menu labels are not yet extracted.
+a scene menu label `scene.<label-id>.label`, and a character name
+`character.<id>.name`. Readable menu options use the scene-scoped option id; beat
+records use `label_id` or the fallback `<scene>.<choice-id>`.
 Text built by code has no key and is reported as `computed-text`; empty text is not extracted.
 
 | Command | Does |
@@ -264,7 +266,14 @@ read-only expressions in that frame: literals, locals, captured values, raw tabl
 Boolean operations and basic numeric arithmetic/comparisons. It rejects calls, queries,
 assignments and unsupported operators; it never invokes metamethods. Pause stops a running command or
 story operation at its next line (never inside the workbench's own code); Stop aborts it
-with `interrupted!`, also while stopped. Stop-on-error and pushed events remain unfinished.
+with `interrupted!`, also while stopped. Stop on errors pauses an uncaught error in
+its raising frame; errors caught by `pcall`/`xpcall` or a coroutine do not stop.
+Debugging uses the instrumented executor; execution returns to the fast loop when
+no hook, debugger request or analysis requires instrumentation.
+
+The server also exposes `/ws?token=...`, using the same request handlers as HTTP.
+It pushes `hello`, `stopped`, `output`, `workspaceChanged`, `fileChanged` and
+`publishDiagnostics` events. The browser page uses HTTP request/response.
 
 In projects with manifest entry/session fields, Start creates a seeded playtest (`s` and
 `w` in the workspace). Reload and Run rebuild in a fresh state and replay story-panel
@@ -317,8 +326,8 @@ for further ones (owner decisions, October 11, 2026; see the decision record in 
   subset and native module loading (8.2), binary chunks, weak-table and finalizer
   emulation with collector tuning modes, debug-hook and line-attribution
   fidelity (9.3), and exact upstream error text. They keep working while they
-  exist. The workbench's initial debugger works at source lines and story
-  turns; the complete interface remains planned and is not built on the `debug` library.
+  exist. The workbench debugger supports source and story inspection, stepping,
+  rewind and error stops (8.8); it is not built on the `debug` library.
 - The manifest content tier is checked statically by `varis check` and LSP,
   including restricted globals and function captures, and enforced when a project
   loads (restricted environment, 8.3). Engine scripts and script mods keep the full

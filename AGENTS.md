@@ -15,7 +15,7 @@ Varis Reference Manual linked below, not here.
 | Question | Document |
 | --- | --- |
 | What does the language do **today**? | [Varis Reference Manual](docs/README.md) (`docs/`). The only definition of current behaviour. |
-| What is the project trying to become, and who decided what? | [ROADMAP.md](ROADMAP.md): direction, decision record (D1–D14), order of work, milestones, open decisions. |
+| What is the project trying to become, and who decided what? | [ROADMAP.md](ROADMAP.md): direction, decision record (D1–D14), remaining work and open decisions; [MILESTONE_HISTORY.md](MILESTONE_HISTORY.md) records delivered scope. |
 | How do we make it fast, and in what order? | [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md): measurements, design rules, stages S0, S1, W, L, X, M. |
 | What is the web workbench and its debugger? | [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md). |
 | How will the checker, the language services and the writer's playtest and test tools work? | [AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md): project manifest, project index, stages A0–A6. |
@@ -23,7 +23,7 @@ Varis Reference Manual linked below, not here.
 | What do the tests prove, and what is skipped? | [tests/narrative/README.md](tests/narrative/README.md), [tests/official/README.md](tests/official/README.md), [docs/STATUS.md](docs/STATUS.md) (generated). |
 | How does a writer learn the language? | [docs/writers/](docs/writers/README.md): tutorial and cookbook; their programs are run by suite `writers-docs`, so a change that breaks one is a failure to fix, not a doc to edit away. |
 | How do the benchmarks and gates work? | [benchmarks/README.md](benchmarks/README.md). |
-| What is the planned second sample game (`sample-rpg/`) and its SDL3 host work? | [SAMPLE_RPG_PLAN.md](SAMPLE_RPG_PLAN.md): plan only; nothing implemented until its stages land. |
+| What is the RPG sample (`sample-rpg/`) and its SDL3 host work? | [sample-rpg/README.md](sample-rpg/README.md) describes the implemented game; [SAMPLE_RPG_PLAN.md](SAMPLE_RPG_PLAN.md) records S0–S7 and deviations. |
 | What is the combined tower-defense / visual-novel sample (`sample-td/`, *Lanternfall*) that tests the battle engine? | [SAMPLE_TD_PLAN.md](SAMPLE_TD_PLAN.md) (outline and stages) and [sample-td/README.md](sample-td/README.md) (what was built). |
 | How does the hex tower-defense battle (native simulation, 2.5D view, story bridge) work? | [docs/battle.md](docs/battle.md) is the manual; [TOWER_DEFENSE_PLAN.md](TOWER_DEFENSE_PLAN.md) the design and decisions (B1–B12), with measurements from `benchmarks/experiments/td_tick.lua` and `td_native.d`; stages TD0–TD8, mostly landed with the sample. |
 | How did we get here? | [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md), [benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md), [CONSOLIDATION_PLAN.md](CONSOLIDATION_PLAN.md). History only. |
@@ -41,7 +41,7 @@ Varis Reference Manual linked below, not here.
 
 ### 1.3 The rules that matter most
 
-1. **Planned is not implemented.** The roadmap and plans mix completed stages with future work. §5 of
+1. **Planned is not implemented.** The roadmap lists remaining work; detailed design records retain completed stages. §5 of
    this file and each plan's status notes say what is true today. Do not write code against a design that has not landed.
 2. **Never change behaviour by accident.** Every change passes `make test`; interpreter and engine
    changes also pass `make bench-check` and the sample-game check (§8, guideline 15).
@@ -202,7 +202,7 @@ How the core reaches the layers above it without importing them (the seam, stage
 - **Symbols**: Use the inline symbol payload backed by a state-owned intern pool, shared across worlds. Audit exhaustive visitors/type switches. Keep logic variables in declarative AST/IR and binding environments, not in general `LuaValue`.
 - **Numeric prerequisite**: Audit mixed integer/float equality and `floatToInteger` at large integer boundaries before using them for tuple sets. Converting both operands to `double` can lose precision above 2^53 and break equality/hash consistency.
 - **`match` is a tag switch** (`types.d`): the first handler that accepts the value's kind runs, `std.sumtype` is no longer imported anywhere. Still convenient and slower than the accessors; runtime code uses the accessors.
-- **Still planned (rest of stage L2):** decide on measurement whether strings should become objects with a cached hash. Compile-time string constants are interned (`VM.prepareForExecution`); run-time strings are not, and must not be (an intern pool on D's collector would keep every string alive).
+- **Optional after L2 (delivered):** use measurements to decide whether cached-hash string objects are worthwhile. Compile-time string constants are interned (`VM.prepareForExecution`); run-time strings are not, and must not be (an intern pool on D's collector would keep every string alive).
 
 ### 4.3 Memory management
 
@@ -254,7 +254,7 @@ How the core reaches the layers above it without importing them (the seam, stage
 - **Fast and instrumented loops (stage S1):** each executor's dispatch loop is one text (`frameLoopBody`, `deepFrameLoopBody`) expanded twice in its function, with `instrumented` false and true. The **fast** loop contains no hook, budget, collection or interrupt code and tests nothing per instruction. The **instrumented** loop does those duties before every instruction. A frame runs the fast loop until it sees `vmAttention` at a **safepoint**, and returns to it when the flag clears. Inside a handler, `break` (out of the switch) reaches the safepoint and `continue` skips it. **Use `continue` only on a path that cannot have called out of the loop (no metamethod, native, close handler, allocation tick or hook) and is not a backward jump**; when unsure, use `break`. A missing safepoint makes a hook installed by that path take effect late (`tests/extensions/cases/hooks_installed_mid_frame.lua` checks every kind of call-out at three depths) and can make a loop uninterruptible.
 - **Slow mode** (`vmSlowMode`, set by `enterSlowMode`) keeps `vmAttention` on; it ends (`leaveSlowModeIfIdle`) when no thread has a hook mask (`syncThreadHook`, call it after changing a thread's hook), no analysis is running and no debugger request is pending. Set `vmAttention` alone for a one-off duty (pending collection, interrupt).
 - **Transactions cost nothing per instruction:** a `transaction` block ends at `EndTransaction`, `Rollback`, an `ExitTransaction` trampoline (a `break`/`goto` out of the block), a return or an error. The instrumented loop asserts that no other path leaves a block.
-- **Planned:** L3 lowers `code` into a compact specialized `execCode`; X1–X2 add inline caches and specialized instructions. Whether one record-based executor replaces the two is decided in L1 by measurement.
+- **Conditional future work:** compact specialized `execCode` remains unbuilt; L3 met its recorded stage exit through the fast loop instead. X1 caches have initial implementations; further caches and specialization remain X1–X2 work. Whether one record-based executor replaces the two is decided in L1 by measurement.
 
 ### 4.9 Standard libraries & pattern matching
 
@@ -368,14 +368,14 @@ Use this table to avoid coding against a design that has not landed.
 | Aspect | Today (code against this) | Target | Changes in |
 | --- | --- | --- | --- |
 | Errors | `LuaException` objects. Between Lua frames they are **returned** (`TailRequest.returnErrors`), and `error` raises without a throw; a native can report an error as a value (`raise`, `state.raisedError`) and `lib/math.d`, `lib/table.d` and the natives of `lib/base.d` do; other natives and out-of-line helpers still `throw`, and `pcall` still catches those | Status returns everywhere; error object on the thread | L1 (channel and three modules done) |
-| Value | 16-byte tagged payload; strings are slices packed as pointer + 32-bit length; `match!` is a tag switch (no `std.sumtype`) | Same; cached string hashes if measurement supports it | L2 (done except string objects) |
+| Value | 16-byte tagged payload; strings are slices packed as pointer + 32-bit length; `match!` is a tag switch (no `std.sumtype`) | Same; cached string hashes if measurement supports it | L2 (done; string objects conditional on measurement) |
 | Instructions executed | `execCode` = canonical 32-byte instructions, a final `Return`, and `ExitTransaction` trampolines for jumps out of transaction blocks | Compact specialized encoding derived from `code`, only if measured again from the fast-loop baseline (L3's exit is already met) | L3 |
 | Executors | `executeFrame` and `executeDeepFrame`; 40 of 43 handlers shared through `sharedOpcodeCases*` mixins, calls and returns per executor; each has a fast and an instrumented loop generated from one text, switching at safepoints | One executor with frames as records, if L1's measurement favours it | S1 (done); L1 |
 | Core and world model | No core module imports `logic` or `narrative` (enforced by `make check-sources`); the world model plugs in through hooks (`narrative/vmops.d`). Lua-to-Lua calls carry no world; an open transaction costs nothing per instruction | Same | S1 (done) |
 | Fact storage | `bool[RelTuple]` per relation for writes, plus a shared immutable `FactTable` with indexes for reads (`logic/store.d`); cloned worlds share fact sets copy-on-write | Same | W1 (done) |
 | Query evaluation | Compiled slot plans, index probes, semi-naive recursion, derived relations cached per closure; naive oracle; required-constant-fact storylet prefilter | Remaining W5 indexing only if measurements justify it | W2–W4 and W5(a) done |
 | Scenes and stage | Declarative scene/character declarations and the readable `scene name() … end` form (say/narrate/show/menu/if/input/effect, explicit text ids; manual 6.11a), scalar locals, jump/call/return, beat tokens and engine-owned stage; format 3 mid-scene saves; `sample-vn/` (`content.varis`) | Arbitrary Lua between beats (deferred), full presentation parity (milestone 36) | 29 (done) |
-| SDL3 presentation | Optional `varis-sdl` scene player: backgrounds, expression sprites, portraits, dialogue/menu/input, audio, quicksave/load, recent history, auto/skip; asset manifest and status-returning scene host. A manifest with a `project` runs a whole game through `GameHost`: title, storylet hub, status panel, toasts, character sheet, journal, map, pause/settings, language switch, ending screen (*The Hollowbrook Summer*) | Full stage parity and typography; general embedding API | 36 (initial slice and game host done) |
+| SDL3 presentation | Optional `varis-sdl` scene player: backgrounds, expression sprites, portraits, dialogue/menu/input, audio, quicksave/load, recent history, auto/skip; asset manifest and status-returning scene host. A manifest with a `project` runs a whole game through `GameHost`: title, storylet hub, status panel, toasts, character sheet, journal, map, pause/settings, language switch, ending screen (*The Hollowbrook Summer*) | Full stage parity and typography; D embedding contract already documented in docs/embedding.md | 36 (initial slice and game host done) |
 | Sample game | In `make test` (suite `sample-game`: its check plus a golden transcript and save, `tests/sample_game/`) | Same | S0 (done) |
 | Tower-defense battle | Native fixed-step integer simulation in `source/varis/game/` (all ten ability primitives, heroes with obedience, modifiers, replay, digest; a step allocates nothing); the `battle` library (`lib/battle.d`); the four project hooks run by `GameHost` (build, silent raid, night, moments as scenes, sync, result, retry, abandon, no save during a battle); a static check of battle data in `varis check`; `varis battle FILE` (headless, `--digest` as a golden check); the 2.5D SDL battle view (`tools/sdl/battleview.d`: terrace prisms, billboards, camera, picking, four zoom bands, fog, minimap, HUD, moment overlay; one overview texture for a large map). Measured: about 15–21 ns per live enemy per step natively, about 3 µs in relations; 0.09 ms a step at 2,000 enemies, 0.5 ms at 10,000 on 435,600 tiles; benchmark group `td_native` | Travelling projectiles, Dijkstra costs (defaults, plan §12) | [TOWER_DEFENSE_PLAN.md](TOWER_DEFENSE_PLAN.md) |
 | Third sample game | `sample-td/` (*Lanternfall*): four nights of dusk hub, build and real-time night on a terraced map, three heroes with trust and bonds, eleven moments with choices, ruins, injuries and deaths, judge and forecast, four endings, a French pack; suite `sample-td` plus an SDL smoke in `make test-sdl` | Real art and audio; a human review of the French draft; balance by play | [SAMPLE_TD_PLAN.md](SAMPLE_TD_PLAN.md) |
@@ -432,7 +432,7 @@ Use this table to avoid coding against a design that has not landed.
 | `source/varis/narrative/translation.d` | narrative | ✅ localization plan T3 | Translated message templates, render traces; translations are presentation data, never fingerprinted or saved |
 | The debugger | tools | ✅ milestone 44 | Line breakpoints, pause, stop, error stops, stack/locals, frame expressions and stepping for command-window/Run code and story effects, on the instrumented loop; story explanations and turn changes. See WORKBENCH_PLAN §1a for what is not built. |
 | `source/varis/narrative/{scenes,plural,text}.d` | narrative | ✅ initial scenes and text support | Portable beat programs, stage state, plural rules and Unicode/text helpers |
-| `source/varis/services/{tier,presentation}.d`, `tools/sdl/` | tools | ✅ initial slices | Static content restrictions, status-returning scene adapter and optional SDL3 player |
+| `source/varis/services/{tier,presentation}.d`, `tools/sdl/` | tools | ✅ initial slices | Static and load-time content restrictions, status-returning scene adapter and optional SDL3 player |
 | `sample-vn/` | | ✅ | *Harbour Window*: scene saves and graphical presentation sample |
 | `source/varis/services/gamehost.d`, `tools/sdl/{gameplayer,ui}.d` | tools | ✅ | `GameHost`: the status-returning host of a project or of scene-only content (hub, scenes, stage, status, toasts, journal, map, saves, language); the SDL3 player; `ui.d` is its widget toolkit (one root owns the screen, text owned by boxes with overflow policies, size classes, theme as data) |
 | `source/varis/game/{hex,terrain,fog,route,kinds,types,battle}.d` | game (leaf) | ✅ TD1–TD2, extended | Tower-defense battle core: axial hex maths, seeded terrain with edits and terrace heights, sector fog, flow fields, tower/enemy kinds (ten primitives), setup/command/outcome types, the fixed-step simulation, hero orders, modifiers and its digest. No Lua. |
@@ -445,66 +445,25 @@ Keep all source modules listed explicitly in the `Makefile` (`make check-sources
 
 ---
 
-## 7. Phase status
+## 7. Delivery status and remaining work
 
-### Phases 1–5: Lua core (completed ✅)
+Use [ROADMAP.md](ROADMAP.md#remaining-work) as the work queue and
+[MILESTONE_HISTORY.md](MILESTONE_HISTORY.md) for completed scope and evidence.
+Milestone IDs remain stable; they are not an execution order.
 
-1. **Phase 1, foundation**: core types, table dual storage, error handling, state.
-2. **Phase 2, frontend**: typed AST (`varis.ast`), tokenizer (`varis.lexer`), recursive descent parser (`varis.parser`). Unit tests in `tests/unit/test_parser.d`.
-3. **Phase 3, runtime**: opcodes (`varis.opcode`), compiler (`varis.compiler`), VM (`varis.vm`), Fiber coroutines (`varis.fiber`). Unit tests in `tests/unit/test_vm.d`.
-4. **Phase 4, standard libraries**: pattern engine and `base`, `math`, `string`, `table`, `coroutine`, `os`, `io`, `utf8`, `package_lib`, `debug_lib`. Unit tests in `tests/unit/test_libs.d`.
-5. **Phase 5, CLI and conformance evidence**:
-   - `source/varis/cli.d`: standalone executable supporting `-e`, `-v`, `-i`, script files and a REPL.
-   - `tests/runner.d` runs the official Lua 5.4.9 suite as a stock binary runs it (`T == nil`, `gc.lua` excluded by owner decision; an ltests-style `T` is out of scope), with strict failure exits, combined output capture, PASS/PARTIAL/SKIP/FAIL statuses, `--reference` C Lua comparison and JSON reporting (default 120 s per file; 240 s for the `all.lua` driver). It builds the suite's C test modules, provides a closed-pipe stdin and an `sh` wrapper for the nested-shell check, and runs `all.lua` in a scratch copy with `gc.lua` stubbed. Baseline (October 9, 2026 release build): **31 passed, 1 partial (`all.lua` with `gc.lua` stubbed), 1 skipped (`gc.lua`, because exact reachability conflicts with D-accessible objects), 0 failed, 0 timed out.** [Recorded evidence and remaining issues](tests/official/README.md) supersede earlier baselines. A file PASS means the process exited successfully; `api`/`code` self-skip without the `T` library as under stock C Lua.
-   - Weak tables, ephemerons and finalizers are emulated on D's collector (`source/varis/gc.d`, forked reachability probes); C modules load through `dlopen` and the exported C API subset in `capi.d`; binary chunks are in `dump.d` (private body behind a standard header); the interpreter runs on a large-stack Fiber (`cli.d`). These are frozen features.
-   - `python3 tools/suite test --suite core` compares deterministic core behaviour with C Lua.
-   - This is a **regression net**, not a goal (D3). No work is planned on the remaining gaps. Skipped files and unsupported D-GC semantics remain explicit barriers to any full-conformance claim.
+- **Delivered:** Lua foundation, relations and narrative (phases 1–7); v1 content
+  tiers, symbols, readable scenes and syntax freeze (26–29); authoring A0–A6 and
+  workbench/debugger (30–33, 42–44); safety net, seam and world-model budget work
+  (34, 35, 45); undo/profile/saves, conveniences and writer guide (38, 40, 41);
+  battle/bridge/view and samples (48–50, with documented defaults and cuts).
+- **Open:** Lua-core parity and beyond (46–47), full standard presentation (36),
+  platform/real-hardware validation (37), production localization/T5 (39).
+- **Closed, not completed:** Phase 8 milestones 21–25 were retired; Lua conformance
+  gaps remain frozen. Do not reopen them while restructuring the runtime.
 
-### Phase 6: Declarative Datalog extensions v0.1 (completed ✅)
-
-Milestones 0–8 in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md); retain executable coverage for their requirements:
-- **Milestone 0 & 1**: Interned symbols, relational value equality/hashing, NaN prohibition in tuples.
-- **Milestone 2**: World and relation model, version tracking, atomic mutations, snapshot inheritance.
-- **Milestone 3**: Rule/query validation, variable safety, stratification check, least-fixed-point evaluation.
-- **Milestone 4**: Point-in-time snapshot query iterators, immutable `BindingRecord`, `logic` standard library.
-- **Milestone 5**: Declarative AST nodes and parser integration (`fact`, `retract`, `rule`, `relation`, `local relation`, `logic (w) do`, `query`, symbols, logic variables).
-- **Milestone 6**: Compiler and VM bytecode instructions (`LoadSymbol`, `NewLocalRel`, `DeclRel`, `AddFact`, `RetractFact`, `RegRule`, `MakeQuery`).
-- **Milestone 7**: Value-captured guards and strict coroutine yield boundary enforcement.
-- **Milestone 8**: `tests/unit/test_logic.d` (`make unit-test UNIT=test_logic`), `python3 tools/suite test --suite acceptance --suite rejection` with per-test timeout runner, and integration into `make test`.
-
-### Phase 7: Stateful relations and narrative companion (completed ✅)
-
-Companion milestones 9–18 in [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md) are implemented. Preserve these boundaries and their acceptance coverage:
-
-1. **9–11, stateful relations**: Named/keyed schemas, atomic updates, per-coroutine transaction overlays/savepoints, exclusive world locks, cleanup and iterator validity in `logic/world.d`, compiler/VM and Fiber. No-yield scopes cover helpers and resumed child coroutines and restore on every exit.
-2. **12, aggregates**: Scoped/correlated count/sum/min/max, distinct assignments, empty/error semantics and strict lower-stratum dependencies in the frontend, validator and evaluator.
-3. **13–15, narrative runtime**: `narrative/{registry,templates,codec,fingerprint,session}.d` and `lib/{narrative,quality}.d` implement sealed content, immutable parameters/instances/tokens, deterministic decks, atomic choices, actions/periods, qualities/constraints, events/schedules and deferred callbacks. Deck/scheduler behavior lives in `session.d`; alternate proposed module splits are not missing features.
-4. **16, persistence/replay**: `narrative/persistence.d` provides staged factory-world restoration, schema/content/code/capture checks, explicit authored reconstruction/migrations and immutable command logs. Preserve failed-load atomicity and unsupported-value diagnostics; hosts replay external inputs and reestablish subscriptions.
-5. **17, authoring**: `diagnostics.d`, `observe.d` and `analysis.d` supply pure explanations, committed visible-set deltas with bounded queued commands, and isolated bounded choice exploration. Analysis reports its scope/incompleteness and blocks host/native external operations.
-6. **18, conformance**: `make unit-test UNIT=test_stateful`, `make unit-test UNIT=test_narrative` (13 groups), and `python3 tools/suite test --suite extensions` are included in `make test`. [tests/narrative/README.md](tests/narrative/README.md) contains the paragraph/grammar/error matrix, measured stress/replay coverage and limits.
-
-Custom display formatter registration and deterministic weighted text variants are implemented and verified.
-
-### Phase 8: Core-Lua performance and conformance (closed)
-
-Closed October 11, 2026 by owner decision; see [ROADMAP.md](ROADMAP.md#closed-phase-8--core-lua-performance-and-conformance). Milestones 19 (benchmark suite with enforced gates) and 20 (official-suite gate: 31 pass / 1 partial / 1 skipped / 0 fail) are done. Milestones 21–25 are retired, not completed: their method was tuning the existing design toward "no more than 2× C Lua".
-
-State at closure: core workloads at about 0.6–2.4× C Lua, with `core.pcall_error` (~37×) and `core.deep_recursion` (~8×) as outliers; see `docs/STATUS.md` and `benchmarks/PERFORMANCE_WORK.md`. The CLI uses `-O3 -release`; D unit tests default to `-g`, and C Lua defaults to `-O2`.
-
-Core performance is a goal again with a stricter target (≤ 1.0×, ROADMAP D4) and a different method (restructuring). That work is Phase 11, milestones 45–47. Phase 8 is not reopened, and its conformance half stays closed (D3).
-
-### Phases 9–12 (partially implemented)
-
-Defined in [ROADMAP.md](ROADMAP.md). Implemented slices include static content-tier/manifest-symbol checks, declarative
-scenes/stage (29), authoring A0–A6, localization T1–T4, the workbench/debugger,
-world-model restructuring and the SDL3 scene player; the remaining proposals are not language semantics. Milestone numbers are identifiers, not an order; the order is in ROADMAP "Order of work".
-
-| Phase | Milestones | Planned deliverable |
-| --- | --- | --- |
-| 9 | 26–29 | Authoring language v1: content/engine tiers and a distinct file identity, syntax triage and freeze (including the localization-ready decisions), the core authoring gaps from `sample-game/needed_extensions.md`, declared entities/symbols, scenes, beats and engine-owned stage state (characters with attributes, slots, audio channels) |
-| 10 | 30–33, 42–44 | Authoring tools and the workbench: `varis check` with source-ranged diagnostics, parser error recovery, language services and a language server on the Varis frontend, writer playtest/test/CI workflow, the workbench server (`varis serve`), the MATLAB-style web user interface, debugging at source and story level |
-| 11 | 34–37, 45–47 | Fast runtime and host interface: safety net and reference game with enforced budgets, the seam between Lua core and world model, the world-model engine (shared storage, slot plans, indexes, semi-naive, caches), Lua core to parity with C Lua and then beyond, a documented D host interface and a standard SDL3 presentation layer, builds for Windows/macOS/Linux with Android as a stretch |
-| 12 | 38–41 | Ergonomics: undo and persistent data, localization pipeline and publisher handoff (Chinese, Japanese, Korean; French and Russian as in-house test languages), Twine-class conveniences, writer documentation |
+The current runtime boundaries are in §4–§5. Test coverage, known gaps and recorded
+measurements stay in the test READMEs and generated [docs/STATUS.md](docs/STATUS.md).
+Do not weaken any test, ledger entry or benchmark gate when cleaning up a plan.
 
 ---
 
@@ -531,9 +490,9 @@ world-model restructuring and the SDL3 scene player; the remaining proposals are
 8. **Conformance coverage**: Supplement the examples with tests for numeric boundaries, NaN, raw reference equality, binary symbol names, contextual syntax, qualified ownership failures, failed-operation rollback, lexical closure capture, guard errors/yields, coroutine snapshots, and invalid iterator reuse. Map all nine v0.1 conformance requirements to executable coverage and report unsupported official Lua harness tests as skips.
 9. **Companion coverage**: Map [Varis rejection requirements](docs/compatibility.md#95--error-categories) (historical companion §16; see docs/coverage.md) to tests for key conflicts, transaction/savepoint/control-flow rollback, tentative snapshots, yields, stale choices, parameter binding, deterministic draws, action/event budgets, quality constraints, and save/version failures. Compare unordered relational sets and canonical narrative sequences. Keep optional aggregates/subscriptions/analysis separately identified; proposed tests and targets are not existing support.
 10. **Performance changes**: There are two targets (performance plan §1): turn latency, load time and memory on the reference game for the world model, and the ratio against C Lua for the Lua core. Follow the stage order in [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md); do not skip ahead. Profile before choosing an optimization inside a stage. Land small changes with targeted semantic tests, full `make test`, optimized assertion-enabled validation (`make varis-checked`), actual release CLI fixtures, and before/after timing and memory evidence from the same session. Report measurements, not estimates. Never trade correctness for benchmark scores or silently weaken failure/skip accounting. A file passing with protected errors or internally disabled tests is not proof of feature completeness.
-11. **Runtime restructuring boundaries**: The value representation, the execution encoding, error handling and the executor structure are planned to change (stages L1–L4), each in its own stage with its own exit test. Outside those stages, do not change them. Inside them, preserve: upvalue locations and lifetimes, GC roots, native reentry, suspended coroutines, cleanup order on errors, lexical worlds, aliases and Fiber isolation, analysis budgets, debug attribution, transaction exit boundaries. The canonical bytecode `proto.code` is not changed for speed, because fingerprints and saves read it (§4.8). The single D collector is permanent (§4.3).
+11. **Runtime restructuring boundaries**: L2's value representation is delivered. Further execution encoding, error handling and executor changes belong to the remaining measured work in L1–L4; respect each stage's recorded exit and decision status. Outside those stages, do not change them. Inside them, preserve: upvalue locations and lifetimes, GC roots, native reentry, suspended coroutines, cleanup order on errors, lexical worlds, aliases and Fiber isolation, analysis budgets, debug attribution, transaction exit boundaries. The canonical bytecode `proto.code` is not changed for speed, because fingerprints and saves read it (§4.8). The single D collector is permanent (§4.3).
 12. **Lua compatibility policy**: The full language stays (D2). The official suite, the core differential fixture and the regression programs are a regression net: a new failure there is still a failure, and is never fixed by weakening a test. Do not spend effort closing the remaining Lua-fidelity gaps (D3). A deliberate divergence (for authoring, saves/replay, portability or performance) is allowed with a `[[ledger]]` entry, a `Skip-Accepted:` trailer and a line in `docs/compatibility.md` §9. The frozen features listed in ROADMAP (C API subset and `dlopen` modules, binary chunks, weak-table/finalizer emulation, `debug.sethook` fidelity, exact PUC-Rio error text) get no new work but must keep passing while they exist; removing one is the owner's decision, so ask first.
-13. **Planned is not implemented**: The full content/engine tier split, procedural scene bodies, declared-symbol syntax and unfinished performance stages remain plans. Declarative scenes/stage, the checker, language services, the workbench and the seam have implemented slices described above. The manual in `docs/` describes only implemented behaviour; proposals live in `ROADMAP.md`, the plan documents and `sample-game/needed_extensions.md`. Move a construct into the manual in the same change that implements and tests it, and update §5 of this file when a stage lands.
+13. **Planned is not implemented**: Content/engine tier enforcement, readable scene bodies, declared symbols, the checker, language services, workbench and seam are implemented. Full presentation parity, production typography, platform validation and unfinished performance stages remain work. The manual in `docs/` describes only implemented behaviour; proposals live in `ROADMAP.md`, the plan documents and `sample-game/needed_extensions.md`. Move a construct into the manual in the same change that implements and tests it, and update §5 of this file when a stage lands.
 14. **Writer-facing quality**: New content syntax must not require understanding closures, coroutines, iterators or metatables. Diagnostics for content name the storylet, choice or field and carry a source location; prefer rejecting a likely mistake (an unknown symbol, a storylet that can never appear) over accepting it silently.
 15. **The sample game keeps working** (D12): `sample-game/tools/check.lua` must pass after every change. Run it with the working directory set to `sample-game` (§9); it prints `checks passed`. `make test-fast` runs it together with a golden transcript and save comparison (`python3 tools/suite test --suite sample-game`). If the golden comparison fails, the change altered behaviour, fingerprints or the save format: fix the change. Regenerate `tests/sample_game/golden.expected` (`check_golden.py <binary> --update`) only for an intended, reviewed change, in its own commit.
 16. **Style** (D6): new and restructured code follows §3. Do not convert old code outside a planned stage.

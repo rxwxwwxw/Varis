@@ -1,36 +1,29 @@
 # Plan: a native hex tower-defense battle, bridged to the Varis story engine
 
-Status (October 12, 2026), landed: **TD1 and TD2** (the `source/varis/game/` leaf: hex, terrain,
-fog, route, kinds, types, battle; tests in `tests/unit/test_battle.d`, suite `battle`), and, with
-the sample *Lanternfall* (`sample-td/`, [SAMPLE_TD_PLAN.md](SAMPLE_TD_PLAN.md)), slices of the rest:
-**TD3** (the four hooks run by `GameHost`: setup validation, moments as scenes, sync, result, abandon
-and retry by snapshot, no save during a battle; `lib/battle.d`), **TD4** (the SDL battle view,
-`tools/sdl/battleview.d`: prisms with terrace lift, billboards, camera, picking, HUD with reasons,
-moment overlay), a **TD5** slice (four zoom bands, fog, minimap, a frame per band in the smoke; not
-the overview texture or caches), **TD6** (hub to battle and back, the silent raid and forecast,
-economy, fog growth, sources and sinks appearing) and **TD7** content (all ten primitives, heroes
-with trust and bonds, injury and death rules, the French pack). The behaviour is described in
-[docs/battle.md](docs/battle.md). **October 13, 2026: TD0 and TD5 closed.** `varis battle` exists;
-the `td_native` benchmark group asserts the §9 budgets (measured, M1, release: reference step 0.09 ms,
-stress step 0.5 ms, flow field 5 ms on 435,600 tiles, judge 0.3 s); the view draws a large map from
-one overview texture (the plan's render spike is the SDL smoke's per-band frames, 0–7 ms at 435,600
-tiles on the software renderer). Open by default decision: travelling projectiles (hit-scan),
-Dijkstra costs (breadth-first), incremental route updates (not needed at 5 ms). Changes
-from this plan: the simulation also draws the obedience of heroes from its seeded generator (replay
-agrees); an enemy next to a hero fights it; `attack_every` paces melee; `wall_density` and
-`terrace_rows` let a map be designed; modifiers are commands in the log (`replay` agrees).
-TD2 simplifications, recorded for TD7 and **since closed**: heroes, aura, shield, summon, repair,
-taunt and burn are simulated; hit-scan is kept; fields are plain BFS.
-Measured at TD2 (scratch harness, release, M1): reference scale (2,000 enemies, 200 towers) mean
-0.017 ms and max 0.11 ms per step; stress (10,000 enemies, 600 towers) mean 0.049 ms and max 0.18 ms.
-These scenarios are a single corridor where enemies die early, so they are a floor, not a full
-battle. The rest of this document is the plan.
+Status: **delivered battle design record**, audited October 13, 2026. Milestones
+48–50 are delivered with the substitutions and cuts below. Current behavior is in
+[docs/battle.md](docs/battle.md); the implemented integration game is
+[Lanternfall](sample-td/README.md). The stage table preserves original scope and
+acceptance criteria, not a queue of unfinished TD0–TD8 work.
 
-Earlier status: **plan only. Nothing in this document is implemented**, except two
-measurement programs, `benchmarks/experiments/td_tick.lua` and `benchmarks/experiments/td_native.d`,
-whose numbers are in §1. The manual in `docs/` remains the only definition of what the language does
-today. Section 2 records the owner's decisions of October 12 and the defaults used elsewhere; the
-owner can overturn any default.
+- Native hex simulation, all ten ability primitives, heroes, modifiers, replay,
+  `varis battle`, setup/moment/sync/result hooks and snapshot abandon/retry exist.
+- The SDL battle view has four zoom bands, fog, camera/picking, HUD and a shared
+  overview/minimap texture. At 435,600 tiles the recorded software-renderer frames
+  were 0–7 ms. The overview texture replaced the proposed chunk/geometry caches.
+- `td_native` in `benchmarks/targets.toml` enforces the §9 budgets. Recorded M1
+  release measurements: reference step 0.09 ms, stress step 0.5 ms, full flow field
+  5 ms on 435,600 tiles, judge 0.3 s. These are development-machine measurements,
+  not real low-end or cross-platform validation.
+- Defaults retained: hit-scan projectiles, unweighted BFS and full route rebuilds.
+  Incremental routing was unnecessary at the measured cost. Heroes draw obedience
+  from the seeded generator; replay agrees. The sample uses four nights rather
+  than the original ten-round target; its README records the authored scope.
+
+Remaining production work: real art/audio, French draft review and human balance
+playtests; cross-machine determinism and hardware validation belong to roadmap 37.
+Player-visible stress mode and per-night music cues are not built. Travelling
+projectiles and weighted/incremental routing remain optional, not milestone blockers.
 
 Goal: the battle half of the tower-defense / visual-novel hybrid (memory note of October 11, 2026;
 §3). The battle is a **native D simulation** with a 2.5D, pointy-top hex view in the SDL3 player.
@@ -427,10 +420,12 @@ times slower than the M1 and is a design target.
 | Render frame, overview band | whole map | ≤ 3 ms | 30 fps |
 | Memory | map arrays plus simulation at 10,000 enemies | ≤ 16 MB; chunk and geometry cache capped at 64 MB | — |
 
-## 10. Stages
+## 10. Original delivery stages
 
-None depends on the Lua-core performance stages (L, X); all proceed beside them. Benchmark stages
-must not run alongside other heavy jobs.
+These stages shipped beside the Lua-core performance work. Read the status above and
+the sample README for substitutions to the original criteria (including four nights,
+overview textures and BFS). Cross-machine evidence remains unverified; do not infer
+it from a stage label. Benchmark runs must not overlap other heavy jobs.
 
 | Stage | Deliverable | Exit test |
 | --- | --- | --- |

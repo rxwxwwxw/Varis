@@ -20,10 +20,10 @@ The art and audio are generated placeholders (`python3 tools/gen_assets.py`); re
 | Area | Where |
 | --- | --- |
 | Character creation with a name typed in a scene reaching the world (`procedure` + scene `effect` beat), a transactional "start over" | `scenes/prologue.varis`, `content/creation.varis` |
-| Stat gates with reasons (`require … because`), complementary "have a go" choices | `content/forge.varis`, `docks.lua`, `quarry.lua`, `trials.lua` |
+| Stat gates with reasons (`require … because`), complementary "have a go" choices | `content/forge.varis`, `docks.varis`, `quarry.varis`, `trials.varis` |
 | Relations: recursion (`reachable`, gossip `knows_of`), stratified negation (`isolated`, endings), aggregates (`count`, `sum`, `max`), zero-arity rules (`evening`, `festival_eve`), guards | `world.lua` |
 | Decks and drawing, sticky/priority/order/cooldown/non-repeatable storylets, parameterised instances (riddles, jobs, shop, accusations) | `content/*.varis` |
-| Templates: `{#select}`, `{#plural}`, `{#if query}`, names for symbols | `content/hub.varis`, `creation.lua`, `qualities.varis` |
+| Templates: `{#select}`, `{#plural}`, `{#if query}`, names for symbols | `content/hub.varis`, `creation.varis`, `qualities.varis` |
 | Scenes: input, menu, jump, call, say with expressions, stage slots, music; repeat ladders so training reads differently each time | `scenes/`, `content/*.varis` |
 | Actions with `once_per :day`, events, schedules and handlers, `defer` for achievements | `content/events.varis` |
 | Qualities with bounds and labels; `observe` for toasts; save, load and replay | `qualities.varis`, `game.lua` |

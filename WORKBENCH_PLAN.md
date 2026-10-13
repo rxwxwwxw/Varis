@@ -1,12 +1,10 @@
 # Workbench plan: a web editor served by the Varis executable
 
-Status: **partially implemented**, audited October 12, 2026. Section 1a says what
-exists; later sections describe the complete target and may exceed the current interface. It details milestones 42,
-43 and 44 of [ROADMAP.md](ROADMAP.md) Phase 10 and implements decisions D10 and D11 of the ROADMAP
-decision record. Language behaviour is defined only by the [manual](docs/README.md). The checker and the language
-services (milestones 30–33, A0–A6 implemented) are recorded in
-[AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md); the language selector and translation panel
-are in [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md) §7.7.
+Status: **delivered design record, milestones 42–44 implemented**, audited October 13,
+2026. Section 1a describes current behavior and its limits; later sections retain
+the original design and acceptance criteria. The checker and language services
+(milestones 30–33, A0–A6) are recorded in [AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md).
+Windows/Linux packaging remains [roadmap milestone 37](ROADMAP.md#remaining-work).
 
 ## 1. What it is and who it is for
 
@@ -40,14 +38,14 @@ a token and serves one page with the layout of §3.
 | Command window | Works: expressions print, statements run, multi-line input continues, persistent history with arrow-key recall and a selectable history view. Output of `print` and `io.write` is captured. |
 | Workspace | Works: user-created globals with type and preview. A world opens as its list of relations; derived relations open through snapshot queries, others as base facts. Lua tables support paged raw key/value browsing and nested tables. Sessions show turn, periods, decks/draw counts and completed instances. Inspection bypasses Lua metamethods. |
 | Story | Works after manifest-backed Start or `story(session)` in the command window: presents on request, choices are buttons. It presents only when asked, because presenting appends to the session's replay log. |
-| Story-level debugging | Partly: after a choice the command window lists the facts the turn added and removed, per relation (computed from the immutable fact tables before and after). "Why?" explains any storylet through `narrative.explain`: eligible or not, each condition's outcome and candidate counts, each instance's exclusions. Manifest-backed Start accepts a seed; Reload rebuilds and replays panel commands by stable instance keys; Rewind reconstructs an earlier turn. History lists the commands. Failed reconstruction retains the live playtest. |
+| Story-level debugging | Works: after a choice the command window lists the facts the turn added and removed, per relation (computed from the immutable fact tables before and after). "Why?" explains any storylet through `narrative.explain`: eligible or not, each condition's outcome and candidate counts, each instance's exclusions. Manifest-backed Start accepts a seed; Reload rebuilds and replays panel commands by stable instance keys; Rewind reconstructs an earlier turn. History lists the commands. Failed reconstruction retains the live playtest. |
 | Editor | Vendored CodeMirror 6 with syntax highlighting, inline diagnostics, clickable breakpoint gutters that move with edits, retained drafts and undo across file switches, Save all, and Run. Source completion, F12/Definition, Hover and Rename use the same frontend services as LSP, with unsaved drafts overlaid across files. Rename previews all edits, applies to drafts and writes only on Save all. Command completion still reads live state. In a manifest-backed playtest, Run saves drafts and rebuilds/replays the project; otherwise it runs the open file in the live state. |
 | Source-level debugging | File/line breakpoints and step over/into/out work for commands, Run and story-panel present/choose. Clicking a frame selects its locals. The paused command prompt reads expressions in that frame, including upvalues and raw table fields; it rejects calls, queries, assignments and unsupported operators without invoking metamethods. Effect breakpoints preserve tentative transaction state until continuation. **Pause** stops a running command or story operation at its next line with frames alive; **Stop** aborts it with "interrupted!" (also from a stopped program). **Stop on errors** stops an uncaught error where it was raised. All of this runs on the interpreter's instrumented loop; with no breakpoint, step, pause or hook pending, programs run on the fast loop, which contains no debugging code (`/api/breakpoints` reports `"instrumented"`). |
-| Problems | Project-wide static/compile diagnostics include unsaved drafts; clicking a diagnostic opens its file and line. Load and bounded analysis passes remain CLI operations. |
+| Problems | Project-wide static/compile diagnostics include unsaved drafts; clicking a diagnostic opens its file and line. The load pass is available through the CLI; bounded story analysis also has a UI action. |
 | Localization | Language selector re-renders the retained presentation; translation panel lists messages, previews plural/select branches and saves drafts. |
 
-Differences from the rest of this plan: plain HTTP request/response instead of a
-WebSocket with pushed events (§6), text/query requests plus JSON editor requests. The vendored editor requires no Node or
+The page uses HTTP request/response (text/query requests plus JSON editor requests).
+The server also supports WebSocket requests and pushed events (§6), through the same handlers. The vendored editor requires no Node or
 network access at build or runtime; maintenance instructions and third-party notices are in
 [workbench/README.md](workbench/README.md). Resizable panels and command history persist
 in browser storage. The hand-written loopback server and bottom-left workspace follow
@@ -61,7 +59,7 @@ external inputs or effects of impure host code. Start creates globals `s` and `w
 the session and world. A new Start uses the requested seed; Reload/Rewind keep it.
 Language selection is retained on reload without a new presentation or random draw.
 
-### Remaining acceptance work
+### Delivered acceptance scope and current limits
 
 - **42 done (October 13, 2026):** the WebSocket transport. `/ws?token=...` upgrades; each text
   message is `{"id", "method", "path", "query", "body"}` served by the same handlers as HTTP and
@@ -258,13 +256,13 @@ language server of milestone 32 is a thin transport over the same handlers.
 Values sent to the workspace are descriptions (type, short preview, child count, a reference for
 fetching children page by page), never whole tables.
 
-## 7. Milestones
+## 7. Delivered milestones
 
 | Milestone | Deliverable | Depends on | Exit |
 | --- | --- | --- | --- |
 | 42 | **Server.** `varis serve`; loopback HTTP and WebSocket; `eval`, files, story requests; a minimal page with a command window and the story panel. | The existing CLI and narrative library. | The sample game can be played and queried from a browser; a transcript test drives the protocol without a browser. |
 | 43 | **User interface.** Editor with diagnostics, workspace, table view, files, history, problems, the layout of §3. | 42; `varis check` (milestone 30) for diagnostics; milestone 32 for completion and navigation. | The owner can fix a storylet, press Run and see the fixed presentation without leaving the page. |
-| 44 | **Debugger.** Story level first (§5.1), then source level (§5.2). | 42 for story level; stage S1 for source level; stage L1 for error stops. | A breakpoint in an effect stops there, shows the tentative transaction state, and continuing gives the same result as running without the debugger. |
+| 44 | **Debugger.** Story level first (§5.1), then source level (§5.2). | 42 for story level; stage S1 for source level; the error-stop hook for stops before unwinding (full L1 conversion is not required). | A breakpoint in an effect stops there, shows the tentative transaction state, and continuing gives the same result as running without the debugger. |
 
 Every milestone ships with tests that speak the protocol directly (a script sends requests and
 compares responses with golden output), so the server is tested without a browser. User-interface

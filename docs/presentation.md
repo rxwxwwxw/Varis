@@ -91,7 +91,7 @@ PNG with alpha is suitable for finished sprite and portrait artwork.
 
 `transition` currently fades in from black over 300 ms and `pause` waits 300 ms. These are
 player defaults; authored timing/effect parameters are not implemented. `picture` and `screen`
-beats fail explicitly. Storylet hub presentation, typewriter effects, arbitrary transforms,
+beats fail explicitly. In this scene-only player, typewriter effects, arbitrary transforms,
 advanced transitions, voice synchronization, ruby, IME composition
 feedback and full history navigation remain future work. SDL3_ttf renders UTF-8 but the supplied
 font must cover the script; full CJK typography/localization stage T5 is not claimed. This is
@@ -121,7 +121,9 @@ invalid saves leave the session intact. `view.finished` marks return to the hub 
 this player closes there. The adapter catches legacy runtime exceptions at the boundary and
 reports `false` plus `error`. It does not change VM error handling. The current convenience
 loader serves scene-only games with an empty world; hosts requiring authored relational worlds
-should use the underlying `Session`/world APIs and persistence factory protocol.
+can use `GameHost` (below), which loads a manifest-backed project and its factory.
+See the [D embedding contract](embedding.md) for both adapters. `GameHost` translates
+character display names; `SceneHost` currently uses authored names.
 
 ## Validation
 
@@ -137,7 +139,7 @@ from the actual SDL render target. No display or audio hardware is required.
 
 ## Whole games: the game host and its player
 
-A manifest with a `"project"` key (a directory with a project manifest, `project.lua`, that names
+A manifest with a `"project"` key (a directory with a project manifest, `project.varis` or `project.lua`, that names
 `entry`, `session`, `load` and optionally `after_choose` and `finished`) is a whole game rather than a
 scene-only one: the project builds its own world and content, and the player presents its storylet
 hub, scenes, stage and a status panel. The adapter is `varis.services.gamehost.GameHost`:

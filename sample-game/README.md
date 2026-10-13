@@ -2,7 +2,12 @@
 
 A short storylet game for varis. You're the apprentice of an old lighthouse keeper. Get the key to the lamp room, keep the lamp fuelled through the night, and hope you're ready when the storm comes.
 
-The game is written against the current [Varis Reference Manual](../docs/README.md). Where the spec forces a workaround, the code links to [`needed_extensions.md`](needed_extensions.md). [`extensions/proposed.lua`](extensions/proposed.lua) shows proposed syntax and is **not** loaded.
+The game is written against the current [Varis Reference Manual](../docs/README.md).
+The v1 migration replaced its period, deck-navigation, narration and clamping
+workarounds. [`needed_extensions.md`](needed_extensions.md) preserves the original
+gaps and their dispositions; [`extensions/proposed.lua`](extensions/proposed.lua)
+is historical proposed syntax and is **not** loaded. This sample retains `.lua`
+filenames; the other samples demonstrate `.varis` content.
 
 ```sh
 cd sample-game
@@ -31,7 +36,7 @@ covers the separate linear-scene and SDL3 presentation workflow.
 | `content/keeper.lua` | Conversation tree as a deck of non-repeatable topics |
 | `content/events.lua` | Clock, lamp burn, dawn, daily wage, storm scheduling, handler, ending switches |
 | `content/endings.lua` | Ending deck |
-| `game.lua` | Loads and seals content; session creation, load and period sync |
+| `game.lua` | Loads and seals content; session creation/load and initial period setup |
 | `main.lua` | Minimal text host: presentation loop, event narration, observer, save/load |
 | `tools/check.lua` | Author checks |
 
@@ -46,17 +51,17 @@ covers the separate linear-scene and SDL3 presentation workflow.
   - world blocks, `logic.emptyworld`, local relations and local rules
 - **Stateful:**
   - named and keyed relations
-  - `set`/`delete`/`adjust`/`retract`
+  - `set`/`delete`/`adjust`/`retract`, explicit quality clamping
   - aggregates (`sum`, `count`)
   - transactions with `rollback`, inside and outside effects
 - **Narrative:**
   - parameterized storylets, and choices with their own parameters and `when`
   - priority, weight, cooldown, `repeatable false`
-  - deck config, `push_deck`/`pop_deck`/`replace_deck`, non-replacement draws
+  - deck config, choice `leads`, `narrative.return_deck`, non-replacement draws
   - templates with `{#if query}` and `{#variant}`; `narrative.name` and a formatter
   - qualities with bounds
   - pre and post actions; `once_per` `:turn`, `:game`, `:always` and the custom `:day` period
-  - `emit`, `schedule` + `on` handler, `defer`
+  - `emit` with `session:events_since`, `schedule` + `on` handler, `defer`
   - `observe` + `flush`; save/load with an authored program and content version
   - `explain`, `analyze`, `replay_log`, `seed`/`limits`/`set_period`
 

@@ -1,18 +1,16 @@
 # Scenes, lines and the stage: a proposal for milestone 29
 
-Status: **historical syntax proposal**, October 12, 2026. A first declarative scene
-implementation now exists; [manual §6.11](docs/narrative.md#611--scenes-beats-and-stage-state)
-defines its actual syntax and semantics. The compact speaker/menu syntax below is still a
-proposal and is not accepted by the parser.
+Status: **superseded syntax proposal**, retained for design history. Readable scenes
+landed October 13, 2026: `scene name() … end`, `say … id …`, `narrate`, menus,
+conditionals, input and explicit effects. Beat undo also exists. The
+[manual](docs/narrative.md#611a--readable-scenes) and
+[syntax chapter](docs/syntax.md) define the implemented forms.
 
-Current scenes use `scene Name { ... }` tables of immutable beat records, `character`
-declarations, scalar locals, jump/call/return, menu/input boundaries, authored line `id`
-fields, and saved engine stage. `session:play`, `present` and `advance` drive them;
-format 3 saves restore the scene stack and stage. The index, checker and localization
-catalog recognize literal scene declarations and lines. The [linear sample](sample-vn/README.md)
-and [SDL3 player](docs/presentation.md) demonstrate this slice. Procedural statements
-between beats, compact syntax, beat undo and full presentation parity remain planned.
-The rest of this file preserves the original design for future syntax discussion.
+The speaker shorthand and extractor-written `#tag` annotations below were not
+adopted. Current readable scenes require authored scene-scoped text ids; legacy
+beat tables retain positional fallbacks. This document's "open choices" and future
+tense are historical, not a backlog. Rendering work remains under
+[roadmap milestone 36](ROADMAP.md#remaining-work).
 
 ## 1. What a writer types
 

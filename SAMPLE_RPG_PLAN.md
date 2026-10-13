@@ -4,7 +4,11 @@ Status (October 12, 2026): **implemented** (stages S0–S7), with the deviations
 manual in `docs/` remains the only definition of what the language does; this document records
 the plan and what was built.
 
-Goal: a second complete sample game, `sample-rpg/`, that pushes the engine closer to a real
+The stage table below preserves original acceptance targets; §9 records the actual
+scope and deviations. Remaining production work is real art/audio, human review of
+the French draft and playtesting; S0–S7 are not an active queue.
+
+Original goal: a second complete sample game, `sample-rpg/`, that pushes the engine closer to a real
 game: a town to explore, situations that raise stats, outcomes gated on those stats
 (`strength > 50`), a character-creation opening, and a playable run of about 15 minutes that
 does not repeat text. It is played in the SDL3 player (`varis-sdl`).
@@ -162,7 +166,7 @@ suite in `tests/manifest.toml`.
 | SFX | click, stat-up, coin, success, fail, door (6) | Short blips |
 | Font | system fallback (Arial / DejaVu Sans) | Later: vendored OFL font such as Noto Sans; the French pack needs Latin-1 coverage only |
 
-## 7. Stages
+## 7. Delivered stages
 
 | Stage | Deliverable | Exit test |
 | --- | --- | --- |

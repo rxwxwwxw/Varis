@@ -20,7 +20,8 @@ It never runs project code.
 - **VS Code:** use a generic LSP client extension with command `varis` and arguments `["lsp"]`,
   and associate the grammar with the project's files.
 
-The workbench (`varis serve`) uses static diagnostics and indexed definitions in process;
-its completion still reads live state and its UI has no hover/rename. The LSP exposes
-the fuller static service set, including literal scenes/characters. See
+The workbench (`varis serve`) uses the same static diagnostics, source completion,
+definitions, hover and rename services in process, including unsaved drafts and
+literal scenes/characters. Command-window completion reads live state. Rename
+previews edits in drafts and writes them only on Save all. See
 [workbench status](../WORKBENCH_PLAN.md#1a-what-exists-today).

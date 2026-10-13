@@ -8,7 +8,10 @@ suite is `sample-td` (about 15 s, in `make test-fast`), plus the SDL smoke in `m
 manual in `docs/` (see [docs/battle.md](docs/battle.md)) remains the only definition of what the
 language does today. Differences worth knowing before reading on: the fog rings, the Lantern's gate
 (Bellfrey), heroes fighting in melee, judge-at-dawn forecasts, and the cuts listed at the end of the
-README (projectiles, `varis battle`, stress mode for players).
+README (travelling projectiles, player-visible stress mode and per-night music cues).
+`varis battle`, the 435,600-tile overview view and enforced `td_native` budgets landed
+on October 13. This is a delivered design record; its stage table is historical.
+Production work remains placeholder assets, French draft review and balance playtests.
 
 Goal: a second hybrid sample, `sample-td/`, whose job is to be the **integration test of the
 battle engine**. About fifteen minutes of play across four nights. Every feature of the battle
@@ -276,7 +279,7 @@ functions in content files.
 | 8 | Art | Placeholder polygons and generated sprites; real art replaces a file by name |
 | 9 | Mod hooks | None in this sample; the data tables are the modding surface |
 
-## 10. Stages
+## 10. Delivered stages
 
 Each stage lands when the engine stage it depends on has passed its exit test, so there is always
 a slice that runs. Stage names SA–SH are this sample's; TD stages are the engine's.

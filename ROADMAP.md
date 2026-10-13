@@ -1,7 +1,7 @@
 # Varis roadmap
 
-Status: direction revised October 11, 2026; implementation status audited October 12, 2026.
-The phases mix implemented stages, partial milestones and future work; status notes distinguish them. The [Varis Reference Manual](docs/README.md) remains the
+Status: implementation audit and backlog cleanup, October 13, 2026.
+This file lists remaining work; completed milestone detail is in [MILESTONE_HISTORY.md](MILESTONE_HISTORY.md). The [Varis Reference Manual](docs/README.md) remains the
 only definition of current language behaviour; [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md)
 is the engineering history of phases 6–8.
 
@@ -11,7 +11,7 @@ How to read this file:
 - **Decision record** lists every decision that shapes the work, who made it and why. When two
   documents disagree, the decision record wins; fix the other document.
 - **Order of work** says what to do next when nobody has said otherwise.
-- **Phases** define milestones. Milestone numbers are identifiers, not an order.
+- **Remaining work** lists open milestones. Completed scope is linked under **Delivered work**.
 
 ## Direction
 
@@ -102,7 +102,7 @@ can overturn it. All entries are dated October 11, 2026.
 | Deliberate divergence | Allowed when it serves authoring, saves/replay, portability or performance. Each one gets a `[[ledger]]` entry in `tests/manifest.toml`, a `Skip-Accepted:` commit trailer and a line in [docs/compatibility.md](docs/compatibility.md) §9. |
 | Frozen features (no new work; candidates for removal) | The C API subset and `dlopen` modules (`capi.d`, `lua_api.exports`), binary chunks (`dump.d`), weak-table/finalizer emulation and collector tuning modes (`gc.d`), `debug.sethook` and line-attribution fidelity, exact PUC-Rio error text. Removing one is a separate recorded owner decision. Frozen features must keep passing their tests while they exist; they may run on the slower instrumented executor. |
 
-## Language tiers (planned)
+## Language tiers (implemented)
 
 Two tiers enforced per file (milestone 26, implemented October 13, 2026). The manifest records
 tiers; `varis check` and the language server enforce the default content restrictions
@@ -124,157 +124,82 @@ language:
 The tiers are a property of files, not of the virtual machine: both compile to the same bytecode
 and run on the same core, so core performance (D4) benefits both.
 
-Evidence that the split is natural: in `sample-game/`, five of the seven content files contain no
-`function` at all, nothing uses coroutines, and all procedural code lives in `world.lua`,
-`game.lua`, `main.lua` and `tools/check.lua`. Internally `effect do … end` and `when { … }`
-remain compiled closures.
+The split is visible in `sample-game/project.lua`: content declarations are separated
+from engine/host scripts (`world.lua`, `game.lua`, `main.lua` and `tools/`). Internally
+`effect do … end` and `when { … }` remain compiled closures.
 
 ## Order of work
 
-There are two lanes. They do not block each other.
+Completed prerequisites are in [MILESTONE_HISTORY.md](MILESTONE_HISTORY.md); do not
+restart them. The two lanes remain independent (D14):
 
-**Runtime lane (needs no owner decisions; the default thing to work on).** Stages are defined in
-[benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md). Do them in this order unless
-the owner says otherwise (D14):
+1. **Runtime:** continue the authorized L1 error-as-values conversion (milestone 46).
+   Then measure the remaining call/frame costs and parity gaps. Preserve exact call
+   records and register clearing; consult performance plan §5a before changing the
+   executor. L2 is done, L3 met its recorded stage exit without compact encoding,
+   and L4's measurement account is closed; none of these establishes core parity.
+2. **Beyond parity:** X1–X4 (47), using measurements to select changes. Initial caches
+   and fast paths already exist. Canonical bytecode and save identity stay unchanged.
+3. **Hardware and footprint:** finish stage M (37), including real low-end measurements
+   and Windows/Linux builds. S0, S1 and the world-model budget work are already delivered;
+   W5(b) remains conditional on a measured need, not a prerequisite to restart.
 
-1. Stage S0, safety net: sample game in the tests with golden output, reference-game benchmark
-   (milestone 34).
-2. Stage S1, the seam between the Lua core and the world model (milestone 45).
-3. Stages W1–W5, world-model engine to its turn budget (milestone 35).
-4. Stages L1–L4, Lua core to parity with C Lua (milestone 46).
-5. Stages X1–X4, Lua core beyond C Lua (milestone 47).
-6. Stage M, memory, pauses and real hardware (milestone 37).
+**Presentation and production lane:** finish the standard player's presentation and
+text layout (36), localization T5 and handoff refinements (39). V1 syntax, authoring
+A0–A6 and workbench milestones 42–44 are delivered. Their optional refinements below
+are not new blockers for the completed milestones.
 
-**Language and tools lane (needs owner decisions on syntax).** Phase 9, then Phase 10. Within
-Phase 10 the workbench server and the story-level debugger (milestones 42, 43 and the story half
-of 44) need nothing from Phase 9 and can start at any time; source-level debugging needs stage S1.
+## Remaining work
 
-## Phases
+Audited against the source and executable fixtures on October 13, 2026. Numbers are
+stable identifiers, not priority ranks. The detailed plans retain design rationale
+and dated evidence; this table is the active milestone queue.
 
-Phases 1–7 are complete and Phase 8 is closed (see the end of this file).
-
-### Phase 9 — Authoring language v1: settle the syntax
-
-Goal: freeze a reasonable content syntax quickly, so tools and content can be built on it.
-Inputs: [sample-game/needed_extensions.md](sample-game/needed_extensions.md) (cited below by its
-section numbers), [sample-game/REVIEW.md](sample-game/REVIEW.md) and
-[sample-game/extensions/proposed.lua](sample-game/extensions/proposed.lua).
-
-| Milestone | Deliverable |
-| --- | --- |
-| 26 | **Tiers and file identity.** Content/engine tiers enforced per file; a source extension and language id distinct from Lua (editors must not treat Varis files as Lua); the decisions recorded in `docs/compatibility.md`. **Implemented October 13, 2026:** source files may use `.varis` (`require` finds `a/b.varis`, manifest patterns written `.lua` also match it, `project.varis` is read, editors' grammar and the language server accept it; `.lua` loads as before); a host that has read the manifest installs a load-time policy (`LuaState.fileTierHook`, `services/tier.d`): a file matching `content` is vetted by the static tier check and runs in a restricted environment (no `io`, `os`, `debug`, `package`, `load`, `coroutine` or metatable functions; helpers exposed with `narrative.helper`; unknown globals are errors naming it). Suite `tiers`. Manual §8.3. |
-| 27 | **Syntax triage and freeze.** Every proposal in `needed_extensions.md` is accepted, deferred or rejected. Accepted constructs get grammar in `docs/syntax.md` and semantics in the manual in the same change that implements and tests them; unimplemented syntax stays in proposals. Rules of thumb: one obvious way to write a thing; new words stay contextual; nothing in content requires understanding closures, iterators or metatables. The freeze includes the localization-ready decisions of [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md) §3: message keys from authored names and line ids, one template grammar with named placeholders, a select/plural construct and named variants, literal display text in content files, and wording kept out of the gameplay fingerprint. **Done October 13, 2026:** every topic of the inventory has a disposition (table in `sample-game/needed_extensions.md`), the implemented constructs have grammar in `docs/syntax.md` §10 and semantics in the manual, and §10.5 records what is frozen, what is accepted but not built (readable scene bodies, explicit text ids in content, readable input statements: milestone 29) and what is deferred. The migration of *Saltmarsh Light* off its workarounds is separate work. |
-| 28 | **Core authoring gaps.** Periods settable from effects (§1.1); `leads`/return sugar for decks (§1.2); clamped `adjust` and readable quality metadata (§1.3); a narration channel with events delivered in the presentation (§1.4); binding goals and `or` in rule bodies (§1.5); `expose` (§1.6); session-world binding for handlers and deferred callbacks (§1.7); terminal state (§1.8); `exists` and single-result queries (§1.9). New in this direction: **declared entities/symbols**, so a mistyped `:keepr` is an error instead of a storylet that silently never appears. **Implemented October 13, 2026:** `narrative.set_period`; choice `leads :deck` and `narrative.return_deck`; `adjust … clamp`, `quality.add(…, {clamp = true})` and `quality.metadata`; presentation `events` and `session:events_since` (the cursor is saved only when events are waiting); computed bindings `?x := expr` (rejected in recursive rules) and parenthesized `or`; `expose ?x`; handler and `narrative.defer` callbacks default to the session's world; `narrative.finish` and `session:ended`; `exists { … }` and `logic.one`; `symbols a, b` with the manifest list (strict once either exists; refused at load in content). Manual §§4.6a, 4.8a, 6.2–6.8a, 7.4, 8.3, 10. Suite cases `phase9_*` in `tests/extensions`. |
-| 29 | **Scenes, beats and the stage.** A `scene` content kind compiled to a resumable, serializable position (scene id, beat index, portable locals) rather than a coroutine (§3.1); characters and stable line ids (§3.2); media directives as structured beats (§3.3); beat-stream presentations (§4.1); `jump`/`call`/return between scenes and back to storylet hubs. **Stage state is engine data**: each character has a tag and a set of attributes (expression, outfit) that a dialogue line can change, plus who is on stage in which named slot, the background and named audio channels. It is carried in beats and saved in the session, so a load or rollback restores it and the checker can reject an unknown character or attribute. The engine never holds pixel positions, timing or image files. From the same state a front end can draw a face in the text box, a full-body sprite, or both. Parity checklist for this milestone: RPG Maker's story event commands (text with face/name/window position, choices with default and cancel, number and item input, pictures, screen fade/tint/flash/shake, waits, BGM/BGS/ME/SE, inline text codes for colour, size, pauses and speed, common events), Ren'Py's show/hide/scene with transitions, side images, menus and jump/call, and Twine's passages and inline links. |
-
-Milestone 29, readable scenes (October 13, 2026): `scene name() … end` with `say … id …`,
-`narrate`, `show … at`, `hide`, `background`, `audio`, structured directives, `input … id`,
-`set`, `menu`/`option`, `if`/`elseif`/`else` on a local, `effect name(…)` and
-`effect using … do … end`, `jump`/`call`/`return`/`ended`; it lowers at parse time to the beat
-tables (plus a `branch` beat and generated scenes/procedures), requires an explicit
-scene-scoped id on every line, and is documented in manual 6.11a and `docs/syntax.md` §10.
-*Saltmarsh Light* was migrated off its workarounds (golden and format-1 fixture regenerated in
-their own commit) and `sample-vn` is written in the readable form (`content.varis`).
-
-Milestone 29 first version (October 12, 2026): declarative `scene`/`character`
-programs, scalar locals, jump/call/return, menu/input beats, stable line ids,
-engine-owned stage and format 3 scene saves are implemented; see manual §6.11.
-`sample-vn/` proves mid-scene and mid-call restoration, including fresh-process
-loading and wording compatibility. The current manual also documents beat undo and input
-validation. The writer-facing procedural syntax landed on October 13 (above). The full presentation
-parity checklist above is retained as a comparison target; by owner decision October 13,
-advanced rendering belongs to milestone 36 and does not block the Phase 9 syntax freeze.
-General mixed scene/storylet beat streams and a separate passage kind are deferred.
-
-Exit: syntax v1 is documented as frozen; *Saltmarsh Light* runs with its workarounds removed; a
-second sample written in linear visual-novel style runs; a save taken mid-scene round-trips.
-The agreed v1 boundary includes readable branching scenes, calls, input, transactional effects,
-beat undo, saveable stage state, structured media directives, stable text ids and localization
-coverage (including menu labels and character display names), plus the agreed relational/session
-improvements and sample migration. See the October 13 Phase 9 decisions below.
-
-### Phase 10 — Authoring tools and the workbench
-
-Goal: a writer starts `varis serve` in a project, opens the workbench in a browser, writes a
-storylet, sees mistakes inline, playtests it and asks why a choice is missing, without reading D
-or engine scripts. A writer who prefers their own editor gets the same diagnostics through a
-language server. Design and rationale: [AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md) for
-milestones 30–33 (stages A0–A6, and the order combined with localization) and
-[WORKBENCH_PLAN.md](WORKBENCH_PLAN.md) for milestones 42–44.
-
-| Milestone | Deliverable |
-| --- | --- |
-| 30 | **`varis check`.** Loads a project without running a session and emits diagnostics (human and `--json`) with file, line/column ranges and stable codes. Surfaces the validation that already exists (arity, safety, stratification, unknown decks and placeholders, ungrounded parameters), enforces the content tier, and adds lints: undeclared or once-used symbols, unknown relations, storylets no bounded analysis can reach. Starting point: AST nodes already carry line and column (`ast.d`). **Implemented October 12, 2026** (authoring tools plan stages A0–A4): `varis check [--json] [--index] [--no-load] [--locale L] [--analyze] [files]` reads the project manifest, reports every syntax error with a range, runs the static checks (`duplicate-id`, `unknown-deck`, `unknown-placeholder`, `relation-arity`, `unknown-relation`, `unknown-quality`, `symbol-once`, `computed-text`), loads the entry module to surface the engine's validation at the definition's line, and with `--analyze` lists storylets bounded exploration does not reach. The content tier of milestone 26 is enforced statically with the default list below (`tier`). Declared symbols exist in their smallest form (a `symbols` list in the manifest, `undeclared-symbol`); a language-level declaration syntax is not designed. |
-| 31 | **Parser recovery and writer-facing messages.** Tool-mode parsing recovers at statement and definition boundaries so one typo does not hide the rest; normal loading still stops at the first error. Messages name the storylet, choice and field, and suggest the nearest known name. **Implemented (A2, A3).** |
-| 32 | **Language services and the language server.** One D library **built on the Varis frontend** (not adapted from a Lua server, which would understand none of the relational or narrative constructs): diagnostics, completion and go-to-definition for relations, symbols, qualities, decks, storylets and scenes, hover for schemas and quality bounds, rename. It is reached two ways: the workbench calls it directly, and a language server exposes it over the Language Server Protocol for external editors, together with a syntax-highlighting grammar. **Implemented (A5):** `services/lang.d`, `varis lsp`, `editors/`; the workbench's problems list uses it; its editor uses vendored CodeMirror 6 with syntax highlighting and inline diagnostics. The editor now shares static completion, definitions, hover and rename with LSP, including unsaved buffers; command-window completion reads live state. |
-| 33 | **Writer workflow.** A text-mode playtest host with seeds and replay, "why is this storylet not showing?" built on `narrative.explain`, an author-test format generalizing `sample-game/tools/check.lua`, a CI recipe for checking contractor submissions, and optionally a formatter. **Implemented (A6):** `varis play`, `varis test`, `tools/project_ci.sh`; no formatter. |
-| 42 | **Workbench server.** `varis serve <project>`: the Varis executable hosts the project's state and serves a web application and a message protocol on the local machine. Commands typed in the browser run in the live state. No WebAssembly: the engine runs natively and the browser is only the user interface (D13). **First version done (October 11, 2026)**: command window, workspace with relation tables, story panel, plain editor, over request/response HTTP; see WORKBENCH_PLAN §1a. **WebSocket transport added October 13, 2026**: `/ws`, the same handlers, pushed `hello`, `stopped`, `output`, `workspaceChanged`, `fileChanged` and `publishDiagnostics` events; the protocol scope of 42 is complete. |
-| 43 | **Workbench user interface.** Command window on the left, editor on the right, workspace browser, a story panel that plays the game as text, a problems list (D10). The workspace shows variables and also what Varis has that MATLAB does not: worlds and their relations as tables, qualities, the session's turn, decks and history. **UI delivered (October 12, 2026):** vendored CodeMirror with inline diagnostics and breakpoint gutters, retained drafts and undo, shared source services, resizable panels, persistent command history and browser coverage of fix/Run/replay. Scene-beat playtesting (play, advance, stage and locals, replay) is in the story panel; see WORKBENCH_PLAN §1a. |
-| 44 | **Debugging at the level of the source and the story** (D11). Story level: step one turn, rewind by replay, show what the last turn changed, explain why a storylet or choice is or is not available. Source level: breakpoints on lines, pause, step over/into/out, the call stack, locals in the workspace, evaluating an expression in a paused frame. Built on the instrumented executor of stage S1; the fast executor carries no debugging cost. **First version done (October 11, 2026):** story level (what a turn changed, why a storylet shows or not) and source level (line breakpoints, stop with frames alive, stack, locals, step over/into/out, continue) for code started from the command window or Run; Expanded October 12, 2026: story-panel effect breakpoints with tentative-state inspection, selectable frames and read-only frame expressions; manifest-backed seeded Start, Reload, Rewind and command history. Asynchronous Pause and Stop added October 12, 2026 (an accept thread sets the executor's interrupt and line-hook flags). **Error stops added October 13, 2026** (`LuaState.errorStopHook`, called in the raising frame before unwinding; `/api/breakonerror`). **Done October 13, 2026:** the fast and instrumented loops of stage S1 landed (milestone 45), so the debugger's line hook runs on the instrumented loop, the fast loop carries no debugging code, and a program is back on the fast loop when no breakpoint, step, pause or hook is pending (`"instrumented"` in `/api/breakpoints`, checked by the protocol test). Every listed feature exists; see WORKBENCH_PLAN §1a for what is deliberately not built (a per-function breakpoint table, writing locals). |
-
-### Phase 11 — Fast runtime and host interface
-
-Goal: the Lua core is at least as fast as C Lua, and a game of realistic size runs comfortably
-under a graphical front end on a low-end machine. The staged plan, with the measurements behind
-it, is [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md). None of it depends on the
-Phase 9 syntax.
-
-| Milestone | Deliverable | Plan stages |
+| Milestone | What remains | Completion evidence needed |
 | --- | --- | --- |
-| 34 | **Safety net, reference game, budgets.** `sample-game/` in the test tiers with a golden transcript and golden save bytes (D12). A synthetic reference game at realistic scale (about 100 rooms, 1000 storylets, thousands of facts, a recursive rule and an aggregate) as a benchmark group with enforced budgets in `benchmarks/targets.toml` for turn latency, content load time, peak memory and save time. Provisional low-end budgets: a turn (choose → effects → actions → next presentation) within 50 ms, no engine work on the render path between turns, content load under 1 s, `save()` under 50 ms, peak engine memory under 64 MB. Measured on an Apple M1 before the work started: a 100-room game with one recursive rule took about 0.8 s per presentation and 171 MB. **Done (October 11, 2026)**; **completed October 13, 2026:** the benchmark is the full reference game (recursive rule, aggregate, 500 turns) and checks each measure against its stand-in budget (turn p95 1.0 ms of 5, load 54–65 ms of 100, save 2.5 ms of 5, 49.8 MB of 64, no collection inside a turn); engine counters are `logic.counters()`. `save()` was 27 ms before this work. The stand-in budgets still rest on the assumed ten-times-slower low-end machine (open decision 3). | S0 |
-| 45 | **The seam.** The Lua core no longer knows about worlds, transactions or narrative: no core module imports `varis.logic` or `varis.narrative`, plain Lua calls do no world bookkeeping, and one executor source generates the fast and the instrumented executors. No behaviour change; saves and fingerprints stay byte-identical. **Boundary done (October 11, 2026)** and enforced by `make check-sources`; 40 of 43 opcode handlers are shared between the two executors. **Completed October 13, 2026:** Lua-to-Lua calls do no world work (the call world is set where a native is called, which is the manual's lexical rule); a jump out of a `transaction` block goes through an execution-only `ExitTransaction` instruction, so an open transaction costs nothing per instruction; each executor has a fast loop without any hook, budget, collection or interrupt code and an instrumented loop, generated from one text and switched at safepoints; slow mode ends when no hook, analysis or debugger request needs it. Measured: `core.numeric_loop` 1.40× → 1.16×, `core.array_access` 1.50× → 1.17×, `core.fib` 2.24× → 1.93×, `programs.mandel` 1.76× → 1.43×; golden transcript and save unchanged. `Call`, `TailCall` and `Return` stay written per executor: they are the difference between the two, and L1 decides by measurement whether one of the executors goes. | S1 |
-| 35 | **World-model engine.** Shared immutable fact storage instead of copying per query, rule bodies and queries compiled once to slot-based plans with indexes, semi-naive evaluation of recursive strata, derived relations cached per world version, storylets indexed by the constant parts of their conditions. The original evaluator stays as a test oracle. **Done (October 11, 2026):** 0.3 ms per presentation and 53 MB on the reference-scale game, including storylet indexing by a required fact; real low-end hardware is still unmeasured. | W1–W5 |
-| 46 | **Lua core to parity with C Lua.** Errors as values (D7), a 16-byte value with string objects, a compact private execution encoding lowered from the canonical bytecode, a slimmer call path. Exit: every C-Lua-comparable core workload at or below 1.0×, including `core.pcall_error` and `core.deep_recursion`. **In progress:** errors are returned between Lua frames and the value is 16 bytes (`std.sumtype` gone, October 13, 2026); core workloads are at 0.5–2.3×; the call path is held by the owner's decisions of October 12. **October 13, 2026:** the owner reopened L4; measured ceilings and a per-workload account closed it (PERFORMANCE_PLAN §L4 exit account); L3 step 1 (fused compare-and-jump) landed. **After stage S1's fast loop (same day):** core workloads are at 0.15–2.1×; L3's exit (`numeric_loop`, `array_access`, `sieve` at or below 1.2×) is met at 1.16×, 1.17× and 1.06× without the compact encoding; the L4 account was refreshed. **Still not complete:** L1's exit ("no `throw` in core modules") is unmet and its remainder is recorded as deferred, and calls are at 1.7–2.1× (about 33 ns against 17 ns), which needs a lean frame that depends on L1. Both need the owner's go-ahead (PERFORMANCE_PLAN §5a). **L1 remainder started (owner decision, October 13, 2026):** natives can report errors as values (`raise`, `state.raisedError`), the executor and `pcall` take them without a throw, and `lib/math.d`, `lib/table.d` and the natives of `lib/base.d` are converted; an argument error raised in Lua code costs 0.45 µs instead of 16.5 µs. About 400 throw sites in the other core modules remain. | L1–L4 |
-| 47 | **Lua core beyond C Lua.** Inline caches for field, method and global access, type-specialized and fused instructions, compiler passes on the typed AST, a second attempt at profile-guided builds. A just-in-time compiler is not planned. | X1–X4 |
-| 36 | **Host interface and standard presentation layer.** A documented D embedding API: create a state, load content, run session commands, receive presentations and beats as typed D values (§4.11). Errors cross the host boundary as return values (D7), with an optional throwing wrapper. On top of it, a standard SDL3 presentation layer that implements the stage of milestone 29 (text box, portraits, sprites in slots, transitions, screen effects, audio channels, history log, skip and auto modes), so a game supplies a skin and an asset manifest rather than a renderer. Text layout there must handle scripts written without spaces and per-language fonts (localization plan §5). Starts with a spike on SDL3 bindings and text rendering from D. **Initial scene player implemented (October 12, 2026, owner-requested):** optional `varis-sdl`, status-returning scene host, asset manifest, backgrounds, expression/outfit sprites in slots, portraits, dialogue/menu/input, audio channels, quicksave/load, recent history, skip/auto and basic fade. See [docs/presentation.md](docs/presentation.md); complete presentation parity and advanced typography remain planned. **October 13, 2026:** the D embedding contract (`GameHost`, `SceneHost`: statuses, inert reads, saves, undo, profile, language, battles) is documented in [docs/embedding.md](docs/embedding.md) and pinned by the `embeddingContract` unit test; a versioned package or C ABI is not built. | |
-| 37 | **Portability and footprint.** **Partial (October 13, 2026):** the host "idle now" call (`session:idle()`, `GameHost.idle()`, used by the SDL player) and the footprint measurements and POSIX audit in PERFORMANCE_PLAN stage M; no Windows or Linux build was attempted or verified. Original scope follows. Builds for Windows, macOS and Linux, then an Android build through SDL3 if practical; development and all measurements so far are on macOS arm64, and several modules import `core.sys.posix` (`gc.d` uses `fork` for reachability probes, `package_lib.d` uses `dlopen`). Bounded collector pauses and heap, start-up time, binary size. Frozen Lua features that block portability are removed here. | M |
+| **46 — Lua core parity** | Finish L1: unconverted native libraries, throwing helpers and executor/coroutine boundaries, then explicit cleanup without exception unwinding. Measure the lean-frame / executor design and remaining call, string and dispatch costs. | Preserve full semantics and gates; meet the L1 no-throw exit and every C-Lua-comparable `goal.clua ≤ 1.0`. See [performance plan](benchmarks/PERFORMANCE_PLAN.md#track-l--lua-core-to-parity-milestone-46). |
+| **47 — Beyond C Lua** | Remaining method-chain/global caches, specialization/fusion, execution-only optimizations and measured PGO/LTO experiments (toolchain permitting). | Per-change semantic validation and same-session timings; choose a below-parity target only after parity is measured. [Track X](benchmarks/PERFORMANCE_PLAN.md#track-x--lua-core-beyond-c-lua-milestone-47). |
+| **36 — Standard presentation** | Full stage rendering: authored timing, picture/screen effects, richer transitions, typewriter/voice synchronization, full history and input/IME support; CJK layout, ruby and font fallback. The D embedding contract and both host adapters already exist. | SDL rendering/input tests and reviewed examples against the retained RPG Maker/Ren'Py/Twine comparison scope. [Current player and limits](docs/presentation.md), [embedding contract](docs/embedding.md). |
+| **37 — Portability and real hardware** | Build/test/package on Windows and Linux; resolve POSIX dependencies; select a real low-end reference machine and verify time, memory and collector-pause budgets. Android remains a stretch goal. | Recorded platform builds and reference-game measurements. Host idle collection and the macOS footprint audit already exist. [Stage M](benchmarks/PERFORMANCE_PLAN.md#stage-m--memory-pauses-the-host-boundary-real-hardware-milestones-36-37). |
+| **39 — Production localization** | Complete T5 typography and native-reader validation; publisher font subsetting and per-locale release policy. Close host differences: `GameHost` translates character display names, while raw scene speaker metadata and `SceneHost` still use authored names. | Chinese/Japanese/Korean samples reviewed by readers, font coverage/subsetting evidence, reviewed translations and release checks. Catalogs, menu-label translation, packs, font coverage checks and per-language fonts already exist. [Localization plan](NARRATIVE_LOCALIZATION_PLAN.md). |
 
-Exit: the reference game meets its budgets on the reference machine under the reference host, and
-`make bench` reports no core workload behind its `goal.clua`.
+### Optional refinements and deferred scope
 
-### Phase 12 — Ergonomics and production features
+These remain visible without reopening delivered milestones:
 
-| Milestone | Deliverable |
-| --- | --- |
-| 38 | Undo/rollback at turn and beat granularity (§2, §3.4); persistent cross-save data (§3.5); save slots and metadata (§4.8). **Implemented October 13, 2026:** `session:set_undo_limit(n)`, `undo_depth()` and `undo()` restore the last choice or beat advance in place (facts shared copy-on-write, session data, scene position; the undone command's presentation comes back with usable tokens; not saved; off by default), with `GameHost.back`/`SceneHost.back` and the SDL player's B key; `narrative.profile_*`, a host-owned cross-save store outside saves, fingerprints and replay (reads refused in effects, effect writes applied after commit); `session:save{label=, meta=}` and `narrative.save_info`. Also `session:set_autosave` (a callback with the save text after every committed command), `narrative.save_slot` / `list_slots` / `load_slot` / `delete_slot`, and profile storage in the SDL player (`profile.json`). Manual section 6.9a. |
-| 39 | Localization pipeline per [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): catalogs, the publisher handoff kit, loadable translation packs, per-language text features for Chinese, Japanese, Korean, French and Russian. Built on the line ids of milestone 29 and the decisions frozen in milestone 27. Its stage T1 (extraction and the source catalog) needs neither and starts once the project index of milestone 30 exists. **Status (October 12, 2026):** T1–T4 are implemented (T2, the wording split and the plural/select/named-variant syntax, were approved by the owner on October 12, 2026); scene line ids, catalog extraction and translated line rendering are implemented in the first milestone 29 slice. Menu labels and scene character metadata still render authored text. T5 has engine text helpers and character-set output and (October 13, 2026) per-language `font`/`heading_font` in the SDL manifest; complete CJK layout and ruby drawing remain unfinished; see the plan's status note. |
-| 40 | Twine-class conveniences (**disabled choices with reasons done October 12, 2026**: `require … because`). **Done October 13, 2026:** `session:visited` / `last_chosen` (and `narrative.visited` / `last_chosen` in effects), derived from data a save already carries; `narrative.meta` pass-through metadata on storylets and choices, outside the content identity; `narrative.spans` and `narrative.escape_markup` for a portable rich-text markup; `default`, `min_length`/`max_length` and `min`/`max` on scene `input` beats. Also `var name = v` with `{$name}` (sugar over the keyed relation `var`), `narrative.fragment` with `{>name}`, `{#if lua …}` read-only conditions, and `[[text->choice]]` passage links: validated against the storylet's choices at seal, delivered as `links` with each choice's token, and drawn inline from `narrative.spans`. Manual section 6.6a. |
-| 41 | Writer documentation: a tutorial and cookbook for content authors, separate from the reference manual. **Done October 13, 2026:** [docs/writers/](docs/writers/README.md) (guide, eight-step tutorial, fifteen-recipe cookbook). Every program in it is run by suite `writers-docs` (`tests/writers/test_docs.py`: scratch project, `varis check`, `varis test`, play transcripts), so the pages cannot drift from the engine. Scope complete; translated guides are a localization-plan matter, not part of this milestone. |
+- **Authoring tools:** optional formatter, unified runtime template diagnostics,
+  and stricter static checks where dynamic code prevents a complete answer.
+  [Authoring limits](AUTHORING_TOOLS_PLAN.md#2-what-exists-today).
+- **World model:** W5(b) partial availability caches only if the reference workload
+  needs them; retain the naive oracle and existing budget gates.
+- **Samples:** replace placeholder art/audio, review French drafts and playtest balance.
+  [RPG deviations](SAMPLE_RPG_PLAN.md#9-as-built-october-12-2026) and
+  [Lanternfall cuts](sample-td/README.md#as-built-against-the-plan) remain explicit.
+- **Deferred language/mod features:** compound relation values, mixed scene/storylet
+  streams, timed-choice syntax and mod packaging are not v1 requirements. See the
+  [syntax disposition](docs/syntax.md#105--status-of-the-syntax-milestone-27) and open decisions.
+- **Battle defaults:** hit-scan, BFS routing and full route rebuilds remain intentional;
+  travelling projectiles and weighted/incremental routing require a demonstrated need.
+  Cross-machine determinism and real hardware validation belong with milestone 37.
 
-### Phase 13 — Tower-defense battle (proposed, October 12, 2026)
+## Delivered work
 
-Goal: the battle half of the tower-defense / visual-novel hybrid: a native D, fixed-step integer
-simulation on a hex map (about 15–20 ns per live enemy per step, against about 3 µs for the same
-step in relations), a 2.5D pointy-top zoomable battle view in the SDL3 player, and a narrow bridge
-to the story engine: relationships and story state become a battle setup through rules, story
-moments interrupt a battle as ordinary scenes, and the outcome returns through one transaction.
-There is no saving during a battle; abandoning restores the snapshot taken at its start. The
-design, measurements, decisions (owner, October 12, 2026) and stages TD0–TD8 are in
-[TOWER_DEFENSE_PLAN.md](TOWER_DEFENSE_PLAN.md); the fifteen-minute sample that tests all of it
-(*Lanternfall*, `sample-td/`) is in [SAMPLE_TD_PLAN.md](SAMPLE_TD_PLAN.md). **Status, October 12,
-2026: implemented as a first complete slice** (native simulation with all ten ability primitives,
-the bridge in `GameHost`, the SDL battle view, the four-night sample with French pack and tests);
-the remaining TD0/TD5 items (budget entries, render caches at the largest map) and the cuts listed in
-`sample-td/README.md` are open. It needs none of the
-Lua-core stages and does not block them. These milestone numbers are proposed identifiers, not an
-order:
-
-| Milestone | Deliverable | Plan stages |
-| --- | --- | --- |
-| 48 | **Done October 13, 2026.** **Native battle and bridge.** `source/varis/game/` (hex, terrain from seed plus edits, fog, routing, kinds, the simulation, digest), `varis battle`, and the bridge in `services/battlehost.d`: setup, moments as scenes, sync, result, abandon by snapshot. | TD0–TD3 |
-| 49 | **Done October 13, 2026** (the large-map overview texture, shared minimap and per-band frame times at 435,600 tiles included). **Battle view.** SDL bridge primitives (geometry, points, render targets, buttons and drag), the 2.5D pointy-top view with camera, picking, zoom bands and fog, HUD, moment overlay. | TD4–TD5 |
-| 50 | **Done October 13, 2026** (`td_native` benchmark group with the §9 budgets; the sample plays at 435,600 tiles). **Tower-defense game.** Hub ↔ battle, weekly cadence with silent judging, economy, fog growth, heroes and relationships, content depth, 435,600-tile scale and budgets. | TD6–TD8 |
+The completed scope and evidence are indexed in [MILESTONE_HISTORY.md](MILESTONE_HISTORY.md).
+Phases 1–7, the v1 language (9), authoring/workbench (10), and the first battle/sample
+scope (13) have landed. Phase 8 is closed with 21–25 retired. Phase 11 retains 36, 37,
+46 and 47; Phase 12 retains 39. Undo/profile/saves (38), conveniences (40) and the writer
+guide (41) are delivered. Preserve their regression coverage while doing the work above.
 
 ## Open decisions (owner)
 
-Until one of these is decided, use the stated default and say so in the change. The
+Resolved choices 1 (content tiers) and 2 (file identity) are recorded below; their
+identifiers are retained in history. For unresolved choices, use the stated default
+and say so in the change. The
 tower-defense plan's own open decisions (hex orientation, simulation rate, lanes or corridors,
-what judging reports, the game-support layer) are in [TOWER_DEFENSE_PLAN.md](TOWER_DEFENSE_PLAN.md) §10.
+what judging reports, the game-support layer) are in [TOWER_DEFENSE_PLAN.md](TOWER_DEFENSE_PLAN.md) §12.
 
 | # | Question | Default until decided |
 | --- | --- | --- |
-| 1 | The exact content-tier restrictions. | Decided October 13, 2026; see "Language tiers" and the Phase 9 decisions below. Implemented (milestone 26): static checks and load-time enforcement. |
-| 2 | The source file extension and language name shown in editors. | Decided October 13, 2026: `.varis`, editor language "Varis"; retain `.lua` loading compatibility. Implemented (milestone 26); samples still use `.lua` and migrate separately. |
 | 3 | The reference low-end machine and the budget numbers in milestone 34. | The provisional budgets; an M1 performance core is assumed ten times faster than the low-end machine. |
 | 4 | Which frozen Lua features are removed outright, and when. | Remove none; keep them passing on the instrumented executor. |
 | 5 | How mods are packaged, loaded and recorded in saves (the localization plan only reserves room: packages with a declared source language and package-qualified keys). | Not designed; do not build on assumptions about it. |
@@ -286,7 +211,9 @@ what judging reports, the game-support layer) are in [TOWER_DEFENSE_PLAN.md](TOW
 
 ### Phase 9 decisions — October 13, 2026
 
-Approved by the owner; these are implementation targets, not current language semantics.
+Approved by the owner and implemented in milestones 26–29, except the explicitly
+deferred items. The manual defines the resulting syntax and semantics; this record
+preserves the rationale.
 
 - **File identity:** `.varis` for new content and engine scripts, editor language name
   **Varis**. The project manifest determines the tier; the extension identifies the language.
@@ -357,7 +284,7 @@ Approved by the owner; these are implementation targets, not current language se
   boundaries commit together; failure restores position, locals, stage and world. No
   coroutine implementation. The approved illustrative syntax uses `scene greeting()`,
   `show mira at :left`, `say mira id greeting_hello "Welcome back."`, and `effect do ... end`;
-  complete grammar remains implementation work.
+  the implemented forms are in `docs/narrative.md` §6.11a and `docs/syntax.md` §10.5.
 - **Stable text identity:** content scenes require explicit authored ids for dialogue,
   narration, menu options and input prompts. Short ids are scene-scoped. Editors may generate
   them once and preserve them across moves; missing ids are content errors. Position-generated
@@ -375,20 +302,17 @@ Approved by the owner; these are implementation targets, not current language se
   `session:choose_by`. Gameplay hosts select exact presentation tokens, preserving instance
   identity and availability checks.
 - **HUD/template additions:** defer `session:status()` and arbitrary Lua expressions in
-  template conditions. Hosts use qualities and the approved metadata accessor; authors use
+  template conditions beyond the implemented `{#if lua …}` form. Hosts use qualities and the approved metadata accessor; authors use
   named relations in template conditions. Preserve implemented rich text, links, variables,
   fragments, history, profile and save-slot facilities. Click-to-replace prose is host-level
   work outside the v1 language contract.
 
-The high-level Phase 9 decision pass is complete. The proposal inventory records the
-disposition of each topic; full grammar, implementation, tests, sample migration and the
-documented syntax freeze remain work. Approval of these targets does not complete Phase 9.
-
-**Status, October 13, 2026:** milestones 26, 27, 28 and 29 are done (see their rows), which
-completes Phase 9: readable scenes with explicit text ids and input statements, *Saltmarsh
-Light* migrated off its workarounds, `sample-vn` in `.varis`. Menu option labels are catalog text
-(`scene.<label id>.label`), character names were already (`character.<id>.name`), and all
-three samples keep content in `.varis` with their French packs rebuilt.
+**Delivery, October 13, 2026:** milestones 26–29 landed: readable scenes with explicit
+text ids and input statements, the syntax freeze, *Saltmarsh Light* migration and
+`.varis` content in `sample-vn`, `sample-rpg` and `sample-td`.
+*Saltmarsh Light* retains `.lua` filenames. Menu labels are catalog text (`scene.<label id>.label`);
+character names are indexed as `character.<id>.name` and translated by `GameHost`.
+The scene-only host difference is tracked under milestone 39 above.
 
 Decided October 12, 2026 (owner, asked while planning the executor work):
 
@@ -406,20 +330,7 @@ Decided October 12, 2026 (owner, asked while planning the executor work):
 
 ## Closed: Phase 8 — core-Lua performance and conformance
 
-Closed October 11, 2026. State at closure ([docs/STATUS.md](docs/STATUS.md), commit `15522b1`):
-
-- Official Lua 5.4.9 suite: 31 pass, 1 partial, 1 skipped, 0 fail.
-- Core workloads at 0.60–2.41× C Lua and program workloads at 0.21–2.17×, with two known
-  outliers: `core.pcall_error` (37.4×, D exceptions through the platform unwinder) and
-  `core.deep_recursion` (8.4×).
-- Milestones 19 and 20 are done (`tools/suite` runs the benchmark gates and the official suite).
-  Milestones 21–25 are **retired, not completed**. Their target was "no more than 2× C Lua"
-  reached by tuning the existing design.
-
-Phase 8 stays closed. Core performance is a goal again (D4), with a stricter target (1.0×) and a
-different method (restructuring, milestones 45–47), so it is tracked in Phase 11 and not by
-reopening Phase 8. The conformance half of Phase 8 remains closed for good (D3).
-
-The `gate.*` ratchets in `benchmarks/targets.toml` stay in force as regression floors.
-[benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md) records what the Phase 8 work
-changed and why the remaining gaps exist.
+Closed October 11, 2026; milestones 19–20 delivered, 21–25 retired, not completed.
+The [closure record](MILESTONE_HISTORY.md#closed-phase-8--core-lua-performance-and-conformance)
+preserves the measurements and rationale. Core performance continues under 46–47;
+the conformance half stays closed (D3). Existing regression gates remain in force.

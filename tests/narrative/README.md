@@ -103,8 +103,10 @@ control-loop atomicity, translations and repeat presentation. `narrative_scene_r
 proves effect launch/rollback and scene/hub interoperation. The `sample-game` suite's
 `linear-vn` and `scene-save` cases prove mid-dialogue and mid-call save/load, fresh-process
 restoration, wording compatibility, structural/corrupt-save rejection and static
-unknown-character/attribute diagnostics. Scene branch analysis and beat undo are
-not implemented; the RPG Maker/Ren'Py parity list remains a roadmap checklist.
+unknown-character/attribute diagnostics. Readable scene branches and errors are covered
+by `phase9_readable_scene` and `phase9_readable_scene_errors`; beat undo is implemented
+(see the undo cases in `tests/extensions/cases/`). Exhaustive scene-branch analysis
+is not implemented; the RPG Maker/Ren'Py rendering parity list remains milestone 36 work.
 
 The status-returning `SceneHost` is covered by `tests/unit/test_presentation.d`.
 Optional `make test-sdl` checks rendering, input/menu flow, assets and scene saves;

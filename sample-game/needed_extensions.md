@@ -7,7 +7,8 @@
 > `logic.one`, content scene text requires explicit ids, and the v1 scope defers compound
 > relation values, passages, mixed beat streams, timed choices and parser-style input.
 > High-level inventory triage is complete; the disposition table below controls scope.
-> Full grammar, implementation and verification remain prerequisites for the syntax freeze.
+> V1 grammar, implementation and syntax freeze landed with milestones 26–29;
+> the remaining production backlog is in the roadmap, not the original gap prose below.
 
 This file lists the language and runtime changes that *Saltmarsh Light* (this folder) and Twine- or Ren'Py-style games need, beyond the current [Varis Reference Manual](../docs/README.md). This is a proposal/workaround inventory, not a language specification; entries marked implemented (such as `sticky` and `order`) are defined in the manual. Historical section citations map through [docs/coverage.md](../docs/coverage.md).
 
@@ -23,16 +24,14 @@ midnight action (`narrative.set_period`, no host `sync_periods`), decks are ente
 the resolve and coin adjustments saturate with `clamp`. The sections below still describe the
 original gaps for reference.
 
-Current status (October 12, 2026): declarative scenes, characters, stage state, scene
-input/menu beats, format 3 mid-scene saves, scene-line localization and an initial SDL3
-player are implemented; see [manual §6.11](../docs/narrative.md#611--scenes-beats-and-stage-state)
-and [Harbour Window](../sample-vn/README.md). The current manual also documents beat undo,
-profile data and input validation. Writer-facing procedural scene bodies remain planned;
-advanced presentation parity is milestone 36 work. `varis test` supplies a choice-by-name
-wrapper; a public `session:choose_by` method remains proposed. Localization catalogs,
-packs and language switching also exist; see manual §§8.4–8.7.
+Current status (October 13, 2026): readable scenes, explicit text ids, menu-label
+localization, beat undo, profile data, input validation and the sample migration are
+implemented. Full rendering/typography remains roadmap 36/39 work; public
+`session:choose_by` is deferred (the author-test wrapper already exists).
 
-Priority key: **P0** means the game needs a workaround today. **P1** is needed for Twine/Ren'Py-class games. **P2** is quality of life.
+Historical priority key: **P0** needed a workaround in the original sample; **P1**
+was needed for Twine/Ren'Py-class games; **P2** was quality of life. The disposition
+table, not those old priorities, records what was accepted or deferred.
 
 ## V1 disposition — owner decisions, October 13, 2026
 
@@ -56,11 +55,11 @@ alternative API or syntax suggested in the historical inventory.
 | §1.11 Inference performance | Runtime lane, milestone 35; not new Phase 9 syntax work. |
 | §2 Passages/focus mode | Defer a separate passage kind; use scenes and storylet hubs. |
 | §2 Links, variables, history, fragments and initialization | Retain implemented facilities; no separate Twine syntax required for v1. |
-| §2 Lua expressions in templates | Defer; use named relational conditions. |
+| §2 Lua expressions in templates | Retain implemented `{#if lua …}`; defer additions beyond that form. |
 | §2 Click-to-replace prose | Host-level, outside v1 language scope. |
 | §2 Undo and §3.4 beat rollback | Required; retain implemented undo and verify readable scenes integrate with it. |
-| §3.1 Scene control flow/effects | Accept readable scene statements over serializable positions; defer arbitrary Lua loops and function definitions. |
-| §3.2 Characters/line identity | Accept explicit scene-scoped text ids in content; retain legacy/generated ids for engine-created scenes. |
+| §3.1 Scene control flow/effects | **Implemented (29):** readable statements over serializable positions; arbitrary Lua loops and function definitions deferred. |
+| §3.2 Characters/line identity | **Implemented (29):** explicit scene-scoped text ids; legacy/generated ids retained for engine-created scenes. |
 | §3.3 Media/stage | Require structured directives and saveable stage; advanced rendering parity belongs to milestone 36. |
 | §3.5 Persistent data | Retain implemented host-owned profile facilities. |
 | §3.6 Timed choices | Defer new timed-choice syntax; retain existing pause directives. |
@@ -68,17 +67,17 @@ alternative API or syntax suggested in the historical inventory.
 | §4.2 Events | Accept as §1.4. |
 | §4.3 Disabled choices | Retain implemented `require ... because`. |
 | §4.4–5 Metadata/rich text | Retain implemented facilities; advanced presentation work belongs to milestone 36. |
-| §4.6 Input | Require readable input statements using existing advance/token and validation model; no separate `respond` API required for v1. |
+| §4.6 Input | **Implemented (29):** readable input statements use the existing advance/token and validation model; no separate `respond` API. |
 | §4.7 HUD | Defer `session:status`; hosts compose qualities and metadata. |
 | §4.8 Save slots/headers | Retain implemented facilities. |
 | §4.9 Undo | Required as above. |
 | §4.10 Parser-style input | Defer. |
-| §4.11 Embedding | Milestone 36; retain the scene adapter, general embedding is separate work. |
+| §4.11 Embedding | The `GameHost`/`SceneHost` D contract is documented and tested; versioned packaging/C ABI is not built. Full player parity remains milestone 36. |
 | §4.12 Localization | Retain implemented pipeline; require stable ids and menu/character text coverage for the authoring freeze. |
 
 ---
 
-## 1. Needed by this game (workarounds in place)
+## 1. Original gaps in this game (historical workarounds)
 
 ### 1.1 Setting periods from effects (P0)
 `once_per :day` needs `session:set_period(:day, v)`. Effects can't call session methods, because session commands aren't reentrant (§5.2). So the day rolls over inside an action, but the period only updates when the host calls `G.sync_periods(session)` after every `choose`. Until then, a post-phase action in the same phase sees a stale period.
