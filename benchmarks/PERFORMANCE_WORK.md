@@ -1,28 +1,19 @@
-> **Historical note (2026-10-10):** `bench.py`, `workloads.py`, `regression.py` and `datalog.py`
-> referenced below were replaced by `tools/suite bench`; see [README.md](README.md). Raw results
-> are in `history/2026-10-09-perf/`.
+# Phase 8 performance history — October 9–10, 2026
 
-> **Direction note (2026-10-11, revised the same day):** the ≤2× C Lua goal this document works
-> toward is closed; see [ROADMAP.md](../ROADMAP.md). The measurements and the list of remaining
-> costs are still accurate as a record. The current plan,
-> [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md), has two targets: narrative turn latency and memory
-> on low-end hardware, and a Lua core that is never slower than C Lua. It reaches the second by
-> restructuring (errors as values, a 16-byte value, a compact execution encoding, a core
-> separated from the world model), which this document's tuning work deliberately avoided. Where
-> this document says a design choice is "preserved" (`SumType`, typed 32-byte instructions, D
-> exceptions), read that as history, not as a constraint. The D garbage collector is still a
-> constraint. File links below point into
-> `history/2026-10-09-perf/`, where the raw results now live; other mentions of `results/` in the
-> text refer to the same directory.
+Historical tuning toward the retired **≤2× C Lua** goal. Phase 8 is closed; the
+remaining-cost and next-work sections below describe that time, not today's queue.
+`SumType`, exception handling and executor details recorded here are not current
+architecture constraints. The single D collector remains permanent.
 
-Current-state note (October 12, 2026): this remains the Phase 8 measurement history.
-The 16-byte value, return-based Lua-frame errors, shared opcode handlers, indexed
-world model and later call/cache changes are recorded in [PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md).
-Use [the generated status](../docs/STATUS.md) for current ratios; historical
-37× caught-error and 8× deep-recursion ratios below are not current results.
+- [Current plan](PERFORMANCE_PLAN.md): remaining work and decision constraints.
+- [Restructuring history](PERFORMANCE_HISTORY.md): October 11–13 changes and evidence.
+- [Benchmark guide](README.md): supported commands; old `bench.py`, `workloads.py`,
+  `regression.py` and `datalog.py` below were replaced by `tools/suite bench`.
+- [Generated status](../docs/STATUS.md): recorded current ratios. The 37× caught-error
+  and 8× deep-recursion figures below are historical.
 
-
-# Performance work — October 9, 2026
+Raw records are in `history/2026-10-09-perf/`; old `results/` mentions refer there.
+The dated experiment narrative follows unchanged.
 
 ## Stage 2 (target ≈ 2× C Lua)
 

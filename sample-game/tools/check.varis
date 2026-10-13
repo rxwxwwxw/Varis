@@ -3,7 +3,7 @@
 --
 --   cd sample-game && varis tools/check.lua       (or `varis test`, which also runs tests/)
 
-package.path = "./?.lua;" .. package.path
+package.path = "./?.varis;./?.lua;" .. package.path
 local test = require("varis.test")
 
 local function where_is(t, e)

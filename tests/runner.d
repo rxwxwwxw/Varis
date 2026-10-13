@@ -262,6 +262,12 @@ private void execute(string luaBin, string testDir, RunPlan plan, uint timeoutSe
 }
 
 int main(string[] args) {
+    version (Posix) {
+        import core.sys.posix.signal : signal, SIGHUP, SIG_DFL;
+
+        signal(SIGHUP, SIG_DFL);
+    }
+
     string luaBin = "./bin/varis";
     string referenceBin = "";
     string testDir = "c-implementation/lua-5.4.9-tests";
@@ -323,7 +329,8 @@ int main(string[] args) {
 
     string[] testFiles;
     foreach (entry; dirEntries(testDir, SpanMode.shallow)) {
-        if (entry.isFile && entry.name.endsWith(".lua") && !baseName(entry.name).startsWith("_varis_")) {
+        if (entry.isFile && (entry.name.endsWith(".lua") || entry.name.endsWith(".varis")) && !baseName(entry.name)
+                .startsWith("_varis_")) {
             testFiles ~= baseName(entry.name);
         }
     }

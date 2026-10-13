@@ -5,7 +5,7 @@
 --
 --   cd sample-game && varis tools/golden.lua
 
-package.path = "./?.lua;" .. package.path
+package.path = "./?.varis;./?.lua;" .. package.path
 local G = require("game")
 local s = G.new_session(42)
 

@@ -21,8 +21,7 @@ import varis.lib.auxlib;
 import std.conv : to;
 import std.format : format;
 
-/// Reads a whole file; returns false and sets `error` when it cannot be opened.
-bool readWholeFile(string filename, out string content, out string error) {
+private bool readDirect(string filename, out string content, out string error) {
     import core.stdc.stdio : fopen, fclose, fread, ferror, FILE;
     import core.stdc.errno : errno;
     import core.stdc.string : strerror;
@@ -45,6 +44,48 @@ bool readWholeFile(string filename, out string content, out string error) {
     }
     content = cast(string) data;
     return true;
+}
+
+/// Reads a whole file; returns false and sets `error` when it cannot be opened.
+/// Accepts both `.varis` and `.lua` file extensions, resolving between them if
+/// the requested file is not found directly.
+bool readWholeFile(string filename, out string content, out string error, out string resolvedPath) {
+    if (readDirect(filename, content, error)) {
+        resolvedPath = filename;
+        return true;
+    }
+    string altErr;
+    if (filename.length > 4 && filename[$ - 4 .. $] == ".lua") {
+        string alt = filename[0 .. $ - 4] ~ ".varis";
+        if (readDirect(alt, content, altErr)) {
+            resolvedPath = alt;
+            return true;
+        }
+    } else if (filename.length > 6 && filename[$ - 6 .. $] == ".varis") {
+        string alt = filename[0 .. $ - 6] ~ ".lua";
+        if (readDirect(alt, content, altErr)) {
+            resolvedPath = alt;
+            return true;
+        }
+    } else {
+        string alt = filename ~ ".varis";
+        if (readDirect(alt, content, altErr)) {
+            resolvedPath = alt;
+            return true;
+        }
+        alt = filename ~ ".lua";
+        if (readDirect(alt, content, altErr)) {
+            resolvedPath = alt;
+            return true;
+        }
+    }
+    resolvedPath = filename;
+    return false;
+}
+
+bool readWholeFile(string filename, out string content, out string error) {
+    string resolved;
+    return readWholeFile(filename, content, error, resolved);
 }
 
 /// Skips a UTF-8 BOM and a leading '#' line (luaL_loadfilex's skipcomment).
@@ -640,7 +681,7 @@ void openBaseLib(LuaState state) {
         string mode;
         if (!argOptString(s, a, 2, "bt", mode))
             return null;
-        string content, error;
+        string content, error, resolved;
         string chunkName;
         if (filename is null) {
             import std.stdio : stdin, KeepTerminator;
@@ -652,12 +693,12 @@ void openBaseLib(LuaState state) {
             content = all.data;
             chunkName = "=stdin";
         } else {
-            if (!readWholeFile(filename, content, error))
+            if (!readWholeFile(filename, content, error, resolved))
                 return [luaNil(), LuaValue("cannot open " ~ filename ~ ": " ~ error)];
-            chunkName = "@" ~ filename;
+            chunkName = "@" ~ resolved;
         }
         try {
-            auto fn = filename is null ? loadChunk(s, skipFilePrefix(content), chunkName, mode) : loadSourceFile(s, filename, content, chunkName, mode);
+            auto fn = filename is null ? loadChunk(s, skipFilePrefix(content), chunkName, mode) : loadSourceFile(s, resolved, content, chunkName, mode);
             if (a.length > 2) {
                 auto closure = cast(LuaClosure) fn;
                 if (closure !is null && closure.upvalues.length)
@@ -673,12 +714,12 @@ void openBaseLib(LuaState state) {
         string filename;
         if (!argOptString(s, a, 1, null, filename))
             return null;
-        string content, error;
+        string content, error, resolved;
         string chunkName = "=stdin";
         if (filename !is null) {
-            if (!readWholeFile(filename, content, error))
+            if (!readWholeFile(filename, content, error, resolved))
                 return raise(s, new LuaException("cannot open " ~ filename ~ ": " ~ error));
-            chunkName = "@" ~ filename;
+            chunkName = "@" ~ resolved;
         } else {
             import std.stdio : stdin, KeepTerminator;
             import std.array : appender;
@@ -688,7 +729,7 @@ void openBaseLib(LuaState state) {
                 all.put(line);
             content = all.data;
         }
-        auto fn = filename is null ? loadChunk(s, skipFilePrefix(content), chunkName, "bt") : loadSourceFile(s, filename, content, chunkName, "bt");
+        auto fn = filename is null ? loadChunk(s, skipFilePrefix(content), chunkName, "bt") : loadSourceFile(s, resolved, content, chunkName, "bt");
         return VM.callValue(s, LuaValue(fn), []);
     });
 }

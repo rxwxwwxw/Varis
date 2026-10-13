@@ -270,9 +270,9 @@ make clean
 ## Performance Benchmarks
 
 Varis has two performance targets, because it has two engines
-([benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md) has the measurements and the
-staged plan and what has landed; the first target is met on the development-machine stand-in, the
-second is not yet):
+([benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md) defines the budgets and
+remaining work, with measurements linked from its history; the first target is met
+on the development-machine stand-in, the second is not yet):
 
 1. **World model: a turn within a budget on low-end hardware.** Provisional budgets
    ([ROADMAP.md](ROADMAP.md), milestone 34): 50 ms per turn, 1 s content load, 50 ms per save,

@@ -2,7 +2,7 @@
  "files": 14,
  "problems": [
   {
-   "file": "content/events.lua",
+   "file": "content/events.varis",
    "line": 37,
    "severity": "warning",
    "code": "symbol-once",
@@ -13,7 +13,7 @@
    "subject": "symbol :new_day"
   },
   {
-   "file": "content/events.lua",
+   "file": "content/events.varis",
    "line": 93,
    "severity": "warning",
    "code": "symbol-once",
@@ -24,7 +24,7 @@
    "subject": "symbol :ellen_may"
   },
   {
-   "file": "content/explore.lua",
+   "file": "content/explore.varis",
    "line": 33,
    "severity": "warning",
    "code": "symbol-once",
@@ -35,7 +35,7 @@
    "subject": "symbol :moved"
   },
   {
-   "file": "content/explore.lua",
+   "file": "content/explore.varis",
    "line": 51,
    "severity": "warning",
    "code": "symbol-once",
@@ -46,7 +46,7 @@
    "subject": "symbol :unlocked"
   },
   {
-   "file": "content/keeper.lua",
+   "file": "content/keeper.varis",
    "line": 32,
    "severity": "warning",
    "code": "symbol-once",
@@ -57,7 +57,7 @@
    "subject": "symbol :given"
   },
   {
-   "file": "qualities.lua",
+   "file": "qualities.varis",
    "line": 21,
    "severity": "warning",
    "code": "computed-text",

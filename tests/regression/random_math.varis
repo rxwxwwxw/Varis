@@ -1,4 +1,4 @@
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit, try = T.emit, T.try
 -- math.random is a seeded xoshiro256**: sequences must match the reference exactly
 math.randomseed(42)

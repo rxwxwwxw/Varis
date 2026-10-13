@@ -6,7 +6,7 @@
 -- immutable records and the host prints them. See needed_extensions.md §5
 -- for what a real VN/Twine-style front end would need.
 
-package.path = "./?.lua;" .. package.path
+package.path = "./?.varis;./?.lua;" .. package.path
 
 local G = require("game")
 local seed = tonumber(arg and arg[1]) or 1

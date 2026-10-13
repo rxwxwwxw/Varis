@@ -14,14 +14,14 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 HERE = pathlib.Path(__file__).resolve().parent
 
-SAVE = r'''package.path = "./?.lua;" .. package.path
+SAVE = r'''package.path = "./?.varis;./?.lua;" .. package.path
 local G = require("game")
 local s = G.new_session(42)
 local p = s:present()
 s:choose(p.storylets[1].choices[1].token)
 local f = assert(io.open(arg[1], "w")); f:write(s:save()); f:close()
 '''
-LOAD = r'''package.path = "./?.lua;" .. package.path
+LOAD = r'''package.path = "./?.varis;./?.lua;" .. package.path
 local G = require("game")
 local f = assert(io.open(arg[1], "r")); local text = f:read("a"); f:close()
 local ok, s = pcall(G.load, text)
@@ -58,9 +58,11 @@ def main():
         # A new save survives a wording edit, and says the presentation changed.
         done = run(binary, game, SAVE, "saved.json")
         assert done.returncode == 0, done.stderr
-        lamp = (game / "content" / "lamp.lua").read_text()
-        (game / "content" / "lamp.lua").write_text(lamp.replace('title "The great lamp"', 'title "The enormous lamp"'))
-        (game / "qualities.lua").write_text((game / "qualities.lua").read_text().replace('label = "Lamp oil"', 'label = "Oil for the lamp"'))
+        lamp_path = game / "content" / ("lamp.varis" if (game / "content" / "lamp.varis").exists() else "lamp.lua")
+        lamp = lamp_path.read_text()
+        lamp_path.write_text(lamp.replace('title "The great lamp"', 'title "The enormous lamp"'))
+        qual_path = game / ("qualities.varis" if (game / "qualities.varis").exists() else "qualities.lua")
+        qual_path.write_text(qual_path.read_text().replace('label = "Lamp oil"', 'label = "Oil for the lamp"'))
         done = run(binary, game, LOAD, "saved.json", "again.json")
         assert done.returncode == 0 and "LOADED" in done.stdout, done.stdout + done.stderr
         before = json.loads((game / "saved.json").read_text())
@@ -69,11 +71,11 @@ def main():
         assert before["presentation"] != after["presentation"], "the presentation revision did not move"
 
         # A gameplay edit is refused, never silently accepted: here a priority.
-        (game / "content" / "lamp.lua").write_text(lamp.replace("priority 60", "priority 61"))
+        lamp_path.write_text(lamp.replace("priority 60", "priority 61"))
         done = run(binary, game, LOAD, "saved.json", "refused.json")
         assert done.returncode == 3 and "incompatible narrative content" in done.stdout, done.stdout + done.stderr
         # So is an edit to a condition embedded in a text.
-        (game / "content" / "lamp.lua").write_text(lamp.replace("{#if query lit(:lamp)}", "{#if query told(:lamp)}"))
+        lamp_path.write_text(lamp.replace("{#if query lit(:lamp)}", "{#if query told(:lamp)}"))
         done = run(binary, game, LOAD, "saved.json", "refused.json")
         assert done.returncode == 3 and "incompatible narrative content" in done.stdout, done.stdout + done.stderr
         print("wording tests passed")

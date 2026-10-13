@@ -2,6 +2,6 @@ return {
     id = "broken",
     language = "en",
     colour = "red",
-    content = { "*.lua" },
+    content = { "*.varis" },
     scripts = {},
 }

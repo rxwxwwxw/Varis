@@ -16,7 +16,7 @@ Varis Reference Manual linked below, not here.
 | --- | --- |
 | What does the language do **today**? | [Varis Reference Manual](docs/README.md) (`docs/`). The only definition of current behaviour. |
 | What is the project trying to become, and who decided what? | [ROADMAP.md](ROADMAP.md): direction, decision record (D1–D14), remaining work and open decisions; [MILESTONE_HISTORY.md](MILESTONE_HISTORY.md) records delivered scope. |
-| How do we make it fast, and in what order? | [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md): measurements, design rules, stages S0, S1, W, L, X, M. |
+| How do we make it fast, and in what order? | [benchmarks/PERFORMANCE_PLAN.md](benchmarks/PERFORMANCE_PLAN.md): remaining stages, budgets and constraints. [Benchmark guide](benchmarks/README.md) for commands; [performance history](benchmarks/PERFORMANCE_HISTORY.md) for completed work and measurements. |
 | What is the web workbench and its debugger? | [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md). |
 | How will the checker, the language services and the writer's playtest and test tools work? | [AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md): project manifest, project index, stages A0–A6. |
 | How will localization work? | [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): workflows by role, stages T0–T5. |

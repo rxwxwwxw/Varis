@@ -1,1 +1,0 @@
-return { id = "unbound", language = "en", entry = "game", content = { "*.lua" } }

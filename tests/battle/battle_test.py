@@ -8,7 +8,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 BINARY = sys.argv[1] if len(sys.argv) > 1 else str(ROOT / "bin/varis")
-SETUP = str(ROOT / "tests/battle/corridor.lua")
+SETUP = str(ROOT / "tests/battle/corridor.varis" if (ROOT / "tests/battle/corridor.varis").exists() else ROOT / "tests/battle/corridor.lua")
 
 
 def run(*args, expected=0):
@@ -19,6 +19,9 @@ def run(*args, expected=0):
 
 text = run(SETUP).stdout
 assert "result  won" in text and "leaks   0" in text, text
+# Verify that requesting the alternative extension resolves too:
+alt = str(ROOT / "tests/battle/corridor.lua" if (ROOT / "tests/battle/corridor.varis").exists() else ROOT / "tests/battle/corridor.varis")
+assert "result  won" in run(alt).stdout
 digest = int(re.search(r"digest  (-?\d+)", text).group(1))
 
 # the same file and seed give the same battle, in both output forms

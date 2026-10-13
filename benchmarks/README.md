@@ -2,7 +2,12 @@
 
 One suite, one driver: `python3 tools/suite bench` (Make: `make bench`, `make bench-check`).
 
-**Role (revised October 11, 2026):** there are two performance targets
+Use this page to run and interpret benchmarks. The [active plan](PERFORMANCE_PLAN.md)
+sets remaining work; [generated status](../docs/STATUS.md) holds recorded results;
+[restructuring history](PERFORMANCE_HISTORY.md) and [Phase 8 history](PERFORMANCE_WORK.md)
+hold dated evidence. Do not use a historical ratio as a current result.
+
+There are two performance targets
 ([PERFORMANCE_PLAN.md](PERFORMANCE_PLAN.md) §1, [ROADMAP.md](../ROADMAP.md) decisions D4 and D5).
 
 1. **Lua core: never slower than C Lua.** The `core`, `programs`, `regression` and `startup`
@@ -62,7 +67,7 @@ slower and cost more than 80 % of the run time. The mechanism for `ref = "<git r
 * `gate.time` – absolute budget in candidate CPU seconds (per repetition for in-process kernels).
 * `gate.rss_mb` – absolute budget for the candidate's peak RSS, in megabytes (10^6 bytes).
   It catches gross regressions without any comparator; `gate.clua` is the sharp,
-  machine-independent check.
+  paired relative check.
 * `floor.<comparator>` – minimum speedup over a named comparator (none is defined at present).
 
 Gates are derived from measurement (`python3 tools/suite targets benchmarks/baselines/*.json`):
@@ -74,9 +79,9 @@ re-derive them (`python3 tools/suite targets <bench.json> --merge` after deletin
 Loosening one (or a floor) is blocked by the commit-msg
 hook unless the message carries `Perf-Regression-Accepted: <reason>`.
 
-Known cost centres are visible as the largest goal misses: `core.pcall_error` (D exceptions
-through the platform unwinder; plan stage L1 replaces exceptions with return values) and
-`core.deep_recursion` (the flat-stack executor past ~150 frames allocates per frame).
+Choose cost centres from the latest report and a fresh profile. The active plan
+tracks remaining error, call/frame, cache and dispatch work; the old 37× error-path
+baseline no longer describes the native error channel now in use.
 
 ## Commands
 
@@ -85,17 +90,19 @@ make bench                          # report only
 make bench-check                    # enforce gates/floors/memory
 python3 tools/suite bench --group core --filter fib --runs 11
 python3 tools/suite bench --list
-make bench-record LABEL=2026-11-01  # store benchmarks/baselines/LABEL.json
+make bench-record LABEL=2026-11-01   # store benchmarks/baselines/LABEL.json
+python3 tools/suite bench --check --json build/bench-all.json
+# Fresh release tests + enforced benchmarks + generated docs/STATUS.md:
+make status
 ```
 
 Gates are strict: a machine busy with other work can make memory-heavy workloads such as
 `core.deep_recursion` exceed its `gate.clua`; that is a failed check, not an exemption. Run the
 benchmarks on an idle machine.
 
-Run on an otherwise idle machine. Ratios are portable between machines; the absolute
-`gate.time` budgets are generous (50 % headroom) but belong to this machine class. `history/2026-10-09-perf/` holds the pre-suite experiment records
-(including the old suite-level Datalog baseline); they are informational only.
-[PERFORMANCE_WORK.md](PERFORMANCE_WORK.md) records the optimization work itself.
+Paired ratios reduce machine dependence but can still vary with hardware and compiler.
+Absolute time budgets belong to the reference machine class. Raw pre-suite records
+in `history/2026-10-09-perf/` are informational, not active gates.
 
 ## Acceptance check: a synthetic slowdown trips exactly the expected gates
 
@@ -103,19 +110,8 @@ Reproducible from the committed harness: `python3 tools/suite/tests/synthetic_sl
 `bench-gates.synthetic-for-loop-slowdown` case of the `release` test tier) builds a scratch worktree of
 `HEAD` with three atomic additions in the `for`-loop handler (about 3.7× on `for` loops), runs `bench --check`
 on eight core workloads and requires exactly `numeric_loop`, `array_access` and `sieve` to fail; the
-other five pass. (A milder two-atomic variant was +29 % on `array_access` and +122 % on `numeric_loop`
-and did trip those two, but `sieve` is a 3 ms workload with 1.6× gate headroom and sat just inside it.) The original one-off record follows.
+other five pass.
 
-Recorded 2026-10-10 (plan Phase 3 done-criterion). A scratch worktree of `main` was built with
-three atomic additions injected into the `ForLoop` handler of the interpreter loop (about 3.7× on
-`for` loops), then run as `python3 tools/suite bench --check --group core --candidate <that build>`:
-
-| Workload | Candidate / C Lua | Candidate / `v1-perf-final` (retired comparator) | Result |
-| --- | --- | --- | --- |
-| `core.numeric_loop` | 5.34× | 3.33× | **GATE** clua, **GATE** v1, **FLOOR** v0 |
-| `core.array_access` | 3.58× | 1.96× | **GATE** clua, **GATE** v1, **FLOOR** v0 |
-| `core.sieve` | 3.29× | 2.45× | **GATE** clua, **GATE** v1, **FLOOR** v0 |
-| the other 12 core workloads (no numeric `for` loop on their hot path) | unchanged | 0.99–1.03× | pass |
-
-Exit status was non-zero and named exactly those three workloads. A milder +11 % injection on
-`numeric_loop` stayed inside its 1.20× gate, which is the intended headroom, not a miss.
+The [original October 10 experiment](PERFORMANCE_HISTORY.md#benchmark-gate-validation--october-10-2026)
+preserves the retired-comparator measurements. The committed harness above is the
+current reproducible acceptance check.

@@ -4,7 +4,7 @@ import subprocess
 import sys
 
 root = Path(__file__).resolve().parents[2]
-fixture = root / "tests/official/core.lua"
+fixture = root / "tests/official/core.varis" if (root / "tests/official/core.varis").exists() else root / "tests/official/core.lua"
 outputs = []
 for binary in (root / "c-implementation/src/lua", root / "bin/varis"):
     result = subprocess.run([str(binary), str(fixture)], capture_output=True, timeout=30)

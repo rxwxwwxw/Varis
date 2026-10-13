@@ -59,8 +59,9 @@ def main():
     try:
         game = work / "game"
         shutil.copytree(ROOT / "sample-game", game)
-        manifest = (game / "project.lua").read_text().replace("locales  = {}", 'locales  = { "fr" }')
-        (game / "project.lua").write_text(manifest)
+        manifest_path = game / "project.varis" if (game / "project.varis").exists() else game / "project.lua"
+        manifest = manifest_path.read_text().replace("locales  = {}", 'locales  = { "fr" }')
+        manifest_path.write_text(manifest)
 
         # Extraction is deterministic and golden.
         out = varis(binary, game, "l10n", "extract")
@@ -82,7 +83,7 @@ def main():
         # Every title, text and label has a key or a computed-text diagnostic.
         check = json.loads(varis(binary, game, "check", "--json"))
         computed = [p for p in check["problems"] if p["code"] == "computed-text"]
-        assert [(p["file"], p["line"]) for p in computed] == [("qualities.lua", 21)], computed
+        assert [(p["file"] in ("qualities.varis", "qualities.lua"), p["line"]) for p in computed] == [(True, 21)], computed
 
         # CSV round trip: export, translate three rows, import.
         out = varis(binary, game, "l10n", "export", "--locale", "fr", "--out", "fr.csv")
@@ -149,7 +150,7 @@ def main():
         assert "unknown placeholder {inconnu}" in out and "1 rejected" in out, out
 
         # A cosmetic edit (case, punctuation) keeps the translation; a substantive one stales it.
-        lamp = game / "content" / "lamp.lua"
+        lamp = game / "content" / ("lamp.varis" if (game / "content" / "lamp.varis").exists() else "lamp.lua")
         text = lamp.read_text()
         lamp.write_text(text.replace('title "The great lamp"', 'title "The Great Lamp!"'))
         out = varis(binary, game, "l10n", "extract")
@@ -208,8 +209,8 @@ def main():
         lamp.write_text(text)
         varis(binary, game, "l10n", "extract")
         # Packs: built only from a catalog that passes; loaded whole, or rejected whole by key.
-        manifest_text = (game / "project.lua").read_text().replace('locales  = { "fr" }', 'locales  = { "fr", "ja" }')
-        (game / "project.lua").write_text(manifest_text)
+        manifest_text = manifest_path.read_text().replace('locales  = { "fr" }', 'locales  = { "fr", "ja" }')
+        manifest_path.write_text(manifest_text)
         out = varis(binary, game, "l10n", "build", "--out", "packs")
         assert "ja: pack of 1 message(s)" in out, out
         pack = json.loads((game / "packs" / "ja" / "pack.json").read_text())

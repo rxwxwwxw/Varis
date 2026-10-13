@@ -169,11 +169,12 @@ private LuaFunction loadFile(LuaState state, string name, out string error) {
         content = cast(string) all.data;
         chunkName = "=stdin";
     } else {
-        if (!readWholeFile(name, content, readError)) {
+        string resolved;
+        if (!readWholeFile(name, content, readError, resolved)) {
             error = "cannot open " ~ name ~ ": " ~ readError;
             return null;
         }
-        chunkName = "@" ~ name;
+        chunkName = "@" ~ resolved;
     }
     try {
         return loadChunk(state, skipFilePrefix(content), chunkName, "bt");

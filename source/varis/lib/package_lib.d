@@ -20,6 +20,7 @@ import varis.exception : LuaException;
 import varis.lib.auxlib;
 import varis.lib.base : readWholeFile, skipFilePrefix, loadChunk, loadSourceFile;
 import std.array : replace, split, appender;
+import std.string : indexOf;
 import std.process : environment;
 import varis.capi : wrapCFunction, lua_CFunction;
 
@@ -109,7 +110,9 @@ private string searchPath(string name, string path, string sep, string dirsep, o
 private string setPath(LuaState state, string envName, string dflt) {
     if (!isNil(state.registry.rawget(LuaValue("LUA_NOENV"))))
         return dflt;
-    string value = environment.get(envName ~ "_5_4", environment.get(envName, null));
+    string value = (envName == "LUA_PATH" ? environment.get("VARIS_PATH", null) : null);
+    if (value is null)
+        value = environment.get(envName ~ "_5_4", environment.get(envName, null));
     if (value is null)
         return dflt;
     import std.string : indexOf;
@@ -186,11 +189,15 @@ void openPackageLib(LuaState state) {
                 string path = pathField(L, "path").match!((string s) => s, _ => "");
                 string error;
                 auto filename = searchPath(name, path, ".", "/", error);
-                if (filename is null) {
-                    // The same directories, looking for the Varis source extension. `package.path`
-                    // itself keeps its Lua spelling; a module found only as `.varis` is used.
+                if (filename is null && path.indexOf(".lua") >= 0) {
+                    // The same directories, looking for the Varis source extension.
                     string varisError;
                     filename = searchPath(name, path.replace(".lua", ".varis"), ".", "/", varisError);
+                }
+                if (filename is null && path.indexOf(".varis") >= 0) {
+                    // The same directories, looking for the Lua source extension.
+                    string luaError;
+                    filename = searchPath(name, path.replace(".varis", ".lua"), ".", "/", luaError);
                 }
                 if (filename is null)
                     return [LuaValue(error)];

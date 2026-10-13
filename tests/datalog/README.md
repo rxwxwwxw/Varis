@@ -88,5 +88,6 @@ recursive strata semi-naively and caches eligible dependency closures. The origi
 naive evaluator is retained as an oracle (`VARIS_LOGIC_ORACLE=1`, suite `logic-oracle`).
 Earlier multi-second chain-closure timings described the pre-rewrite engine and are
 not current performance. [Project status](../../docs/STATUS.md) records fresh large-scale
-measurements; [the performance plan](../../benchmarks/PERFORMANCE_PLAN.md) preserves
-before/after evidence and cache restrictions. Regression gates remain enforced.
+measurements; [restructuring history](../../benchmarks/PERFORMANCE_HISTORY.md#track-w--world-model-milestone-35)
+preserves before/after evidence. Current cache restrictions are in
+[AGENTS.md](../../AGENTS.md) §4.10. Regression gates remain enforced.

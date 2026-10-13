@@ -139,23 +139,25 @@ def main():
         assert names == ["x"], names
 
         # Editor services work before loading the game and include unsaved files.
-        lamp = (ROOT / "sample-game/content/lamp.lua").read_text()
+        lamp_rel = "content/lamp.varis" if (ROOT / "sample-game/content/lamp.varis").exists() else "content/lamp.lua"
+        lamp = (ROOT / "sample-game" / lamp_rel).read_text()
 
         def editor(operation, text=lamp, needle="at(:player, :lamp_room)", offset=0, **extra):
             at = text.index(needle) + offset
             before = text[:at]
-            payload = dict(path="content/lamp.lua", text=text, line=before.count("\n") + 1,
+            payload = dict(path=lamp_rel, text=text, line=before.count("\n") + 1,
                            column=len(before.rsplit("\n", 1)[-1].encode()) + 1, **extra)
             return call("/api/editor/" + operation, body=json.dumps(payload))
 
         assert "relation at(entity, room) key(entity)" in editor("hover")["text"]
-        assert editor("definition")["definitions"][0]["file"] == "world.lua"
+        assert editor("definition")["definitions"][0]["file"] in ("world.varis", "world.lua")
         draft = lamp + "\nwhen { new_"
         completion = editor("complete", draft, "new_", 4,
                             buffers={"draft.lua": "relation new_relation(x)\n"})
         assert "new_relation" in [i["label"] for i in completion["items"]], completion
         rename = editor("rename", needle="carries(:player, :matches)", newName="holds")
-        assert rename["ok"] and {"world.lua", "content/lamp.lua", "content/explore.lua"} <= {e["file"] for e in rename["edits"]}, rename
+        files_edited = {e["file"].replace(".varis", ".lua") for e in rename["edits"]}
+        assert rename["ok"] and {"world.lua", "content/lamp.lua", "content/explore.lua"} <= files_edited, rename
         assert not editor("rename", needle="carries(:player, :matches)", newName="at")["ok"]
         catalog = '\n{"key":"lamp.light.title","owner":"choice lamp.light"}\n'
         choice_rename = editor("rename", needle="choice light", offset=8, newName="ignite",
@@ -165,7 +167,7 @@ def main():
         assert len(catalog_edits) == 2 and all(e["range"]["line"] == 2 for e in catalog_edits), choice_rename
         assert not any(d["file"].endswith(".json") for d in editor("check", buffers={"l10n/source.json": catalog})["diagnostics"])
         # Rename only describes edits; neither disk nor the runtime changes.
-        assert call("/api/file", {"path": "content/lamp.lua"}, raw=True) == lamp
+        assert call("/api/file", {"path": lamp_rel}, raw=True) == lamp
         assert call("/api/workspace")["variables"] == [{"name": "x", "preview": "41", "type": "number", "world": False, "table": False, "session": False}]
         unicode_draft = lamp.replace("at(:player, :lamp_room)", 'at(:player, :lamp_room)', 1)
         unicode_draft += '\nlocal caption = "日本語 🐈"; local rows = query at(?who, ?where)\n'
@@ -319,11 +321,12 @@ def main():
         initial = call("/api/start", {"seed": 42}, body="")
         assert initial["session"] and initial["turn"] == 0, initial
         walk = next(i + 1 for i, st in enumerate(initial["storylets"]) if st["id"] == ":walk")
-        effect = (project_root / "content/explore.lua").read_text().splitlines()
+        explore_file = "content/explore.varis" if (project_root / "content/explore.varis").exists() else "content/explore.lua"
+        effect = (project_root / explore_file).read_text().splitlines()
         effect_line = next(i + 1 for i, line in enumerate(effect) if "narrative.emit(:moved" in line)
-        call("/api/breakpoints", body=f"content/explore.lua:{effect_line}")
+        call("/api/breakpoints", body=f"{explore_file}:{effect_line}")
         stop = call("/api/choose", {"s": walk, "c": 1}, body="")
-        assert stop == {"stopped": True, "file": "content/explore.lua", "line": effect_line}, stop
+        assert stop == {"stopped": True, "file": explore_file, "line": effect_line}, stop
         frames = call("/api/stack")["frames"]
         assert frames and call("/api/locals", {"frame": frames[0]["frame"]})["locals"]
         # Inspection sees the effect's tentative relocation before commit.
@@ -353,7 +356,7 @@ def main():
         assert saved_again == save_with_debug, [(k, json.loads(save_with_debug).get(k), json.loads(saved_again).get(k))
                                               for k in json.loads(save_with_debug) if json.loads(save_with_debug).get(k) != json.loads(saved_again).get(k)]
         # A failed reload keeps the current session usable.
-        source = project_root / "content/explore.lua"
+        source = project_root / explore_file
         original = source.read_text()
         source.write_text("local = broken")
         assert call("/api/reload", body="")["error"]
@@ -374,22 +377,24 @@ def main():
 
         # Go to definition reads the source files.
         found = call("/api/definition", {"name": "lamp"})["definitions"]
-        assert any(d["file"] == "content/lamp.lua" and d["kind"] == "storylet" for d in found), found
+        assert any(d["file"] in ("content/lamp.varis", "content/lamp.lua") and d["kind"] == "storylet" for d in found), found
         assert any(d["kind"] == "function" for d in call("/api/definition", {"name": "new_session"})["definitions"])
         assert call("/api/definition", {"name": "no_such_name_anywhere"})["definitions"] == []
         # Found through the AST: choices (with owner-less names) and qualities.
-        assert any(d["kind"] == "choice" and d["file"] == "content/lamp.lua" for d in call("/api/definition", {"name": "light"})["definitions"])
-        assert any(d["kind"] == "quality" and d["file"] == "qualities.lua" for d in call("/api/definition", {"name": "oil"})["definitions"])
+        assert any(d["kind"] == "choice" and d["file"] in ("content/lamp.varis", "content/lamp.lua") for d in call("/api/definition", {"name": "light"})["definitions"])
+        assert any(d["kind"] == "quality" and d["file"] in ("qualities.varis", "qualities.lua") for d in call("/api/definition", {"name": "oil"})["definitions"])
 
         # The project manifest is read without executing it.
         project = call("/api/project")
         assert project["present"] and project["id"] == "saltmarsh" and project["entry"] == "game", project
-        assert project["problems"] == [] and "content/*.lua" in project["content"], project
+        assert project["problems"] == [] and ("content/*.varis" in project["content"] or "content/*.lua" in project["content"]), project
 
         # Files: listing, reading, the syntax check, and path safety.
         files = call("/api/files")["files"]
-        assert "game.lua" in files and "content/lamp.lua" in files
-        assert "narrative.seal" in call("/api/file", {"path": "game.lua"}, raw=True)
+        game_file = "game.varis" if (project_root / "game.varis").exists() else "game.lua"
+        lamp_file = "content/lamp.varis" if (project_root / "content/lamp.varis").exists() else "content/lamp.lua"
+        assert game_file in files and lamp_file in files
+        assert "narrative.seal" in call("/api/file", {"path": game_file}, raw=True)
         assert call("/api/check", {"path": "scratch.lua"}, body="local x = ")["problems"]
         assert call("/api/check", {"path": "scratch.lua"}, body="local x = 1")["problems"] == []
         try:
@@ -398,9 +403,11 @@ def main():
         except urllib.error.HTTPError as error:
             assert error.code == 400
 
-        # A fresh manifest-backed scene project exercises the same beat protocol as SceneHost.
-        (project_root / "project.lua").write_text('return {id="scenes", entry="scene_game", session="scene_game.new_session", language="en", scripts={"scene_game.lua"}}')
-        (project_root / "scene_game.lua").write_text("""
+        manifest_text = 'return {id="scenes", entry="scene_game", session="scene_game.new_session", language="en", scripts={"scene_game.lua"}}'
+        (project_root / "project.lua").write_text(manifest_text)
+        if (project_root / "project.varis").exists():
+            (project_root / "project.varis").unlink()
+        scene_game_text = """
 character mira {name="Mira", attributes={expression={:quiet,:smile}}, defaults={expression=:quiet}}
 scene finish {{kind=:say, character=:mira, attributes={expression=:smile}, id="finish.hello", text="Hello {visitor}."},
               {kind=:hide, character=:mira}, {kind=:ended}}
@@ -430,7 +437,8 @@ return {new_session=function(seed)
  s:seed(seed)
  return s
 end}
-""")
+"""
+        (project_root / "scene_game.lua").write_text(scene_game_text)
         start_scene_project = call("/api/start", {"seed": 19}, body="")
         assert start_scene_project["session"]
         hub_why = call("/api/why", {"id": "hub"})

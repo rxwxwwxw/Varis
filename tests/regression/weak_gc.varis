@@ -1,4 +1,4 @@
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit, try = T.emit, T.try
 local function count(t) local n = 0; for _ in pairs(t) do n = n + 1 end; return n end
 -- weak values: entries vanish once nothing else references the value

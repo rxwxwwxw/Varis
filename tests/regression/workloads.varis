@@ -1,5 +1,5 @@
 -- Small deterministic algorithmic workloads; their results and a checksum must match C Lua.
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit = T.emit
 -- n-body style float arithmetic
 local function energy(bodies)

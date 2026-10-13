@@ -26,7 +26,7 @@ id = "acceptance"
 kind = "lua-ok"
 tier = "smoke"
 tags = ["datalog", "acceptance"]
-glob = "tests/datalog/acceptance/positive/*.lua"
+glob = "tests/datalog/acceptance/positive/*.varis"
 expect_count = 12
 
 [[suite]]
@@ -34,7 +34,7 @@ id = "rejection"
 kind = "lua-reject"
 tier = "smoke"
 tags = ["datalog", "acceptance", "negative"]
-glob = "tests/datalog/acceptance/negative/*.lua"
+glob = "tests/datalog/acceptance/negative/*.varis"
 expect_count = 3
 
 [suite.override.13_unsafe_negation]
@@ -50,7 +50,7 @@ expect = "relation 'edge' expects arity 2, got 1"
 id = "scenario"
 kind = "golden"
 tags = ["datalog", "scenario"]
-glob = "tests/datalog/[0-9][0-9]_*.lua"
+glob = "tests/datalog/[0-9][0-9]_*.varis"
 expect_count = 38
 scales = { small = "fast", large = "full" }
 timeout = 120
@@ -60,15 +60,15 @@ id = "gap"
 kind = "known-gap"
 tier = "fast"
 tags = ["datalog", "known-gap"]
-glob = "tests/datalog/known_gaps/*.lua"
+glob = "tests/datalog/known_gaps/*.varis"
 
 [[suite]]
 id = "extensions"
 kind = "extension"
 tier = "fast"
 tags = ["extensions"]
-glob = "tests/extensions/cases/*.lua"
-helpers = "tests/extensions/helpers.lua"
+glob = "tests/extensions/cases/*.varis"
+helpers = "tests/extensions/helpers.varis"
 expect_count = 89
 timeout = 300
 
@@ -101,8 +101,8 @@ id = "regression"
 kind = "differential"
 tier = "fast"
 tags = ["core", "differential"]
-glob = "tests/regression/*.lua"
-exclude = ["harness.lua"]
+glob = "tests/regression/*.varis"
+exclude = ["harness.varis"]
 expected = "tests/regression/expected.json"
 expect_count = 18
 timeout = 60
@@ -143,15 +143,15 @@ tags = ["narrative", "sample-td", "battle"]
 timeout = 120
 cases = [
   { id = "check", command = ["{candidate}", "check"], cwd = "sample-td" },
-  { id = "bridge", command = ["{candidate}", "sample-td/tests/bridge.lua"] },
-  { id = "determinism", command = ["{candidate}", "sample-td/tests/determinism.lua"] },
-  { id = "branches", command = ["{candidate}", "sample-td/tests/branches.lua"] },
-  { id = "novice", command = ["{candidate}", "sample-td/tests/novice.lua"] },
-  { id = "both-directions", command = ["{candidate}", "sample-td/tests/both_directions.lua"] },
-  { id = "judge", command = ["{candidate}", "sample-td/tests/judge.lua"] },
-  { id = "hub", command = ["{candidate}", "sample-td/tests/hub.lua"] },
-  { id = "l10n", command = ["{candidate}", "sample-td/tests/l10n.lua"] },
-  { id = "text-host-bot", command = ["{candidate}", "main.lua", "3", "--bot"], cwd = "sample-td" },
+  { id = "bridge", command = ["{candidate}", "sample-td/tests/bridge.varis"] },
+  { id = "determinism", command = ["{candidate}", "sample-td/tests/determinism.varis"] },
+  { id = "branches", command = ["{candidate}", "sample-td/tests/branches.varis"] },
+  { id = "novice", command = ["{candidate}", "sample-td/tests/novice.varis"] },
+  { id = "both-directions", command = ["{candidate}", "sample-td/tests/both_directions.varis"] },
+  { id = "judge", command = ["{candidate}", "sample-td/tests/judge.varis"] },
+  { id = "hub", command = ["{candidate}", "sample-td/tests/hub.varis"] },
+  { id = "l10n", command = ["{candidate}", "sample-td/tests/l10n.varis"] },
+  { id = "text-host-bot", command = ["{candidate}", "main.varis", "3", "--bot"], cwd = "sample-td" },
   { id = "catalog-current", command = ["{candidate}", "l10n", "extract", "--check"], cwd = "sample-td" },
 ]
 
@@ -166,7 +166,7 @@ timeout = 180
 cases = [
   { id = "check", command = ["{candidate}", "check"], cwd = "sample-rpg" },
   { id = "author-tests", command = ["{candidate}", "test"], cwd = "sample-rpg" },
-  { id = "random-bot", command = ["{candidate}", "main.lua", "3", "--bot"], cwd = "sample-rpg" },
+  { id = "random-bot", command = ["{candidate}", "main.varis", "3", "--bot"], cwd = "sample-rpg" },
   { id = "catalog-current", command = ["{candidate}", "l10n", "extract", "--check"], cwd = "sample-rpg" },
 ]
 
@@ -177,9 +177,9 @@ tier = "fast"
 tags = ["narrative", "sample-game"]
 timeout = 120
 cases = [
-  { id = "check", command = ["{candidate}", "tools/check.lua"], cwd = "sample-game" },
+  { id = "check", command = ["{candidate}", "tools/check.varis"], cwd = "sample-game" },
   { id = "golden", command = ["python3", "tests/sample_game/check_golden.py", "{candidate}"] },
-  { id = "linear-vn", command = ["{candidate}", "sample-vn/main.lua"] },
+  { id = "linear-vn", command = ["{candidate}", "sample-vn/main.varis"] },
   { id = "scene-save", command = ["python3", "tests/sample_game/scene_save_test.py", "{candidate}"] },
   { id = "wording", command = ["python3", "tests/sample_game/wording_test.py", "{candidate}"] },
 ]
@@ -217,7 +217,7 @@ tags = ["tools", "workbench"]
 timeout = 120
 cases = [
   { id = "protocol", command = ["python3", "tests/workbench/protocol_test.py", "{candidate}"] },
-  { id = "check-sample-game", command = ["{candidate}", "check", "main.lua", "game.lua", "world.lua", "qualities.lua", "content/decks.lua", "content/endings.lua", "content/events.lua", "content/explore.lua", "content/keeper.lua", "content/lamp.lua", "content/market.lua", "tools/check.lua"], cwd = "sample-game" },
+  { id = "check-sample-game", command = ["{candidate}", "check", "main.varis", "game.varis", "world.varis", "qualities.varis", "content/decks.varis", "content/endings.varis", "content/events.varis", "content/explore.varis", "content/keeper.varis", "content/lamp.varis", "content/market.varis", "tools/check.varis"], cwd = "sample-game" },
 ]
 
 # `varis check` output: the sample game's golden diagnostics and fixtures for the diagnostic record

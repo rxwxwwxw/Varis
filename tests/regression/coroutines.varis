@@ -1,4 +1,4 @@
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit, try = T.emit, T.try
 local function gen(n) return coroutine.wrap(function() for i = 1, n do coroutine.yield(i) end return "done" end) end
 local g = gen(3)

@@ -19,7 +19,10 @@ class RunnerTests(unittest.TestCase):
             binary.write_text("#!/usr/bin/env python3\n" + body + "\n")
             binary.chmod(0o755)
             name = "negative_self_negation" if negative else "zero_arity"
-            return runner.run_case(str(binary), runner.ROOT / "cases" / (name + ".lua"), timeout)
+            case_path = runner.ROOT / "cases" / (name + ".varis")
+            if not case_path.exists():
+                case_path = runner.ROOT / "cases" / (name + ".lua")
+            return runner.run_case(str(binary), case_path, timeout)
 
     def test_success_requires_completion_marker(self):
         self.assertTrue(self.run_fake('print("EXTENSION_CASE_COMPLETE")')[0])

@@ -123,7 +123,8 @@ def main():
     try:
         game = work / "game"
         shutil.copytree(ROOT / "sample-game", game)
-        (game / "project.lua").write_text((game / "project.lua").read_text().replace("locales  = {}", 'locales  = { "fr" }'))
+        manifest_path = game / "project.varis" if (game / "project.varis").exists() else game / "project.lua"
+        manifest_path.write_text(manifest_path.read_text().replace("locales  = {}", 'locales  = { "fr" }'))
         # A catalog, so that a rename can be seen to rewrite keys.
         subprocess.run([binary, "l10n", "extract"], cwd=game, check=True, capture_output=True)
         client = Client(binary, game)
@@ -132,18 +133,20 @@ def main():
             caps = init["result"]["capabilities"]
             assert caps["renameProvider"] and caps["definitionProvider"] and caps["hoverProvider"], caps
             client.notify("initialized", {})
-            first = client.drain(client.uri("content/events.lua"))
+            events_rel = "content/events.varis" if (game / "content/events.varis").exists() else "content/events.lua"
+            first = client.drain(client.uri(events_rel))
             assert {d["code"] for d in first} == {"symbol-once"}, first
             assert all(d["source"] == "varis" and d["severity"] == 2 for d in first)
 
-            lamp = (game / "content" / "lamp.lua").read_text()
-            lamp_uri = client.uri("content/lamp.lua")
+            lamp_rel = "content/lamp.varis" if (game / "content/lamp.varis").exists() else "content/lamp.lua"
+            lamp = (game / lamp_rel).read_text()
+            lamp_uri = client.uri(lamp_rel)
             client.notify("textDocument/didOpen", {"textDocument": {"uri": lamp_uri, "languageId": "varis", "version": 1, "text": lamp}})
 
-            # Definition of a relation written in a `when` clause: its declaration in world.lua.
+            # Definition of a relation written in a `when` clause: its declaration in world.lua / world.varis.
             at = position(lamp, "at(:player, :lamp_room)")
             result = client.request("textDocument/definition", {"textDocument": {"uri": lamp_uri}, "position": at})["result"]
-            assert result and result[0]["uri"].endswith("world.lua"), result
+            assert result and (result[0]["uri"].endswith("world.varis") or result[0]["uri"].endswith("world.lua")), result
             # Hover shows the columns and the key.
             hover = client.request("textDocument/hover", {"textDocument": {"uri": lamp_uri}, "position": at})["result"]
             assert "relation at(entity, room) key(entity)" in hover["contents"]["value"], hover
@@ -153,7 +156,7 @@ def main():
             assert "quality :oil" in hover["contents"]["value"] and "maximum = 6" in hover["contents"]["value"], hover
             # Definition of a quality symbol: the quality.define call.
             result = client.request("textDocument/definition", {"textDocument": {"uri": lamp_uri}, "position": oil})["result"]
-            assert result and result[0]["uri"].endswith("qualities.lua"), result
+            assert result and (result[0]["uri"].endswith("qualities.varis") or result[0]["uri"].endswith("qualities.lua")), result
 
             # Completion: relations in a goal, qualities inside quality(...), decks after `deck`.
             def complete(text, needle, offset):
@@ -193,7 +196,8 @@ def main():
             refs = client.request("textDocument/references", {"textDocument": {"uri": lamp_uri}, "position": position(lamp, "carries(:player, :matches)"),
                                                               "context": {"includeDeclaration": True}})["result"]
             files = {r["uri"].rsplit("/", 1)[1] for r in refs}
-            assert {"world.lua", "lamp.lua", "explore.lua"} <= files, files
+            normalized_files = {f.replace(".varis", ".lua") for f in files}
+            assert {"world.lua", "lamp.lua", "explore.lua"} <= normalized_files, files
 
             # Rename a relation: every file, and the project still checks clean.
             rename = client.request("textDocument/rename", {"textDocument": {"uri": lamp_uri}, "position": position(lamp, "carries(:player, :matches)"),
@@ -212,7 +216,7 @@ def main():
         assert done.returncode == 0, done.stdout
         bad = [p for p in report["problems"] if p["code"] in ("unknown-relation", "relation-arity", "load", "syntax")]
         assert bad == [], bad
-        assert "carries" not in (game / "content" / "lamp.lua").read_text().replace("carries_", "")
+        assert "carries" not in (game / lamp_rel).read_text().replace("carries_", "")
 
         # Rename a choice: the source catalog's keys change in the same edit, and stay current.
         # (Renaming a relation changes the `when` text and conditions the catalog quotes, so the
@@ -222,8 +226,8 @@ def main():
         try:
             client.request("initialize", {"rootUri": client.uri(""), "capabilities": {}})
             client.notify("initialized", {})
-            lamp = (game / "content" / "lamp.lua").read_text()
-            lamp_uri = client.uri("content/lamp.lua")
+            lamp = (game / lamp_rel).read_text()
+            lamp_uri = client.uri(lamp_rel)
             client.notify("textDocument/didOpen", {"textDocument": {"uri": lamp_uri, "languageId": "varis", "version": 1, "text": lamp}})
             rename = client.request("textDocument/rename", {"textDocument": {"uri": lamp_uri}, "position": position(lamp, "choice light", 0, 8),
                                                             "newName": "ignite"})

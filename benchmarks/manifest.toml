@@ -23,14 +23,14 @@ note = "Soufflé single-threaded RAM interpreter (-j 1)"
 [[group]]
 id = "core"
 kind = "inproc"
-glob = "benchmarks/workloads/core/*.lua"
+glob = "benchmarks/workloads/core/*.varis"
 comparable = true
 description = "single-kernel micro workloads that stock Lua can run"
 
 [[group]]
 id = "programs"
 kind = "process"
-glob = "benchmarks/workloads/programs/*.lua"
+glob = "benchmarks/workloads/programs/*.varis"
 comparable = true
 runs = 5
 description = "application-style whole programs (output must equal C Lua's)"
@@ -38,8 +38,8 @@ description = "application-style whole programs (output must equal C Lua's)"
 [[group]]
 id = "regression"
 kind = "process"
-glob = "tests/regression/*.lua"
-exclude = ["harness.lua"]
+glob = "tests/regression/*.varis"
+exclude = ["harness.varis"]
 cwd_is_parent = true
 comparable = true
 runs = 3
@@ -48,7 +48,7 @@ description = "checksum-verified differential programs reused as macro workloads
 [[group]]
 id = "startup"
 kind = "process"
-glob = "benchmarks/workloads/startup/*.lua"
+glob = "benchmarks/workloads/startup/*.varis"
 comparable = true
 runs = 15
 description = "interpreter start-up cost"
@@ -57,7 +57,7 @@ description = "interpreter start-up cost"
 [[group]]
 id = "datalog"
 kind = "inproc"
-glob = "benchmarks/workloads/datalog/*.lua"
+glob = "benchmarks/workloads/datalog/*.varis"
 silent = true
 comparable = false
 description = "declarative kernels timed in-process (closure, joins, negation, incremental updates)"
@@ -66,7 +66,7 @@ description = "declarative kernels timed in-process (closure, joins, negation, i
 [[group]]
 id = "scenarios"
 kind = "process"
-glob = "tests/datalog/[0-9][0-9]_*.lua"
+glob = "tests/datalog/[0-9][0-9]_*.varis"
 args = ["large"]
 cwd_is_parent = true
 comparable = false
@@ -77,7 +77,7 @@ description = "declarative scenario programs end to end (no stock-Lua comparator
 [[group]]
 id = "datalog_comp"
 kind = "process"
-glob = "benchmarks/workloads/datalog_comp/*.lua"
+glob = "benchmarks/workloads/datalog_comp/*.varis"
 comparable = true
 comparator = "souffle"
 runs = 5
@@ -87,7 +87,7 @@ description = "equivalent Datalog programs timed directly against Souffle"
 [[group]]
 id = "narrative"
 kind = "inproc"
-glob = "benchmarks/workloads/narrative/*.lua"
+glob = "benchmarks/workloads/narrative/*.varis"
 cwd = "sample-game"
 silent = true
 comparable = false
@@ -100,7 +100,7 @@ kind = "process"
 comparable = false
 runs = 5
 description = "scripted sample-game walkthrough end to end"
-cases = [{ id = "sample_game_check", path = "sample-game/tools/check.lua", cwd = "sample-game" }]
+cases = [{ id = "sample_game_check", path = "sample-game/tools/check.varis", cwd = "sample-game" }]
 
 # The reference game (PERFORMANCE_PLAN.md §3.1, stage S0): 100 rooms, 1000 storylets, 50 items,
 # a recursive reachable/2 and an aggregate, played for 500 turns in a fresh process per sample.
@@ -113,8 +113,8 @@ comparable = false
 runs = 3
 description = "the reference game of PERFORMANCE_PLAN 3.1 (500 turns, budgets asserted) and a wide game"
 cases = [
-  { id = "reference_game", path = "benchmarks/workloads/narrative_scale/reference_game.lua" },
-  { id = "wide_game", path = "benchmarks/experiments/synthetic_game.lua", args = ["10", "1000", "0", "40", "50"] },
+  { id = "reference_game", path = "benchmarks/workloads/narrative_scale/reference_game.varis" },
+  { id = "wide_game", path = "benchmarks/experiments/synthetic_game.varis", args = ["10", "1000", "0", "40", "50"] },
 ]
 
 # The native battle at the plan's scales (TOWER_DEFENSE_PLAN.md section 9, stage TD0): step cost at
@@ -127,9 +127,9 @@ comparable = false
 runs = 3
 description = "native tower-defense battle at reference and stress scale"
 cases = [
-  { id = "reference_step", path = "benchmarks/workloads/td_native/battle_scale.lua", args = ["reference"] },
-  { id = "stress_step", path = "benchmarks/workloads/td_native/battle_scale.lua", args = ["stress"] },
-  { id = "flow_field", path = "benchmarks/workloads/td_native/battle_scale.lua", args = ["flow"] },
-  { id = "judge", path = "benchmarks/workloads/td_native/battle_scale.lua", args = ["judge"] },
-  { id = "bridge", path = "benchmarks/workloads/td_native/battle_scale.lua", args = ["bridge"] },
+  { id = "reference_step", path = "benchmarks/workloads/td_native/battle_scale.varis", args = ["reference"] },
+  { id = "stress_step", path = "benchmarks/workloads/td_native/battle_scale.varis", args = ["stress"] },
+  { id = "flow_field", path = "benchmarks/workloads/td_native/battle_scale.varis", args = ["flow"] },
+  { id = "judge", path = "benchmarks/workloads/td_native/battle_scale.varis", args = ["judge"] },
+  { id = "bridge", path = "benchmarks/workloads/td_native/battle_scale.varis", args = ["bridge"] },
 ]

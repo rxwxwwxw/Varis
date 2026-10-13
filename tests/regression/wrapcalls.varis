@@ -1,6 +1,6 @@
 -- coroutine.wrap calls through the interpreter's allocation-free path: result counts that
 -- exceed the registers, tail calls, failures after the coroutine ran, generators in for loops.
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit = T.emit
 local g = coroutine.wrap(function(...) local a = ... ; while true do a = coroutine.yield(a, a+1, a+2) end end)
 emit(g(1)); emit(g(10)); emit((g(20)))

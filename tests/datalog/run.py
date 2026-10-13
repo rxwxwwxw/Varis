@@ -28,14 +28,14 @@ SCALES = ("small", "large")
 
 
 def programs(filters):
-    found = sorted(p for p in ROOT.glob("[0-9][0-9]_*.lua"))
+    found = sorted(p for p in ROOT.iterdir() if p.suffix in (".varis", ".lua") and len(p.stem) >= 3 and p.stem[:2].isdigit() and p.stem[2] == "_")
     if filters:
         found = [p for p in found if any(f in p.name for f in filters)]
     return found
 
 
 def known_gaps(filters):
-    found = sorted((ROOT / "known_gaps").glob("*.lua"))
+    found = sorted(p for p in (ROOT / "known_gaps").iterdir() if p.suffix in (".varis", ".lua"))
     if filters:
         found = [p for p in found if any(f in p.name for f in filters)]
     return found

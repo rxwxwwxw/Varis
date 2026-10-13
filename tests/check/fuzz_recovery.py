@@ -20,7 +20,7 @@ JUNK = ['"', "'", "[[", "]]", "{", "}", "(", ")", "end", "do", ":-", "?", "--[["
 def main():
     binary = str(pathlib.Path(sys.argv[1]).resolve())
     rng = random.Random(20261012)
-    sources = sorted((ROOT / "sample-game").rglob("*.lua"))
+    sources = sorted(p for p in (ROOT / "sample-game").rglob("*") if p.suffix in (".varis", ".lua"))
     runs = 0
     with tempfile.TemporaryDirectory(prefix="varis-fuzz-") as work:
         work = pathlib.Path(work)
@@ -37,9 +37,9 @@ def main():
                         damaged = damaged[:at] + rng.choice(JUNK) + damaged[at:]
                     else:
                         damaged = damaged[:at]
-                target = work / "damaged.lua"
+                target = work / ("damaged" + (source.suffix if source.suffix in (".varis", ".lua") else ".varis"))
                 target.write_text(damaged)
-                for args in (["check", "damaged.lua"], ["check", "--index", "damaged.lua"]):
+                for args in (["check", target.name], ["check", "--index", target.name]):
                     done = subprocess.run([binary, *args], cwd=work, capture_output=True, timeout=20)
                     if done.returncode not in (0, 1):
                         keep = pathlib.Path(tempfile.gettempdir()) / "varis-fuzz-failure.lua"

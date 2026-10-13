@@ -1,6 +1,6 @@
 -- csmith-style differential fuzzing: expressions are generated from a seeded private PRNG,
 -- compiled with load(), evaluated under pcall, and every result or error message is hashed.
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit = T.emit
 local seed = tonumber(os.getenv('FUZZ_SEED') or '') or 20240607
 local COUNT = tonumber(os.getenv('FUZZ_COUNT') or '') or 1500

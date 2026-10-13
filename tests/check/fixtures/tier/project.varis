@@ -1,0 +1,1 @@
+return { id = "tier", language = "en", content = { "content/*.varis" }, scripts = { "engine.varis" } }

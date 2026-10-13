@@ -943,7 +943,7 @@ private bool safePath(string path) {
     return path[0] != '.' && indexOf(path, "/.") < 0;
 }
 
-public bool readFile(string path, out string content) {
+private bool readDirect(string path, out string content) {
     auto file = fopen((path ~ "\0").ptr, "rb");
     if (file is null)
         return false;
@@ -959,6 +959,44 @@ public bool readFile(string path, out string content) {
     }
     content = cast(string) data;
     return true;
+}
+
+public bool readFile(string path, out string content, out string resolvedPath) {
+    if (readDirect(path, content)) {
+        resolvedPath = path;
+        return true;
+    }
+    if (path.length > 4 && path[$ - 4 .. $] == ".lua") {
+        string alt = path[0 .. $ - 4] ~ ".varis";
+        if (readDirect(alt, content)) {
+            resolvedPath = alt;
+            return true;
+        }
+    } else if (path.length > 6 && path[$ - 6 .. $] == ".varis") {
+        string alt = path[0 .. $ - 6] ~ ".lua";
+        if (readDirect(alt, content)) {
+            resolvedPath = alt;
+            return true;
+        }
+    } else {
+        string alt = path ~ ".varis";
+        if (readDirect(alt, content)) {
+            resolvedPath = alt;
+            return true;
+        }
+        alt = path ~ ".lua";
+        if (readDirect(alt, content)) {
+            resolvedPath = alt;
+            return true;
+        }
+    }
+    resolvedPath = path;
+    return false;
+}
+
+public bool readFile(string path, out string content) {
+    string resolved;
+    return readFile(path, content, resolved);
 }
 
 public bool writeFile(string path, string content) {

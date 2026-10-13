@@ -50,7 +50,7 @@ def main():
     assert {"storylet", "choice", "action", "deck", "relation", "rule", "quality", "function"} <= kinds, kinds
     # Every title, text and label has a key, except the one registered by a loop (qualities.lua:21).
     unkeyed = [m for m in index["messages"] if not m["key"]]
-    assert len(unkeyed) == 1 and unkeyed[0]["computed"] and unkeyed[0]["file"] == "qualities.lua", unkeyed
+    assert len(unkeyed) == 1 and unkeyed[0]["computed"] and unkeyed[0]["file"] in ("qualities.varis", "qualities.lua"), unkeyed
     keys = [m["key"] for m in index["messages"] if m["key"]]
     assert len(keys) == len(set(keys)), "message keys are not unique"
     assert "lamp.light.title" in keys and "quality.oil.label" in keys
@@ -61,18 +61,19 @@ def main():
     code, out = run(binary, HERE / "fixtures" / "broken", "--json")
     assert code == 1, out
     found = {(p["file"], p["code"]): p for p in json.loads(out)["problems"]}
-    key = found[("project.lua", "manifest-key")]
+    key = found.get(("project.varis", "manifest-key")) or found[("project.lua", "manifest-key")]
     assert key["severity"] == "warning" and key["line"] == 4 and "colour" in key["message"], key
-    syntax = found[("bad_syntax.lua", "syntax")]
+    syntax = found.get(("bad_syntax.varis", "syntax")) or found[("bad_syntax.lua", "syntax")]
     assert syntax["severity"] == "error" and syntax["line"] == 2, syntax
     assert (syntax["column"], syntax["endLine"], syntax["endColumn"]) == (11, 2, 12), syntax
-    assert ("fine.lua", "symbol-once") not in found  # :alpha appears twice
+    assert ("fine.varis", "symbol-once") not in found and ("fine.lua", "symbol-once") not in found  # :alpha appears twice
 
     # One fixture holding each static check (stage A3), with the suggestion where there is one.
     code, out = run(binary, HERE / "fixtures" / "static", "--json")
     assert code == 1, out
     found = [(p["file"], p["line"], p["code"], p.get("suggestion", "")) for p in json.loads(out)["problems"]]
-    assert found == [
+    normalized = [(f.replace(".varis", ".lua"), line, code, sugg) for f, line, code, sugg in found]
+    assert normalized == [
         ("content.lua", 2, "relation-arity", ""),
         ("content.lua", 3, "unknown-deck", "market"),
         ("content.lua", 4, "unknown-placeholder", "room"),
@@ -90,7 +91,7 @@ def main():
     # fields of a kind, the scene a moment plays and a trigger's arguments, each at its position.
     code, out = run(binary, HERE / "fixtures" / "battle", "--json", "--no-load")
     found = [(p["line"], p["code"], p.get("suggestion", "")) for p in json.loads(out)["problems"]
-             if p["file"] == "setup.lua"]
+             if p["file"] in ("setup.varis", "setup.lua")]
     assert code == 1 and found == [
         (5, "unknown-ability", "single"),
         (6, "missing-battle-field", ""),
@@ -99,17 +100,17 @@ def main():
         (12, "bad-battle-argument", ""),
         (13, "bad-battle-argument", ""),
     ], found
-    ranged = [p for p in json.loads(out)["problems"] if p["file"] == "setup.lua"]
+    ranged = [p for p in json.loads(out)["problems"] if p["file"] in ("setup.varis", "setup.lua")]
     assert all(p["line"] > 0 and p["column"] > 0 and p["endColumn"] > p["column"] for p in ranged), ranged
 
     # The load pass: what the engine's own validation says, at the definition's line (stage A4).
     code, out = run(binary, HERE / "fixtures" / "load_unbound", "--json")
     problem = json.loads(out)["problems"][0]
-    assert code == 1 and (problem["code"], problem["file"], problem["line"]) == ("load", "game.lua", 4), out
+    assert code == 1 and problem["code"] == "load" and problem["file"] in ("game.varis", "game.lua") and problem["line"] == 4, out
     assert problem["subject"] == "storylet lamp" and "unbound storylet parameter" in problem["message"], problem
     code, out = run(binary, HERE / "fixtures" / "load_unstratified", "--json")
     problem = json.loads(out)["problems"][0]
-    assert code == 1 and (problem["code"], problem["file"], problem["line"]) == ("load", "game.lua", 5), out
+    assert code == 1 and problem["code"] == "load" and problem["file"] in ("game.varis", "game.lua") and problem["line"] == 5, out
     code, out = run(binary, HERE / "fixtures" / "load_unbound", "--json", "--no-load")
     assert code == 0 and json.loads(out)["problems"] == [], out
     # The analysis pass reports what bounded exploration did not reach, and says it is bounded.
@@ -120,7 +121,7 @@ def main():
 
     # The content tier (default list of ROADMAP decision 1): only files listed as content.
     code, out = run(binary, HERE / "fixtures" / "tier", "--json", "--no-load")
-    tier = [(p["file"], p["line"]) for p in json.loads(out)["problems"] if p["code"] == "tier"]
+    tier = [(p["file"].replace(".varis", ".lua"), p["line"]) for p in json.loads(out)["problems"] if p["code"] == "tier"]
     assert code == 1 and tier == [("content/story.lua", 9), ("content/story.lua", 9), ("content/story.lua", 11),
                                   ("content/story.lua", 11), ("content/story.lua", 12), ("content/story.lua", 16)], tier
 
@@ -145,7 +146,7 @@ def main():
 
     # Human output keeps `file:line:column: severity: message [code]`.
     code, out = run(binary, HERE / "fixtures" / "broken")
-    assert "bad_syntax.lua:2:11: error:" in out and "[syntax]" in out, out
+    assert ("bad_syntax.varis:2:11: error:" in out or "bad_syntax.lua:2:11: error:" in out) and "[syntax]" in out, out
     print("check tests passed")
     return 0
 

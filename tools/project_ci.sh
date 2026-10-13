@@ -11,7 +11,7 @@
 VARIS=${VARIS:-varis}
 status=0
 "$VARIS" check || status=1
-if [ -f project.lua ] && grep -q 'tests' project.lua; then
+if { [ -f project.varis ] && grep -q 'tests' project.varis; } || { [ -f project.lua ] && grep -q 'tests' project.lua; }; then
     "$VARIS" test || status=1
 fi
 if [ -f l10n/source.json ]; then

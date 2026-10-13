@@ -84,11 +84,15 @@ Manifest loadManifest(string directory) {
     string content;
     string prefix = directory.length && directory != "." ? directory ~ "/" : "";
     string full = prefix ~ manifestNameVaris;
-    if (readFile(full, content))
+    string resolved;
+    if (readFile(full, content, resolved) && resolved == full)
         manifest.path = manifestNameVaris;
     else {
         full = prefix ~ manifestName;
-        if (!readFile(full, content))
+        if (readFile(full, content, resolved))
+            manifest.path = (prefix.length && resolved.length >= prefix.length && resolved[0 .. prefix.length] == prefix) ? resolved[prefix
+                .length .. $] : resolved;
+        else
             return manifest;
     }
     manifest.present = true;

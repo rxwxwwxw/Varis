@@ -602,7 +602,7 @@ async function loadFiles() {
   const data = await api("/api/files");
   const select = $("files"); select.textContent = "";
   for (const name of data.files) select.append(el("option", { value: name }, name));
-  if (data.files.length) openFile(data.files.includes("main.lua") ? "main.lua" : data.files[0]);
+  if (data.files.length) openFile(data.files.includes("main.varis") ? "main.varis" : (data.files.includes("main.lua") ? "main.lua" : data.files[0]));
 }
 async function openFile(path) {
   retainBuffer();

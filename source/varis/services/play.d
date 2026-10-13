@@ -304,7 +304,7 @@ LUA";
 int playMain(LuaState state, string[] args) {
     auto manifest = loadManifest(".");
     if (!manifest.present || manifest.entry.length == 0 || manifest.session.length == 0) {
-        warn("varis play needs project.lua with `entry` and `session` (module.function)\n");
+        warn("varis play needs project manifest with `entry` and `session` (module.function)\n");
         return 2;
     }
     long seed = 1;
@@ -660,12 +660,12 @@ int testMain(LuaState delegate() makeState, string[] args) {
     }
     auto manifest = loadManifest(".");
     if (!manifest.present || manifest.entry.length == 0 || manifest.session.length == 0) {
-        warn("varis test needs project.lua with `entry` and `session` (module.function)\n");
+        warn("varis test needs project manifest with `entry` and `session` (module.function)\n");
         return 2;
     }
     if (files.length == 0) {
         if (manifest.tests.length == 0) {
-            warn("name test files, or list them as `tests = { \"tests/*.lua\" }` in project.lua\n");
+            warn("name test files, or list them as `tests = { \"tests/*.varis\" }` in project.varis (or project.lua)\n");
             return 2;
         }
         files = expandPatterns(".", manifest.tests);
@@ -760,7 +760,7 @@ void installTestModule(LuaState state) {
                 auto self = cast(LuaState) pointer;
                 auto manifest = loadManifest(".");
                 if (!manifest.present)
-                    throw new LuaException("require(\"varis.test\") needs project.lua in the current directory");
+                    throw new LuaException("require(\"varis.test\") needs a project manifest in the current directory");
                 installConfig(self, manifest, 1);
                 VM.callValue(self, LuaValue(self.loadString(testSource, "=varis test")), []);
                 return [self.getGlobal("test")];

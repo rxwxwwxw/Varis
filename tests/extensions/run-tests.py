@@ -25,7 +25,8 @@ REJECTIONS = {
 
 def run_case(binary, case, timeout):
     expected = REJECTIONS.get(case.stem)
-    source = (ROOT / "helpers.lua").read_text() + "\n" + case.read_text()
+    helpers = ROOT / "helpers.varis" if (ROOT / "helpers.varis").exists() else ROOT / "helpers.lua"
+    source = helpers.read_text() + "\n" + case.read_text()
     if expected is None:
         source += '\nprint("EXTENSION_CASE_COMPLETE")\n'
     else:
@@ -75,7 +76,7 @@ def main():
         parser.error("timeout must be greater than zero and at most 300 seconds")
     if not Path(args.binary).is_file() or not os.access(args.binary, os.X_OK):
         parser.error("binary must be an existing executable")
-    cases = sorted(p for p in (ROOT / "cases").glob("*.lua") if args.filter in p.stem)
+    cases = sorted(p for p in (ROOT / "cases").iterdir() if p.suffix in (".varis", ".lua") and args.filter in p.stem)
     if not cases:
         parser.error("no cases matched")
     failed = 0

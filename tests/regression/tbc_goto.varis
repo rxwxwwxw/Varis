@@ -1,4 +1,4 @@
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit, try = T.emit, T.try
 local log = {}
 local function res(name, fail)

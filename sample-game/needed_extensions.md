@@ -145,7 +145,7 @@ Inventories, dialogue history, paths and multi-part arguments have to be split a
 **Proposal:** allow those values as relation terms, with structural equality, and add simple destructuring goals (`?seq[1]`, `#?seq`). This stops short of Prolog unification.
 
 ### 1.11 Inference performance (P0 for real games)
-Each `present()` evaluates every storylet, choice, action and template condition by recomputing from scratch: naive fixpoint, unindexed nested-loop joins, no materialization cache. This game is small enough that it doesn't matter. A 100-room map with `reachable` is slow: a synthetic game of that size measures about 0.8 s per presentation on an Apple M1 (see [benchmarks/PERFORMANCE_PLAN.md](../benchmarks/PERFORMANCE_PLAN.md), which also holds the staged fix).
+Each `present()` evaluates every storylet, choice, action and template condition by recomputing from scratch: naive fixpoint, unindexed nested-loop joins, no materialization cache. This game is small enough that it doesn't matter. A 100-room map with `reachable` is slow: a synthetic game of that size measures about 0.8 s per presentation on an Apple M1 (see the [historical baseline](../benchmarks/PERFORMANCE_HISTORY.md#21-world-model); the world-model rewrite has since landed).
 
 **Needed:** shared fact storage instead of per-query copies, slot-based bindings, argument indexes, semi-naive evaluation, a version-keyed cache shared across all queries in one presentation snapshot, and storylets indexed by the constant parts of their conditions (track W of the performance plan, ROADMAP milestone 35).
 

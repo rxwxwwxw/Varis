@@ -16,7 +16,7 @@ D_LUA = ROOT / "bin/varis"
 
 
 def programs(selection=None):
-    names = sorted(p for p in HERE.glob("*.lua") if p.name != "harness.lua")
+    names = sorted(p for p in HERE.iterdir() if p.suffix in (".varis", ".lua") and p.stem != "harness")
     if selection:
         names = [p for p in names if p.stem in selection]
     return names

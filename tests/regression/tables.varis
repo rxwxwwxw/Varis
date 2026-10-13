@@ -1,4 +1,4 @@
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit, try = T.emit, T.try
 -- sort with several comparators; result is hashed element by element
 local function lcg(seed) local x = seed; return function() x = (x * 1103515245 + 12345) & 0x7fffffff; return x end end

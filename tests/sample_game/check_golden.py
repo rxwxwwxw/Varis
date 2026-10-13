@@ -18,7 +18,8 @@ EXPECTED = pathlib.Path(__file__).with_name("golden.expected")
 
 def main():
     binary = pathlib.Path(sys.argv[1]).resolve()
-    proc = subprocess.run([str(binary), "tools/golden.lua"], cwd=ROOT / "sample-game", capture_output=True, timeout=120)
+    tool = "tools/golden.varis" if (ROOT / "sample-game/tools/golden.varis").exists() else "tools/golden.lua"
+    proc = subprocess.run([str(binary), tool], cwd=ROOT / "sample-game", capture_output=True, timeout=120)
     if proc.returncode != 0:
         sys.stderr.write(proc.stderr.decode("utf-8", "replace"))
         return 1

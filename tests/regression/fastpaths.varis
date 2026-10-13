@@ -1,7 +1,7 @@
 -- Interpreter fast paths (allocation-free built-ins, inline table/array access, pairs/ipairs loops,
 -- tail-call buffers, nil-padded arrays, upvalue closing): every observable result must match C Lua,
 -- including the error cases that must fall back to the generic implementations.
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit, try = T.emit, T.try
 
 -- built-ins called with unusual argument shapes

@@ -1,7 +1,7 @@
 -- Calls nested far beyond the native recursion threshold of the interpreter (frames then run in
 -- the deep-recursion executor): results, varargs, tail calls, to-be-closed variables, errors with
 -- positions and tracebacks, hooks, coroutines and stack overflow must match C Lua.
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit, try = T.emit, T.try
 
 local function sum(n) if n == 0 then return 0 end return n + sum(n - 1) end

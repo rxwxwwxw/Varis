@@ -1,5 +1,5 @@
 -- Random sequences of table-library operations on a small array; checks lengths and contents.
-local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.lua")
+local T = dofile((arg[0]:match("^(.*)/") or ".") .. "/harness.varis")
 local emit = T.emit
 local seed = 987654321
 local function rnd(n) seed = (seed * 6364136223846793005 + 1442695040888963407); return ((seed >> 33) % n) + 1 end
