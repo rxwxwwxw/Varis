@@ -91,6 +91,17 @@ final class BattleViewState {
     /// The first fit of a battle pulls in from the overview (the intro pan of plan §7.3).
     bool intro = true;
     float savedX, savedY, savedZoom, goalX, goalY, goalZoom;
+    /// The whole map as one texture, one pixel a tile (plan §7.3): rebuilt only when the fog
+    /// or the battle changes, and used for the overview band and the minimap of a large map.
+    void* overview;
+    int overviewWidth, overviewHeight;
+    ulong overviewKey;
+    int overviewBuilds;
+
+    ~this() {
+        if (overview !is null)
+            v_free(overview);
+    }
 
     void say(string text, ulong now) {
         notice = text;
@@ -223,6 +234,50 @@ final class BattleCanvas : Widget {
         tileWorld(q, r, wx, wy);
         immutable lift = levelAt(q, r) * levelLift + (wallAt(q, r) ? cliffLift : 0);
         screen(wx, wy, lift, sx, sy);
+    }
+
+    /// More visible tiles than this are drawn from the overview texture, not as prisms (plan §9:
+    /// the standard band is budgeted for 6,000 visible tiles).
+    static int visibleTileCap = 8000;
+
+    /// Builds the overview texture if the fog or the battle changed since it was made. Pixel
+    /// (q + r/2, r) is the tile (q, r), so the parallelogram of the axial map is a plain image.
+    void ensureOverview() {
+        const b = &battle();
+        ulong key = 1469598103934665603UL;
+        foreach (v; [
+            cast(ulong) b.width, b.height, b.setup.mapSeed, b.setup.wallThreshold,
+            b.setup.terraceRows
+        ])
+            key = (key ^ cast(ulong) v) * 1099511628211UL;
+        foreach (v; b.fogStorage)
+            key = (key ^ v) * 1099511628211UL;
+        if (state.overview !is null && key == state.overviewKey)
+            return;
+        immutable w = b.width + b.height / 2 + 1, h = b.height;
+        auto pixels = new uint[w * h];
+        foreach (r; 0 .. b.height)
+            foreach (q; 0 .. b.width) {
+                immutable t = r * b.width + q;
+                uint colour;
+                if (!b.revealed[t])
+                    colour = ((q + r) & 1) ? 0x141a26ff : 0x121723ff;
+                else if (b.wall[t])
+                    colour = 0x6a6270ff;
+                else {
+                    colour = levelColours[min(7, levelAt(q, r))];
+                    if ((q + r) & 1)
+                        colour = shade(colour, 0.96f);
+                }
+                pixels[r * w + q + r / 2] = colour;
+            }
+        if (state.overview !is null)
+            v_free(state.overview);
+        state.overview = v_pixels(pixels.ptr, w, h);
+        state.overviewWidth = w;
+        state.overviewHeight = h;
+        state.overviewKey = key;
+        ++state.overviewBuilds;
     }
 
     /// Fits the revealed part of the map into the canvas.
@@ -531,28 +586,49 @@ final class BattleCanvas : Widget {
         bool[int] onRoute;
         markRoute(onRoute);
         immutable detail = band >= ZoomBand.standard;
-        foreach (r; r0 .. r1 + 1) {
-            immutable gxLeft = state.camX - (cx - rect.x) / state.zoom - 2 * sq3;
-            immutable gxRight = state.camX + (rect.x + rect.w - cx) / state.zoom + 2 * sq3;
-            immutable qa = max(0, cast(int) floor(gxLeft / sq3 - r * 0.5f)), qb = min(b.width - 1,
-                    cast(int) floor(gxRight / sq3 - r * 0.5f) + 1);
-            foreach (q; qa .. qb + 1) {
-                immutable t = r * b.width + q;
-                uint colour;
-                if (!b.revealed[t])
-                    colour = ((q + r) & 1) ? 0x141a26ff : 0x121723ff;
-                else if (b.wall[t])
-                    colour = 0x6a6270ff;
-                else {
-                    colour = levelColours[min(7, levelAt(q, r))];
-                    if (onRoute.get(t, false))
-                        colour = shade(colour, 1.18f) & 0xffffff00 | 0xff;
-                    if ((q + r) & 1)
-                        colour = shade(colour, 0.96f);
-                }
-                tile(q, r, detail && b.revealed[t], colour);
+        immutable visibleTiles = cast(long)(r1 - r0 + 1) * min(b.width,
+                cast(int)(rect.w / (state.zoom * sq3)) + 4);
+        bool useOverview;
+        if (visibleTiles > visibleTileCap) {
+            ensureOverview();
+            useOverview = state.overview !is null;
+        }
+        if (useOverview) {
+            // pixel (x, y) is the tile whose centre is at world (sq3 * x, 1.5 * y)
+            float x0, y0, x1, y1;
+            screen(-0.5f * sq3, -0.75f, 0, x0, y0);
+            screen((state.overviewWidth - 0.5f) * sq3, 1.5f * state.overviewHeight - 0.75f, 0, x1, y1);
+            v_draw(state.overview, x0, y0, x1 - x0, y1 - y0, 0, 0xffffffff);
+            immutable dot = max(1.5f, state.zoom * 0.9f);
+            foreach (t, _; onRoute) {
+                float sx, sy;
+                tileScreen(t % b.width, t / b.width, sx, sy);
+                ui.fill(Rect(sx - dot * 0.5f, sy - dot * 0.5f, dot, dot), 0xffe9a0b0);
             }
         }
+        if (!useOverview)
+            foreach (r; r0 .. r1 + 1) {
+                immutable gxLeft = state.camX - (cx - rect.x) / state.zoom - 2 * sq3;
+                immutable gxRight = state.camX + (rect.x + rect.w - cx) / state.zoom + 2 * sq3;
+                immutable qa = max(0, cast(int) floor(gxLeft / sq3 - r * 0.5f)), qb = min(b.width - 1,
+                        cast(int) floor(gxRight / sq3 - r * 0.5f) + 1);
+                foreach (q; qa .. qb + 1) {
+                    immutable t = r * b.width + q;
+                    uint colour;
+                    if (!b.revealed[t])
+                        colour = ((q + r) & 1) ? 0x141a26ff : 0x121723ff;
+                    else if (b.wall[t])
+                        colour = 0x6a6270ff;
+                    else {
+                        colour = levelColours[min(7, levelAt(q, r))];
+                        if (onRoute.get(t, false))
+                            colour = shade(colour, 1.18f) & 0xffffff00 | 0xff;
+                        if ((q + r) & 1)
+                            colour = shade(colour, 0.96f);
+                    }
+                    tile(q, r, detail && b.revealed[t], colour);
+                }
+            }
         flush();
         // markers: sources, sinks
         foreach (i, t; b.sourceTile) {
@@ -1002,14 +1078,23 @@ final class MiniMap : Widget {
         immutable scale = min((rect.w - 4) / spanX, (rect.h - 4) / spanY);
         immutable ox = rect.x + 2, oy = rect.y + 2;
         immutable dot = max(1.0f, scale * 1.2f);
-        foreach (r; 0 .. b.height)
-            foreach (q; 0 .. b.width) {
-                immutable t = r * b.width + q;
-                if (!b.revealed[t])
-                    continue;
-                immutable x = ox + sq3 * (q + r * 0.5f) * scale, y = oy + 1.5f * r * scale;
-                ui.fill(Rect(x, y, dot, dot), b.wall[t] ? 0x6a6270ff : 0x587a5aff);
-            }
+        // a large map is one texture (the canvas builds it), not a dot a tile
+        immutable fromTexture = cast(long) b.width * b.height > 4096;
+        if (fromTexture) {
+            canvas.ensureOverview();
+            if (state.overview !is null)
+                v_draw(state.overview, ox - 0.5f * sq3 * scale, oy - 0.75f * scale,
+                        state.overviewWidth * sq3 * scale, state.overviewHeight * 1.5f * scale, 0, 0xffffffff);
+        }
+        if (!fromTexture)
+            foreach (r; 0 .. b.height)
+                foreach (q; 0 .. b.width) {
+                    immutable t = r * b.width + q;
+                    if (!b.revealed[t])
+                        continue;
+                    immutable x = ox + sq3 * (q + r * 0.5f) * scale, y = oy + 1.5f * r * scale;
+                    ui.fill(Rect(x, y, dot, dot), b.wall[t] ? 0x6a6270ff : 0x587a5aff);
+                }
         foreach (s; 0 .. b.structureCount) {
             if (!b.sAlive[s])
                 continue;

@@ -12,6 +12,15 @@ local waves = require("battle.waves")
 local M = {}
 
 M.WIDTH, M.HEIGHT = 96, 54
+-- Test hook for the largest map (plan §9, 880 x 495 = 435,600 tiles): LANTERNFALL_MAP=880x495
+-- makes the map that size with every fog sector revealed. The SDL smoke uses it to time frames.
+M.REVEAL_ALL = false
+do
+    local w, h = (os.getenv("LANTERNFALL_MAP") or ""):match("^(%d+)x(%d+)$")
+    if w then
+        M.WIDTH, M.HEIGHT, M.REVEAL_ALL = tonumber(w), tonumber(h), true
+    end
+end
 M.LANTERN = {q = 6, r = 3}
 M.MILL = {q = 72, r = 10}
 M.BELLFREY = {q = 9, r = 3}
@@ -22,6 +31,10 @@ M.HERO_ID = {ilse = 9001, corvin = 9002, wren = 9003}
 -- has seen after night k-2: 48 x 27, 64 x 36, 80 x 45, 96 x 54.
 function M.sectors(k)
     local list = {}
+    if M.REVEAL_ALL then
+        for sector = 1, math.ceil(M.WIDTH / 16) * math.ceil(M.HEIGHT / 9) do list[sector] = sector end
+        return list
+    end
     for row = 0, k - 1 do
         for col = 0, k - 1 do
             list[#list + 1] = row * 6 + col + 1

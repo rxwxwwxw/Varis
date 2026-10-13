@@ -86,6 +86,7 @@ the night again.
   the next night and shown at dusk.
 - **Moments.** The nine modifier entries and ten triggers are all used on the main path; the
   scripted choices of the tests reach every ending.
-- **Not built.** Travelling projectiles, the `varis battle` command (the text host's `--bot` plays a
-  night headless), the stress setup of 10,000 enemies as a player-visible mode (the unit tests run
-  it), and music cues per night.
+- **Test hook.** `LANTERNFALL_MAP=880x495` makes the map that size with every fog sector revealed
+  (`battle/setup.lua`); the SDL smoke uses it to time the view on 435,600 tiles. Nothing else reads it.
+- **Not built.** Travelling projectiles, the stress setup of 10,000 enemies as a player-visible mode
+  (the unit tests and `benchmarks/workloads/td_native` run it), and music cues per night.

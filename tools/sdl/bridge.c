@@ -58,6 +58,15 @@ void *v_text(void *f, const char *text, float px, int wrap, unsigned color) {
     SDL_DestroySurface(s);
     return t;
 }
+/* A texture from a w x h block of 0xRRGGBBAA pixels (the battle view's overview). */
+void *v_pixels(const unsigned *rgba, int w, int h) {
+    SDL_Surface *surface = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_RGBA8888, (void *)rgba, w * 4);
+    if (!surface) return NULL;
+    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
+    SDL_DestroySurface(surface);
+    if (texture) SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+    return texture;
+}
 void v_texture_size(void *texture, float *w, float *h) { SDL_GetTextureSize(texture, w, h); }
 void v_free(void *texture) { if (texture) SDL_DestroyTexture(texture); }
 void v_begin(unsigned color) {

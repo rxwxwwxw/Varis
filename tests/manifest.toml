@@ -266,6 +266,17 @@ cases = [
   { id = "enforcement", command = ["python3", "tests/tiers/tier_test.py", "{candidate}"] },
 ]
 
+# `varis battle`, the headless battle command (milestone 48).
+[[suite]]
+id = "battle-cli"
+kind = "script"
+tier = "fast"
+tags = ["tools", "battle"]
+timeout = 60
+cases = [
+  { id = "varis-battle", command = ["python3", "tests/battle/battle_test.py", "{candidate}"] },
+]
+
 # Playtest, author tests and the CI recipe (authoring plan stage A6).
 [[suite]]
 id = "play"

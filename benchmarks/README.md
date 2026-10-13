@@ -32,6 +32,7 @@ Design and rationale: [CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md) §4.
 | `narrative` | in-process kernels on the sample game | `workloads/narrative/*.lua` | none (absolute budget only) |
 | `narrative_e2e` | fresh process | `sample-game/tools/check.lua` | none (absolute budget only) |
 | `narrative_scale` | fresh process, CPU time and peak RSS | `experiments/synthetic_game.lua` | none (absolute budget only) |
+| `td_native` | fresh process; the script also asserts the per-measure budgets | `workloads/td_native/battle_scale.lua` | none (absolute budget only) |
 
 Every sample is interleaved across interpreters (alternating order); ratios are paired per
 sample and the **median of paired ratios** is reported. Peak RSS is recorded. A candidate

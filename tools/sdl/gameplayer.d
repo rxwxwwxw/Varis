@@ -2314,7 +2314,21 @@ private int battleSmoke(GamePlayer player, string screenshot) {
         auto took = v_ticks() - before;
         if (took > worst)
             worst = took;
+        // a second frame of the same band is the steady cost; the first may build the overview
+        auto again = v_ticks();
+        player.frame();
+        writeln("band ", ["overview", "tactical", "standard", "close"][band], ": first ", took, " ms, steady ",
+                v_ticks() - again, " ms, overview builds ", player.bview.overviewBuilds);
         v_capture((base ~ "-" ~ ["overview", "tactical", "standard", "close"][band] ~ ".bmp").toStringz);
+    }
+    // the same view from the overview texture, whatever the map size, to compare with the prisms
+    {
+        immutable cap = BattleCanvas.visibleTileCap;
+        BattleCanvas.visibleTileCap = 0;
+        player.bview.zoom = 11.0f;
+        player.frame();
+        v_capture((base ~ "-texture.bmp").toStringz);
+        BattleCanvas.visibleTileCap = cap;
     }
     player.bview.fitted = false;
     if (!host.battleBegin()) {

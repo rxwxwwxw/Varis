@@ -167,6 +167,41 @@ structures  {[i] = {id, kind, q, r, hp, level, sold, destroyed}}   towers only, 
 heroes      {[i] = {id, hp, downed}}
 ```
 
+## `varis battle`
+
+```
+varis battle FILE [--steps N] [--seed N] [--json] [--time] [--digest N]
+```
+
+Runs one battle headless. `FILE` is a Lua file that returns a setup table (above) and, optionally,
+a function that receives the battle before its first step, to place towers and give orders:
+
+```lua
+return setup, function(h) assert(h:place(1, 8, 5)) end
+```
+
+Moments pass without scenes. The output is the outcome (`result`, `steps`, `kills`, `leaks`,
+`credits`, `digest`, the moment ids), or one JSON object with `--json`; `--time` adds the cost per
+step on stderr. `--seed` replaces the setup's seed, `--steps` stops early, and `--digest N` makes the
+exit status 1 when the digest differs, so a battle can be a golden test. Exit status 2 means the
+file or the setup was refused (the field is named). Test: `tests/battle/battle_test.py`.
+
+## Scale
+
+The simulation and the view are measured at the plan's largest map, 880 x 495 = 435,600 tiles.
+`benchmarks/workloads/td_native/battle_scale.lua` (group `td_native`, gates in
+`benchmarks/targets.toml`) asserts, release build on an M1: 2,000 live enemies with 200 towers and
+6 heroes cost about 0.09 ms a step; 10,000 live enemies with 600 towers about 0.5 ms; the map's
+setup (terrain, fog, two flow fields) about 15–25 ms; a flow field after a placement about 5 ms;
+3,600 steps (the judge) about 0.3 s; setup with 200 structures under 1 ms.
+
+The view draws at most about 8,000 visible tiles as prisms. Beyond that (the overview band of a
+large map) the base is one texture, one pixel a tile, built once and rebuilt only when the fog
+changes; units, the route and the hover are drawn over it, and the minimap uses the same texture.
+The texture is the flat projection, so terrace lift is not drawn at that scale. The SDL smoke
+(`make test-sdl`, `LANTERNFALL_MAP=880x495`) plays a night on the large map and bounds each band's
+steady frame.
+
 ## The project hooks and the game host
 
 A project manifest may name four functions (`"module.function"`, resolved like `after_choose`):
@@ -210,6 +245,7 @@ literal's position. Computed values are left to the bridge's validation when the
 
 ## Not implemented
 
-Travelling projectiles (every shot is hit-scan with a cosmetic flight), Dijkstra route costs, a
-`varis battle` command (the sample's text host runs a night headless: `bin/varis main.lua --bot`),
-the 435,600-tile overview texture and incremental route updates, and the moment cap spacing rule.
+Travelling projectiles (every shot is hit-scan with a cosmetic flight: the plan's default,
+open decision 5), Dijkstra route costs (fields are breadth-first), and the moment cap spacing rule.
+Incremental route updates were not needed: a full flow field on the 435,600-tile map costs about
+5 ms, inside the budget (see "Scale").

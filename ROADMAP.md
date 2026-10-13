@@ -261,9 +261,9 @@ order:
 
 | Milestone | Deliverable | Plan stages |
 | --- | --- | --- |
-| 48 | **Native battle and bridge.** `source/varis/game/` (hex, terrain from seed plus edits, fog, routing, kinds, the simulation, digest), `varis battle`, and the bridge in `services/battlehost.d`: setup, moments as scenes, sync, result, abandon by snapshot. | TD0–TD3 |
-| 49 | **Battle view.** SDL bridge primitives (geometry, points, render targets, buttons and drag), the 2.5D pointy-top view with camera, picking, zoom bands and fog, HUD, moment overlay. | TD4–TD5 |
-| 50 | **Tower-defense game.** Hub ↔ battle, weekly cadence with silent judging, economy, fog growth, heroes and relationships, content depth, 435,600-tile scale and budgets. | TD6–TD8 |
+| 48 | **Done October 13, 2026.** **Native battle and bridge.** `source/varis/game/` (hex, terrain from seed plus edits, fog, routing, kinds, the simulation, digest), `varis battle`, and the bridge in `services/battlehost.d`: setup, moments as scenes, sync, result, abandon by snapshot. | TD0–TD3 |
+| 49 | **Done October 13, 2026** (the large-map overview texture, shared minimap and per-band frame times at 435,600 tiles included). **Battle view.** SDL bridge primitives (geometry, points, render targets, buttons and drag), the 2.5D pointy-top view with camera, picking, zoom bands and fog, HUD, moment overlay. | TD4–TD5 |
+| 50 | **Done October 13, 2026** (`td_native` benchmark group with the §9 budgets; the sample plays at 435,600 tiles). **Tower-defense game.** Hub ↔ battle, weekly cadence with silent judging, economy, fog growth, heroes and relationships, content depth, 435,600-tile scale and budgets. | TD6–TD8 |
 
 ## Open decisions (owner)
 

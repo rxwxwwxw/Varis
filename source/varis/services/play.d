@@ -544,6 +544,102 @@ private struct TestFailure {
     string message;
 }
 
+private enum battleSource = q"LUA
+local path, options = arg[1], arg.options
+local chunk, problem = loadfile(path)
+if not chunk then io.stderr:write("varis battle: ", problem, "\n") return 2 end
+local setup, drive = chunk()
+if type(setup) ~= "table" then
+    io.stderr:write("varis battle: ", path, " must return a setup table (and optionally a function taking the battle)\n")
+    return 2
+end
+if options.seed then setup.seed = options.seed end
+local h, why = battle.new(setup)
+if not h then io.stderr:write("varis battle: setup refused: ", why, "\n") return 2 end
+if drive then drive(h) end
+local started = os.clock()
+local moments = {}
+local state
+repeat
+    state = h:pump(options.steps and math.min(options.steps - h:steps(), 1000) or 1000)
+    if state == "moment" then moments[#moments + 1] = h:moment().id end
+    if options.steps and h:steps() >= options.steps and state == "running" then break end
+until state == "won" or state == "lost" or state == "withdrawn" or state == "paused"
+local elapsed = os.clock() - started
+local o = h:outcome()
+local digest = h:digest()
+if options.json then
+    local ids = {}
+    for _, id in ipairs(moments) do ids[#ids + 1] = string.format("%q", tostring(id)) end
+    print(string.format('{"result":"%s","steps":%d,"kills":%d,"leaks":%d,"credits":%d,"digest":%d,"moments":[%s]}',
+        o.result, o.steps, o.kills, o.leaks, o.credits, digest, table.concat(ids, ",")))
+else
+    print("result  " .. o.result)
+    print("steps   " .. o.steps)
+    print("kills   " .. o.kills)
+    print("leaks   " .. o.leaks)
+    print("credits " .. o.credits)
+    print("digest  " .. digest)
+    print("moments " .. #moments .. (#moments > 0 and (" (" .. table.concat(moments, ", ") .. ")") or ""))
+end
+if options.time then
+    io.stderr:write(string.format("%d steps in %.1f ms (%.3f ms per step)\n", h:steps(), elapsed * 1000,
+        h:steps() > 0 and elapsed * 1000 / h:steps() or 0))
+end
+if options.expect and options.expect ~= digest then
+    io.stderr:write("varis battle: digest ", digest, " is not the expected ", options.expect, "\n")
+    return 1
+end
+return 0
+LUA";
+
+/// `varis battle FILE [--steps N] [--seed N] [--json] [--time] [--digest N]`: runs one battle
+/// headless. FILE returns a setup table (docs/battle.md) and optionally a function that receives
+/// the battle before the first step (to place towers and give orders). Moments pass without
+/// scenes. Exit status: 0 finished, 1 the digest was not the one expected, 2 a bad file or setup.
+int battleMain(LuaState state, string[] args) {
+    string file;
+    auto options = new LuaTable();
+    for (size_t i = 0; i < args.length; ++i) {
+        immutable a = args[i];
+        if ((a == "--steps" || a == "--seed" || a == "--digest") && i + 1 < args.length) {
+            long value;
+            bool negative;
+            foreach (char c; args[++i]) {
+                if (c == '-')
+                    negative = true;
+                else if (c >= '0' && c <= '9')
+                    value = value * 10 + (c - '0');
+            }
+            if (negative)
+                value = -value;
+            options.rawset(LuaValue(a == "--digest" ? "expect" : a[2 .. $]), LuaValue(value));
+        } else if (a == "--json" || a == "--time")
+            options.rawset(LuaValue(a[2 .. $]), LuaValue(true));
+        else if (a.length && a[0] == '-') {
+            warn("usage: varis battle FILE [--steps N] [--seed N] [--json] [--time] [--digest N]\n");
+            return 2;
+        } else
+            file = a;
+    }
+    if (file.length == 0) {
+        warn("usage: varis battle FILE [--steps N] [--seed N] [--json] [--time] [--digest N]\n");
+        return 2;
+    }
+    auto argTable = new LuaTable();
+    argTable.rawset(LuaValue(1L), LuaValue(file));
+    argTable.rawset(LuaValue("options"), LuaValue(options));
+    state.setGlobal("arg", LuaValue(argTable));
+    try {
+        auto fn = state.loadString(battleSource, "=varis battle");
+        auto result = VM.callValue(state, LuaValue(fn), []);
+        return result.length && result[0].isInteger ? cast(int) result[0].asInteger : 0;
+    } catch (LuaException failure) {
+        warn("varis battle: " ~ errorText(failure.errorObject) ~ "\n");
+        return 1;
+    }
+}
+
 /// `varis test [--json] [files...]`: runs author tests, each file in a fresh state. Returns 0 when
 /// every test passed, 1 when one failed.
 int testMain(LuaState delegate() makeState, string[] args) {

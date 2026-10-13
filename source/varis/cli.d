@@ -569,6 +569,13 @@ private int runMain(string[] argv, ref LuaState state) {
         openLibs(state);
         return playMain(state, argv[2 .. $]);
     }
+    if (argv.length > 1 && argv[1] == "battle") {
+        import varis.services.play : battleMain;
+
+        state = new LuaState();
+        openLibs(state);
+        return battleMain(state, argv[2 .. $]);
+    }
     if (argv.length > 1 && argv[1] == "test") {
         import varis.services.play : testMain;
 

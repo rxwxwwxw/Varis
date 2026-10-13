@@ -10,8 +10,12 @@ moment overlay), a **TD5** slice (four zoom bands, fog, minimap, a frame per ban
 the overview texture or caches), **TD6** (hub to battle and back, the silent raid and forecast,
 economy, fog growth, sources and sinks appearing) and **TD7** content (all ten primitives, heroes
 with trust and bonds, injury and death rules, the French pack). The behaviour is described in
-[docs/battle.md](docs/battle.md). Not yet: TD0's budgets in `benchmarks/targets.toml` and the render
-spike, travelling projectiles, Dijkstra costs, `varis battle`, the 435,600-tile view caches. Changes
+[docs/battle.md](docs/battle.md). **October 13, 2026: TD0 and TD5 closed.** `varis battle` exists;
+the `td_native` benchmark group asserts the §9 budgets (measured, M1, release: reference step 0.09 ms,
+stress step 0.5 ms, flow field 5 ms on 435,600 tiles, judge 0.3 s); the view draws a large map from
+one overview texture (the plan's render spike is the SDL smoke's per-band frames, 0–7 ms at 435,600
+tiles on the software renderer). Open by default decision: travelling projectiles (hit-scan),
+Dijkstra costs (breadth-first), incremental route updates (not needed at 5 ms). Changes
 from this plan: the simulation also draws the obedience of heroes from its seeded generator (replay
 agrees); an enemy next to a hero fights it; `attack_every` paces melee; `wall_density` and
 `terrace_rows` let a map be designed; modifiers are commands in the log (`replay` agrees).

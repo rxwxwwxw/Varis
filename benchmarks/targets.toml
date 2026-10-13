@@ -346,3 +346,20 @@ gate.time = 0.02
 goal.clua = 1.0
 gate.clua = 2.47
 gate.time = 0.02
+
+# td_native: absolute budgets (TOWER_DEFENSE_PLAN.md section 9). Measured October 13, 2026 on the
+# M1, release build: process times 0.04, 0.10, 0.05, 0.30 and 0.01 s.
+[workload."td_native.reference_step"]
+gate.time = 0.15
+
+[workload."td_native.stress_step"]
+gate.time = 0.30
+
+[workload."td_native.flow_field"]
+gate.time = 0.30
+
+[workload."td_native.judge"]
+gate.time = 0.60
+
+[workload."td_native.bridge"]
+gate.time = 0.10

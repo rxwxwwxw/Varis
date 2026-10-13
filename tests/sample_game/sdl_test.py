@@ -113,8 +113,33 @@ print("digest " .. o.digest)
     print(f"Lanternfall battle view: {len(placements)} towers, digest {digest} equals the headless night")
 
 
+def lanternfall_scale():
+    """The largest map (880 x 495 = 435,600 tiles, every sector revealed): the overview texture is
+    built once, every band's steady frame stays inside the budget of plan section 9 (generous here:
+    the software renderer is slower than a GPU), and the night still plays to its end."""
+    import re
+    out = ROOT / "build/sdl/lanternfall-scale.bmp"
+    result = subprocess.run([str(BINARY), str(ROOT / "sample-td/presentation.json"), "--smoke", str(out)],
+                            cwd=ROOT, env=dict(ENV, VARIS_SMOKE_PLAY="battle", VARIS_SMOKE_SIZE="1280x720",
+                                               LANTERNFALL_MAP="880x495"),
+                            capture_output=True, text=True, timeout=300)
+    text = result.stdout + result.stderr
+    assert result.returncode == 0 and "checks passed" in text, text
+    bands = re.findall(r"^band (\w+): first (\d+) ms, steady (\d+) ms, overview builds (\d+)$", text, re.M)
+    assert [b[0] for b in bands] == ["overview", "tactical", "standard", "close"], text
+    for name, first, steady, builds in bands:
+        assert int(steady) < 60, f"{name}: a steady frame took {steady} ms"
+        assert int(builds) == 1, f"{name}: the overview texture was built {builds} times"
+    worst = int(re.search(r"worst frame (\d+) ms", text).group(1))
+    assert worst < 250, f"a frame took {worst} ms"
+    for leftover in ("autosave.json", "settings.json", "quicksave.json"):
+        (ROOT / "sample-td" / leftover).unlink(missing_ok=True)
+    print("Lanternfall at 435,600 tiles: steady frames " + ", ".join(f"{b[0]} {b[2]} ms" for b in bands))
+
+
 def main():
     lanternfall()
+    lanternfall_scale()
     rpg()
     output = ROOT / "build/sdl/harbour.bmp"
     run(ROOT / "sample-vn/presentation.json", output, message="checks passed")
