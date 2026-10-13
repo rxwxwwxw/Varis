@@ -34,15 +34,24 @@ private size_t posRelatI(long pos, size_t len) {
     return len + cast(size_t) pos + 1;
 }
 
-private size_t getEndPos(LuaState L, LuaValue[] a, int arg, long def, size_t len) {
-    long pos = optInteger(L, a, arg, def);
+private bool getEndPos(LuaState L, LuaValue[] a, int arg, long def, size_t len, out size_t result) {
+    long pos;
+    if (!argOptInteger(L, a, arg, def, pos))
+        return false;
     if (pos > cast(long) len)
-        return len;
-    if (pos >= 0)
-        return cast(size_t) pos;
-    if (pos < -cast(long) len)
-        return 0;
-    return len + cast(size_t) pos + 1;
+        result = len;
+    else if (pos >= 0)
+        result = cast(size_t) pos;
+    else if (pos < -cast(long) len)
+        result = 0;
+    else
+        result = len + cast(size_t) pos + 1;
+    return true;
+}
+
+private bool failText(LuaState L, string message) {
+    raise(L, new LuaException(message));
+    return false;
 }
 
 private bool hasSpecials(string pattern) {
@@ -57,32 +66,40 @@ private bool hasSpecials(string pattern) {
     return false;
 }
 
-private LuaValue oneCapture(ref MatchState ms, int i, size_t s, ptrdiff_t e) {
+private bool oneCapture(LuaState L, ref MatchState ms, int i, size_t s, ptrdiff_t e, out LuaValue result) {
     if (i >= ms.level) {
         if (i != 0)
-            throw new LuaException("invalid capture index %" ~ (i + 1).to!string);
-        return LuaValue(ms.src[s .. cast(size_t) e]);
+            return failText(L, "invalid capture index %" ~ (i + 1).to!string);
+        result = LuaValue(ms.src[s .. cast(size_t) e]);
+        return true;
     }
     auto cap = ms.capture[i];
     if (cap.len == CAP_UNFINISHED)
-        throw new LuaException("unfinished capture");
+        return failText(L, "unfinished capture");
     if (cap.len == CAP_POSITION)
-        return LuaValue(cast(long)(cap.init + 1));
-    return LuaValue(ms.src[cast(size_t) cap.init .. cast(size_t)(cap.init + cap.len)]);
+        result = LuaValue(cast(long)(cap.init + 1));
+    else
+        result = LuaValue(ms.src[cast(size_t) cap.init .. cast(size_t)(cap.init + cap.len)]);
+    return true;
 }
 
-private LuaValue[] pushCaptures(ref MatchState ms, bool hasWhole, size_t s, ptrdiff_t e) {
+private bool pushCaptures(LuaState L, ref MatchState ms, bool hasWhole, size_t s, ptrdiff_t e, ref LuaValue[] result) {
     int n = (ms.level == 0 && hasWhole) ? 1 : ms.level;
-    LuaValue[] result;
-    foreach (i; 0 .. n)
-        result ~= oneCapture(ms, i, s, e);
-    return result;
+    foreach (i; 0 .. n) {
+        LuaValue v;
+        if (!oneCapture(L, ms, i, s, e, v))
+            return false;
+        result ~= v;
+    }
+    return true;
 }
 
 private LuaValue[] strFindAux(LuaState L, LuaValue[] a, bool find) {
-    string s = checkString(L, a, 1);
-    string p = checkString(L, a, 2);
-    size_t init = posRelatI(optInteger(L, a, 3, 1), s.length) - 1;
+    string s, p;
+    long initArg;
+    if (!argString(L, a, 1, s) || !argString(L, a, 2, p) || !argOptInteger(L, a, 3, 1, initArg))
+        return null;
+    size_t init = posRelatI(initArg, s.length) - 1;
     if (init > s.length)
         return [luaNil()];
     if (find && (a.length > 3 && isTruthy(a[3]) || !hasSpecials(p))) {
@@ -102,9 +119,12 @@ private LuaValue[] strFindAux(LuaState L, LuaValue[] a, bool find) {
         auto ms = MatchState(s, pat);
         auto res = Pattern.matchLoop(ms, s1, 0);
         if (res != -1) {
+            LuaValue[] result;
             if (find)
-                return [LuaValue(cast(long)(s1 + 1)), LuaValue(cast(long) res)] ~ pushCaptures(ms, false, s1, res);
-            return pushCaptures(ms, true, s1, res);
+                result = [LuaValue(cast(long)(s1 + 1)), LuaValue(cast(long) res)];
+            if (!pushCaptures(L, ms, !find, s1, res, result))
+                return null;
+            return result;
         }
         ++s1;
     }
@@ -112,14 +132,20 @@ private LuaValue[] strFindAux(LuaState L, LuaValue[] a, bool find) {
     return [luaNil()];
 }
 
-private bool addValue(LuaState L, ref MatchState ms, ref typeof(appender!string()) b, size_t s, ptrdiff_t e, LuaValue repl, int arg) {
+/// Returns -1 after reporting an error, else 1 when the replacement was used and 0 when the match was kept.
+private int addValue(LuaState L, ref MatchState ms, ref typeof(appender!string()) b, size_t s, ptrdiff_t e, LuaValue repl, int arg) {
     LuaValue value;
     if (isFunction(repl)) {
-        auto captures = pushCaptures(ms, true, s, e);
+        LuaValue[] captures;
+        if (!pushCaptures(L, ms, true, s, e, captures))
+            return -1;
         auto results = VM.callValue(L, repl, captures);
         value = results.length ? results[0] : luaNil();
     } else if (isTable(repl)) {
-        value = VM.getTable(L, repl, oneCapture(ms, 0, s, e));
+        LuaValue key;
+        if (!oneCapture(L, ms, 0, s, e, key))
+            return -1;
+        value = VM.getTable(L, repl, key);
     } else {
         string r = toLuaString(repl);
         size_t i = 0;
@@ -130,36 +156,44 @@ private bool addValue(LuaState L, ref MatchState ms, ref typeof(appender!string(
             }
             ++i;
             if (i >= r.length)
-                throw new LuaException("invalid use of '%' in replacement string");
+                return failText(L, "invalid use of '%' in replacement string") ? 1 : -1;
             char c = r[i++];
             if (c == '%')
                 b.put('%');
             else if (c == '0')
                 b.put(ms.src[s .. cast(size_t) e]);
-            else if (c >= '1' && c <= '9')
-                b.put(toLuaString(oneCapture(ms, c - '1', s, e)));
-            else
-                throw new LuaException("invalid use of '%' in replacement string");
+            else if (c >= '1' && c <= '9') {
+                LuaValue cap;
+                if (!oneCapture(L, ms, c - '1', s, e, cap))
+                    return -1;
+                b.put(toLuaString(cap));
+            } else
+                return failText(L, "invalid use of '%' in replacement string") ? 1 : -1;
         }
-        return true;
+        return 1;
     }
     if (!isTruthy(value)) {
         b.put(ms.src[s .. cast(size_t) e]);
-        return false;
+        return 0;
     }
     if (!isString(value) && !isNumber(value))
-        throw new LuaException("invalid replacement value (a " ~ objectTypeName(L, value) ~ ")");
+        return failText(L, "invalid replacement value (a " ~ objectTypeName(L, value) ~ ")") ? 1 : -1;
     b.put(toLuaString(value));
-    return true;
+    return 1;
 }
 
 private LuaValue[] strGsub(LuaState L, LuaValue[] a) {
-    string src = checkString(L, a, 1);
-    string p = checkString(L, a, 2);
-    if (a.length < 3 || !(isNumber(a[2]) || isString(a[2]) || isTable(a[2]) || isFunction(a[2])))
-        typeError(L, a, 3, "string/function/table");
+    string src, p;
+    if (!argString(L, a, 1, src) || !argString(L, a, 2, p))
+        return null;
+    if (a.length < 3 || !(isNumber(a[2]) || isString(a[2]) || isTable(a[2]) || isFunction(a[2]))) {
+        typeFail(L, a, 3, "string/function/table");
+        return null;
+    }
     auto repl = a[2];
-    long maxS = optInteger(L, a, 4, cast(long) src.length + 1);
+    long maxS;
+    if (!argOptInteger(L, a, 4, cast(long) src.length + 1, maxS))
+        return null;
     bool anchor = p.length && p[0] == '^';
     string pat = anchor ? p[1 .. $] : p;
     size_t pos = 0;
@@ -179,7 +213,10 @@ private LuaValue[] strGsub(LuaState L, LuaValue[] a) {
             ++n;
             if (flushed < pos)
                 b.put(src[flushed .. pos]);
-            changed = addValue(L, ms, b, pos, e, repl, 3) || changed;
+            int used = addValue(L, ms, b, pos, e, repl, 3);
+            if (used < 0)
+                return null;
+            changed = used > 0 || changed;
             pos = lastMatch = flushed = cast(size_t) e;
             // addValue copies the original text when the replacement is kept.
         } else if (pos < src.length) {
@@ -247,7 +284,7 @@ private string quoteFloat(double n) {
     return text;
 }
 
-private void checkFormat(string form, string flags, bool precision) {
+private bool checkFormat(LuaState L, string form, string flags, bool precision) {
     size_t i = 1;
     while (i < form.length && flags.indexOfChar(form[i]) >= 0)
         ++i;
@@ -267,7 +304,8 @@ private void checkFormat(string form, string flags, bool precision) {
         }
     }
     if (i >= form.length || !isAlphaChar(form[i]))
-        throw new LuaException("invalid conversion specification: '" ~ form ~ "'");
+        return failText(L, "invalid conversion specification: '" ~ form ~ "'");
+    return true;
 }
 
 private bool isDigitChar(char c) {
@@ -296,7 +334,9 @@ private string formatInteger(string form, long n) {
 }
 
 private LuaValue[] strFormat(LuaState L, LuaValue[] a) {
-    string fmt = checkString(L, a, 1);
+    string fmt;
+    if (!argString(L, a, 1, fmt))
+        return null;
     int arg = 1;
     auto b = appender!string();
     size_t i = 0;
@@ -312,45 +352,53 @@ private LuaValue[] strFormat(LuaState L, LuaValue[] a) {
             continue;
         }
         if (++arg > a.length)
-            throw new ArgError(arg, "no value");
+            return argFail(L, arg, "no value");
         // getformat
         size_t len = 0;
         while (i + len < fmt.length && "-+#0 123456789.".indexOfChar(fmt[i + len]) >= 0)
             ++len;
         ++len;
         if (len >= 22)
-            throw new LuaException("invalid format (too long)");
+            return failText(L, "invalid format (too long)") ? null : null;
         string spec = i + len <= fmt.length ? fmt[i .. i + len] : fmt[i .. $];
         string form = "%" ~ spec;
         i += spec.length;
         char conv = spec.length ? spec[$ - 1] : '\0';
         if (i + 0 > fmt.length || spec.length != len) { /* ran past the end */
-            throw new LuaException("invalid conversion '" ~ form ~ "' to 'format'");
+            failText(L, "invalid conversion '" ~ form ~ "' to 'format'");
+            return null;
         }
         switch (conv) {
         case 'c':
-            checkFormat(form, "-", false);
-            b.put(cformatChar(form, cast(int) checkInteger(L, a, arg)));
+            long c;
+            if (!checkFormat(L, form, "-", false) || !argInteger(L, a, arg, c))
+                return null;
+            b.put(cformatChar(form, cast(int) c));
             break;
         case 'd', 'i', 'u', 'o', 'x', 'X': {
                 string flags = (conv == 'd' || conv == 'i') ? "-+0 " : conv == 'u' ? "-0" : "-#0";
-                long n = checkInteger(L, a, arg);
-                checkFormat(form, flags, true);
+                long n;
+                if (!argInteger(L, a, arg, n) || !checkFormat(L, form, flags, true))
+                    return null;
                 b.put(formatInteger(lenmod(form, "ll"), n));
                 break;
             }
         case 'a', 'A':
-            checkFormat(form, "-+#0 ", true);
-            b.put(formatDouble(form, checkNumber(L, a, arg)));
+            double x;
+            if (!checkFormat(L, form, "-+#0 ", true) || !argNumber(L, a, arg, x))
+                return null;
+            b.put(formatDouble(form, x));
             break;
         case 'f', 'e', 'E', 'g', 'G': {
-                double n = checkNumber(L, a, arg);
-                checkFormat(form, "-+#0 ", true);
+                double n;
+                if (!argNumber(L, a, arg, n) || !checkFormat(L, form, "-+#0 ", true))
+                    return null;
                 b.put(formatDouble(form, n));
                 break;
             }
         case 'p': {
-                checkFormat(form, "-", false);
+                if (!checkFormat(L, form, "-", false))
+                    return null;
                 void* ptr = pointerOf(a[arg - 1]);
                 if (ptr is null) {
                     form = form[0 .. $ - 1] ~ "s";
@@ -361,8 +409,10 @@ private LuaValue[] strFormat(LuaState L, LuaValue[] a) {
                 break;
             }
         case 'q': {
-                if (form.length != 2)
-                    throw new LuaException("specifier '%q' cannot have modifiers");
+                if (form.length != 2) {
+                    failText(L, "specifier '%q' cannot have modifiers");
+                    return null;
+                }
                 auto v = a[arg - 1];
                 if (isString(v))
                     b.put(quoteString(v.match!((string s) => s, _ => "")));
@@ -376,7 +426,7 @@ private LuaValue[] strFormat(LuaState L, LuaValue[] a) {
                 } else if (isNil(v) || isBoolean(v))
                     b.put(toLuaString(v));
                 else
-                    throw new ArgError(arg, "value has no literal form");
+                    return argFail(L, arg, "value has no literal form");
                 break;
             }
         case 's': {
@@ -387,8 +437,9 @@ private LuaValue[] strFormat(LuaState L, LuaValue[] a) {
                     import std.string : indexOf;
 
                     if (s.indexOf('\0') >= 0)
-                        throw new ArgError(arg, "string contains zeros");
-                    checkFormat(form, "-", true);
+                        return argFail(L, arg, "string contains zeros");
+                    if (!checkFormat(L, form, "-", true))
+                        return null;
                     if (form.indexOfChar('.') < 0 && s.length >= 100)
                         b.put(s);
                     else
@@ -397,7 +448,8 @@ private LuaValue[] strFormat(LuaState L, LuaValue[] a) {
                 break;
             }
         default:
-            throw new LuaException("invalid conversion '" ~ form ~ "' to 'format'");
+            failText(L, "invalid conversion '" ~ form ~ "' to 'format'");
+            return null;
         }
     }
     return [LuaValue(b.data)];
@@ -446,21 +498,29 @@ void openStringLib(LuaState state) {
     strTable.register("packsize", (LuaState L, LuaValue[] a) => packedSize(a));
     strTable.register("unpack", (LuaState L, LuaValue[] a) => unpackValues(a));
 
-    strTable.register("len", (LuaState L, LuaValue[] a) => [
-        LuaValue(cast(long) checkString(L, a, 1).length)
-    ]);
+    strTable.register("len", (LuaState L, LuaValue[] a) {
+        string s;
+        if (!argString(L, a, 1, s))
+            return null;
+        return [LuaValue(cast(long) s.length)];
+    });
 
     strTable.register("sub", (LuaState L, LuaValue[] a) {
-        string s = checkString(L, a, 1);
-        size_t start = posRelatI(checkInteger(L, a, 2), s.length);
-        size_t end = getEndPos(L, a, 3, -1, s.length);
+        string s;
+        long first;
+        size_t end;
+        if (!argString(L, a, 1, s) || !argInteger(L, a, 2, first) || !getEndPos(L, a, 3, -1, s.length, end))
+            return null;
+        size_t start = posRelatI(first, s.length);
         if (start > end)
             return [LuaValue("")];
         return [LuaValue(s[start - 1 .. end])];
     });
 
     strTable.register("reverse", (LuaState L, LuaValue[] a) {
-        string s = checkString(L, a, 1);
+        string s;
+        if (!argString(L, a, 1, s))
+            return null;
         auto buffer = new char[s.length];
         foreach (i, c; s)
             buffer[s.length - 1 - i] = c;
@@ -468,7 +528,9 @@ void openStringLib(LuaState state) {
     });
 
     strTable.register("lower", (LuaState L, LuaValue[] a) {
-        string s = checkString(L, a, 1);
+        string s;
+        if (!argString(L, a, 1, s))
+            return null;
         auto buffer = s.dup;
         foreach (ref c; buffer)
             if (c >= 'A' && c <= 'Z')
@@ -477,7 +539,9 @@ void openStringLib(LuaState state) {
     });
 
     strTable.register("upper", (LuaState L, LuaValue[] a) {
-        string s = checkString(L, a, 1);
+        string s;
+        if (!argString(L, a, 1, s))
+            return null;
         auto buffer = s.dup;
         foreach (ref c; buffer)
             if (c >= 'a' && c <= 'z')
@@ -486,17 +550,22 @@ void openStringLib(LuaState state) {
     });
 
     strTable.register("rep", (LuaState L, LuaValue[] a) {
-        string s = checkString(L, a, 1);
-        long n = checkInteger(L, a, 2);
-        string sep = optString(L, a, 3, "");
+        string s, sep;
+        long n;
+        if (!argString(L, a, 1, s) || !argInteger(L, a, 2, n) || !argOptString(L, a, 3, "", sep))
+            return null;
         if (n <= 0)
             return [LuaValue("")];
         size_t unit = s.length + sep.length;
-        if (unit < s.length || (unit != 0 && cast(ulong) n > cast(ulong) int.max / unit))
-            throw new LuaException("resulting string too large");
+        if (unit < s.length || (unit != 0 && cast(ulong) n > cast(ulong) int.max / unit)) {
+            failText(L, "resulting string too large");
+            return null;
+        }
         size_t total = unit * cast(size_t) n - sep.length;
-        if (total > 0x7fffffff * 16UL)
-            throw new LuaException("not enough memory");
+        if (total > 0x7fffffff * 16UL) {
+            failText(L, "not enough memory");
+            return null;
+        }
         auto buffer = new char[total];
         size_t pos = 0;
         foreach (k; 0 .. n) {
@@ -511,14 +580,18 @@ void openStringLib(LuaState state) {
     });
 
     strTable.register("byte", (LuaState L, LuaValue[] a) {
-        string s = checkString(L, a, 1);
-        long pi = optInteger(L, a, 2, 1);
+        string s;
+        long pi;
+        size_t pose;
+        if (!argString(L, a, 1, s) || !argOptInteger(L, a, 2, 1, pi) || !getEndPos(L, a, 3, pi, s.length, pose))
+            return null;
         size_t posi = posRelatI(pi, s.length);
-        size_t pose = getEndPos(L, a, 3, pi, s.length);
         if (posi > pose)
             return cast(LuaValue[])[];
-        if (pose - posi >= int.max)
-            throw new LuaException("string slice too long");
+        if (pose - posi >= int.max) {
+            failText(L, "string slice too long");
+            return null;
+        }
         LuaValue[] result;
         foreach (k; posi - 1 .. pose)
             result ~= LuaValue(cast(long) cast(ubyte) s[k]);
@@ -528,9 +601,11 @@ void openStringLib(LuaState state) {
     strTable.register("char", (LuaState L, LuaValue[] a) {
         auto buffer = new char[a.length];
         foreach (i; 0 .. a.length) {
-            long c = checkInteger(L, a, cast(int) i + 1);
+            long c;
+            if (!argInteger(L, a, cast(int) i + 1, c))
+                return null;
             if (cast(ulong) c > 255)
-                throw new ArgError(cast(int) i + 1, "value out of range");
+                return argFail(L, cast(int) i + 1, "value out of range");
             buffer[i] = cast(char) c;
         }
         return [LuaValue(cast(string) buffer)];
@@ -540,9 +615,11 @@ void openStringLib(LuaState state) {
     strTable.register("match", (LuaState L, LuaValue[] a) => strFindAux(L, a, false));
 
     strTable.register("gmatch", (LuaState L, LuaValue[] a) {
-        string s = checkString(L, a, 1);
-        string p = checkString(L, a, 2);
-        size_t init = posRelatI(optInteger(L, a, 3, 1), s.length) - 1;
+        string s, p;
+        long initArg;
+        if (!argString(L, a, 1, s) || !argString(L, a, 2, p) || !argOptInteger(L, a, 3, 1, initArg))
+            return null;
+        size_t init = posRelatI(initArg, s.length) - 1;
         if (init > s.length)
             init = s.length + 1;
         size_t position = init;
@@ -554,7 +631,10 @@ void openStringLib(LuaState state) {
                 if (e != -1 && e != lastMatch) {
                     size_t start = position;
                     position = lastMatch = e;
-                    return pushCaptures(ms, true, start, e);
+                    LuaValue[] result;
+                    if (!pushCaptures(cast(LuaState) st, ms, true, start, e, result))
+                        return null;
+                    return result;
                 }
             }
             return cast(LuaValue[])[];
@@ -569,8 +649,10 @@ void openStringLib(LuaState state) {
     strTable.register("dump", (LuaState L, LuaValue[] a) {
         import varis.dump : dumpFunction;
 
-        if (a.length < 1 || !isFunction(a[0]))
-            typeError(L, a, 1, "function");
+        if (a.length < 1 || !isFunction(a[0])) {
+            typeFail(L, a, 1, "function");
+            return null;
+        }
         bool strip = a.length > 1 && isTruthy(a[1]);
         return [LuaValue(dumpFunction(L, a[0], strip))];
     });

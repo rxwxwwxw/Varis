@@ -104,7 +104,8 @@ meaning and ratchet policy are in the [benchmark guide](README.md#targets).
 
 **L1 is authorized and in progress.** Lua-frame errors return without unwinding.
 `raise(state, error)` / `state.raisedError` provide the native error channel;
-`lib/math.d`, `lib/table.d` and the natives of `lib/base.d` use it. Base's shared
+`lib/math.d`, `lib/table.d`, `lib/string.d` and the natives of `lib/base.d` use it
+(string's pattern engine, `pack` and `tostringValue` still throw). Base's shared
 `loadSourceFile`, `loadChunk` and `tostringValue` helpers still throw, as do other
 libraries, VM helpers and deep-frame/coroutine boundaries.
 
