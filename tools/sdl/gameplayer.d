@@ -2204,6 +2204,9 @@ int runGame(string manifest, string screenshot) {
             player.frame();
             v_end();
             redraw = false;
+            // the frame is on screen and nothing is waiting: the cheapest moment for a pause
+            if (!player.host.inBattle)
+                player.host.idle();
         }
         int key;
         float x, y;

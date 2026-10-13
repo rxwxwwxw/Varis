@@ -592,6 +592,15 @@ LUA";
     }
 
     /// Whether `back` has something to take back.
+    /// The host's idle moment (stage M): call it after a frame has been drawn and nothing is
+    /// waiting. Collects garbage if the heap has grown enough to matter; returns whether it did.
+    /// Never during a battle, and it changes no session state.
+    bool idle() {
+        if (session is null || battlePhase != BattlePhase.none)
+            return false;
+        return session.idle();
+    }
+
     bool canBack() {
         return session !is null && battlePhase == BattlePhase.none && session.undoDepth() > 0;
     }

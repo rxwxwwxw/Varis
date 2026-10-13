@@ -56,15 +56,21 @@ struct ScheduledEvent {
 /// that allocate heavily); a session produces little garbage per turn, so without this the heap
 /// drifts up to that factor before anything is reclaimed. Collecting here keeps the pause out of
 /// the middle of a turn (benchmarks/PERFORMANCE_PLAN.md, stage M).
-private void collectAtTurnBoundary() {
+private bool collectIfGrown(size_t slack) {
     import core.memory : GC;
 
     static size_t liveAfterCollection;
     auto used = GC.stats().usedSize;
-    if (liveAfterCollection == 0 || used > liveAfterCollection + liveAfterCollection / 2 + (4 << 20)) {
+    if (liveAfterCollection == 0 || used > liveAfterCollection + liveAfterCollection / 2 + slack) {
         GC.collect();
         liveAfterCollection = GC.stats().usedSize;
+        return true;
     }
+    return false;
+}
+
+private void collectAtTurnBoundary() {
+    collectIfGrown(4 << 20);
 }
 
 /// Calls `callback` with the session's world as the default world: unqualified relation names,
@@ -1142,6 +1148,16 @@ class Session : TransactionParticipant {
             undoRing = undoRing[$ - limit .. $];
     }
 
+    /// The host's "idle now": the presentation has been handed over and nobody is waiting, so a
+    /// collection pause here costs nothing visible. Collects when the heap has grown by 1 MiB over
+    /// the live size (the turn-boundary rule uses 4 MiB), returns whether it did, and never
+    /// runs inside an effect or during bounded analysis.
+    bool idle() {
+        if (busy || state.analysisBudget !is null)
+            return false;
+        return collectIfGrown(1 << 20);
+    }
+
     size_t undoDepth() {
         return undoRing.length;
     }
@@ -1728,6 +1744,11 @@ LuaValue wrapSession(Session session) {
             throw new LuaException("set_undo_limit requires a nonnegative integer");
         unwrapSession(a[0]).setUndoLimit(cast(size_t) a[1].match!((long n) => n, _ => 0L));
         return cast(LuaValue[])[];
+    });
+    method("idle", (void* p, LuaValue[] a) {
+        if (a.length != 1)
+            throw new LuaException("idle requires a session");
+        return [LuaValue(unwrapSession(a[0]).idle())];
     });
     method("undo_depth", (void* p, LuaValue[] a) {
         if (a.length != 1)

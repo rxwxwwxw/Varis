@@ -385,6 +385,7 @@ and consumes no RNG. This function returns one string.
 | `session:save([{label=, meta=}])` | Canonical versioned JSON string at idle boundary. `label` (string) and `meta` (portable value, for example a host timestamp or location) are informational header fields: read by `narrative.save_info`, ignored by `narrative.load`, outside every identity. |
 | `session:set_autosave(fn\|nil)` | `fn(save_text)` after every committed choice or advance. |
 | `session:visited(:storylet)` · `session:last_chosen(:storylet)` | Committed choices of a storylet, and the turn of the latest (nil if none). |
+| `session:idle()` | The host's "collect now": call it after a presentation has been handed over and nothing is waiting. Collects garbage when the heap has grown by 1 MiB over what survived the last collection and returns whether it did; refused (returns `false`) inside an effect and during bounded analysis. Never changes session state or consumes random numbers. |
 | `session:set_undo_limit(n)` · `session:undo_depth()` · `session:undo()` | Bounded in-place undo of choices and beat advances (default off; section 6.9a). `undo` returns the presentation that was current before the undone command, with usable tokens. |
 | `session:record_input(symbol, value)` | Record portable external input at idle, without applying it. |
 | `session:replay_log()` | Immutable record with runtime, content, program, schema, and inputs. |

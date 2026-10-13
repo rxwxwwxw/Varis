@@ -69,7 +69,7 @@ tier = "fast"
 tags = ["extensions"]
 glob = "tests/extensions/cases/*.lua"
 helpers = "tests/extensions/helpers.lua"
-expect_count = 83
+expect_count = 84
 timeout = 300
 
 [suite.override.negative_unsafe_head]

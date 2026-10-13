@@ -548,6 +548,20 @@ restructuring: 76–94 MB; budget 64 MB); the 200-storylet game peaks at 21 MB. 
 5 ms and now fall at the start of a presentation instead of at arbitrary points. A host-facing
 "idle now" call remains to be added with the host interface (milestone 36).
 
+**Host idle call and footprint, October 13, 2026.** `session:idle()` (and `GameHost.idle()`,
+which the SDL player calls after a frame has been drawn, never during a battle) collects when the
+heap has grown 1 MiB over what survived the last collection, so the pause falls while the player
+reads rather than at the start of the next turn; it returns whether it collected, is refused
+inside an effect and during analysis, and changes no session state. Measured on the M1: the
+release `varis` binary is 3.9 MB, an empty script starts in under 10 ms (below `time`'s
+resolution) with 3.2 MB RSS. POSIX-only code is confined to: `gc.d` (`fork` reachability
+probes), `lib/package_lib.d` (`dlopen`), `lib/io.d` and `lib/os.d` (`popen`, `wait` macros,
+`mkstemp`, `localtime_r`), `state.d` (`getrlimit`), `cli.d` (`isatty`), `workbench/server.d`
+(sockets), `services/{diagnostic,lsp,l10n}.d` (`dup2`, `chdir`, `mkdir`). Nothing outside these
+files needs a port; a Windows build still has to replace them (or compile them out under
+`version (Windows)`), and the frozen weak-table emulation in `gc.d` is the only one that has no
+direct substitute. That is not attempted here: it cannot be verified without a Windows machine.
+
 - Re-measure RSS after W1–W2 and L2; most of today's heap is garbage produced by copying. Then
   revisit `heapSizeFactor:4` in `cli.d`, which was chosen for the Phase 8 work and trades memory
   for fewer collections.
