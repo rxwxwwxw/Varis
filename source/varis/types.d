@@ -961,7 +961,21 @@ class LuaNativeFunction : LuaFunction {
         this.nonYielding = nonYielding;
     }
 
+    /// Calls the native. An error it reported as a value (`varis.state.raise`) is thrown here,
+    /// which is the boundary with callers that do not look at the state's error slot.
     override LuaValue[] call(void* state, LuaValue[] args) {
+        import varis.state : LuaState;
+
+        auto results = callStatus(state, args);
+        auto owner = cast(LuaState) state;
+        if (owner !is null && owner.raisedError !is null)
+            throw owner.takeRaised();
+        return results;
+    }
+
+    /// Calls the native and leaves an error reported as a value in the state's error slot
+    /// (`raisedError`); the caller must test the slot before using the result.
+    final LuaValue[] callStatus(void* state, LuaValue[] args) {
         import varis.fiber : VarisFiber, currentLuaFiber;
         import core.thread : Fiber;
 

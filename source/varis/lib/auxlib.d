@@ -190,6 +190,68 @@ int checkOption(LuaState L, LuaValue[] a, int n, string def, const(string)[] opt
     throw new ArgError(n, "invalid option '" ~ name ~ "'");
 }
 
+// ---------------------------------------------------------------------------------------
+// Errors as values (performance plan, stage L1). The functions below are the status forms of
+// the checks above: they do not throw. An `arg*` function returns false after reporting the
+// error in the state's error slot, and the native then returns at once:
+//
+//     double x;
+//     if (!argNumber(L, a, 1, x))
+//         return null;
+//
+// `argFail` reports a bad argument directly: `return argFail(L, 2, "zero");`.
+// A module converted to this form contains no `throw` and calls none of the `check*` functions.
+
+LuaValue[] argFail(LuaState L, int n, string extra) {
+    return raise(L, new ArgError(n, extra));
+}
+
+private bool typeFail(LuaState L, LuaValue[] a, int n, string expected) {
+    string actual = n > a.length ? "no value" : objectTypeName(L, a[n - 1]);
+    raise(L, new ArgError(n, expected ~ " expected, got " ~ actual));
+    return false;
+}
+
+bool argAny(LuaState L, LuaValue[] a, int n) {
+    if (n <= a.length)
+        return true;
+    raise(L, new ArgError(n, "value expected"));
+    return false;
+}
+
+bool argNumber(LuaState L, LuaValue[] a, int n, out double result) {
+    if (n <= a.length && toNumberArg(a[n - 1], result))
+        return true;
+    return typeFail(L, a, n, "number");
+}
+
+bool argOptNumber(LuaState L, LuaValue[] a, int n, double def, out double result) {
+    if (isNoneOrNil(a, n)) {
+        result = def;
+        return true;
+    }
+    return argNumber(L, a, n, result);
+}
+
+bool argInteger(LuaState L, LuaValue[] a, int n, out long result) {
+    if (n <= a.length && toIntegerArg(a[n - 1], result))
+        return true;
+    double ignored;
+    if (n <= a.length && toNumberArg(a[n - 1], ignored)) {
+        raise(L, new ArgError(n, "number has no integer representation"));
+        return false;
+    }
+    return typeFail(L, a, n, "number");
+}
+
+bool argOptInteger(LuaState L, LuaValue[] a, int n, long def, out long result) {
+    if (isNoneOrNil(a, n)) {
+        result = def;
+        return true;
+    }
+    return argInteger(L, a, n, result);
+}
+
 /// Raises a Lua error with position information of the calling Lua function.
 LuaException luaError(string message) {
     return new LuaException(message);

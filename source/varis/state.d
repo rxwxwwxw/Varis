@@ -213,6 +213,18 @@ __gshared int vmActiveAnalyses;
 /// ditto
 __gshared bool vmDebuggerHold;
 
+/// Reports `error` as the result of the running native function: `return raise(state, error);`.
+/// The returned (empty) result is never looked at.
+LuaValue[] raise(LuaState state, LuaException error) nothrow @nogc {
+    state.raisedError = error;
+    return null;
+}
+
+/// ditto
+LuaValue[] raise(LuaState state, string message) {
+    return raise(state, new LuaException(message));
+}
+
 void enterSlowMode() @nogc nothrow {
     vmSlowMode = true;
     vmAttention = true;
@@ -258,6 +270,18 @@ class LuaState {
     Object logicCache; // owned by varis.logic.evaluate (derived relations per closure)
     // Per-Fiber so a suspended ordinary coroutine cannot leak its call context.
     Object mainCallWorld;
+
+    /// Errors as values (performance plan, stage L1). A native reports an error by storing it
+    /// here and returning (`return raise(state, error)`); whoever called the native takes it
+    /// before doing anything else. The executor turns it into the frame's error without a D
+    /// throw; `LuaNativeFunction.call` throws it for callers that still expect exceptions.
+    LuaException raisedError;
+
+    final LuaException takeRaised() nothrow @nogc {
+        auto error = raisedError;
+        raisedError = null;
+        return error;
+    }
     /// Called once per raised Lua error, in the innermost Lua frame, while the frame and its
     /// callers are still alive (before unwinding). Tools use it to stop on errors; it must not
     /// change execution state other than by running to completion.

@@ -505,6 +505,36 @@ by natives and by out-of-line helpers still use one D throw to reach the nearest
 0.5 µs (C Lua 0.37 µs). The rest of this stage (natives returning statuses, no exceptions in the
 core) is still to do.
 
+*Remainder started October 13, 2026 (owner decision, see §5a).* The channel for native errors
+exists and one module uses it:
+
+- A native reports an error with `return raise(state, error)` (`varis.state`): the error goes
+  into the state's slot `raisedError` and the native returns. `VM.callValue(..., statusReturn)`
+  attributes it exactly as it attributes a thrown one (origin, argument-error wording, position,
+  `dispatchError`) and leaves it in the slot; the `Call` and `TailCall` handlers of `executeFrame`
+  and `VM.callProtected` (so `pcall` and `xpcall`) take it from there with no D throw.
+  `LuaNativeFunction.call` is the adapter in the other direction: callers that do not look at
+  the slot get the error thrown. `executeDeepFrame`, whose frame handler is exception-based,
+  throws at its two call sites.
+- `lib/auxlib.d` has the status forms of the argument checks (`argNumber`, `argInteger`,
+  `argOptNumber`, `argOptInteger`, `argAny`, `argFail`).
+- `lib/math.d` is converted: no `throw`, no `check*`. Suite case `native_errors_as_values`
+  pins messages, positions, tracebacks and cleanup; it passes unchanged on the build before
+  the conversion.
+- Measured: an argument error raised by a math function called from Lua code and caught by
+  `pcall` costs 0.45 µs (was 16.5 µs; C Lua 0.57 µs). `pcall(math.floor, "x")` costs 5.6 µs
+  (was 19.7 µs; C Lua 1.1 µs); what is left there is not a throw but the search of
+  `package.loaded` for the function's name.
+
+To convert a module: replace each `throw new X(...)` in a native's own body by
+`return raise(state, new X(...))`, each `check*` call by its `arg*` form followed by
+`return null` on false, and make helper functions that can fail return a status. A helper that
+still throws (`VM.callValue`, `VM.opLt`, the pattern engine) keeps working through the adapter;
+the module is done when `grep -n "throw \|check[A-Z]"` finds nothing in it. Remaining: every
+other core module (about 400 throw sites; the largest are `types.d`, `vm.d`, `dump.d`,
+`lib/pack.d`, `compiler.d`, `lib/string.d`), the out-of-line VM helpers, and then the removal
+of `try`/`catch` from the executor.
+
 - The executor and every native return a status; the error object lives in a slot on the thread.
   `pcall`/`xpcall` become a status check. `error`, runtime errors, `CoroutineClose` and
   `ExitRequest` become status codes.
@@ -721,7 +751,7 @@ Read this before starting any of the stages below; several are no longer worth d
 | --- | --- | --- |
 | L4, calls at 1.0× C Lua | **Not reachable under current decisions.** | The owner kept exact call records and exact register clearing (ROADMAP, decisions of October 12). The measurements in L4 put the per-call cost of what is kept at roughly half of today's overhead, and the existing record-based executor is slower per call than native recursion. Expect 1.5–2× on call-heavy code. Reopen only if the owner allows lazy call records. |
 | Coroutines without fibers | **Deferred, specified.** | The owner's specification is "yield from Lua and across `pcall`". It needs frames kept as records, and today that executor is about 30 % slower per Lua call, so coroutine bodies would get slower while switches got faster. Fibers are also the key for transactions (`activeTransactions[Fiber.getThis()]`), no-yield scopes and per-coroutine debug stacks. Do it only together with a record-based executor that is at least as fast as native recursion. |
-| L1 remainder, natives returning statuses | **Deferred.** | Errors raised by `error` and errors crossing Lua frames no longer throw, and `core.pcall_error` is at 1.3×. What is left costs one throw per error raised inside a native, which is not on any measured hot path. Convert a library when it is rewritten for another reason. |
+| L1 remainder, natives returning statuses | **Started October 13, 2026 by owner decision** (asked when milestone 46 could not otherwise be completed; the owner chose "start L1 remainder"). Previously deferred: | Errors raised by `error` and errors crossing Lua frames no longer throw, and `core.pcall_error` is at 1.3×. What is left costs one throw per error raised inside a native, which is not on any measured hot path. Convert a library when it is rewritten for another reason. |
 | L3, compact execution encoding | **Exit met without it (October 13, 2026); the encoding is open, low expected value.** | Loops are at 1.06–1.18× after the fast loop of stage S1 (they were 1.2–1.5× after the 16-byte value); halving the instruction size helps cache density but not the dependency chain of dispatch. Measure on one handler group, from the new baseline, before converting all of them. |
 | X1–X4 | **Open** (arithmetic: October 13, 2026, mixed integer/float operands and `/` have inline paths in the shared handlers: `programs.mandel` 1.92× → 1.80×; the loops themselves are at the dispatch floor and need L3; string natives: October 13, 2026, `string.find` of a plain pattern, `string.char` and `string.rep` have allocation-light fast entry points and `gsub` reuses one match state and copies runs: `core.string_ops` 1.76× → 1.40×, gate 2.0 → 1.7). | Inline caches for method dispatch (`core.method_dispatch` 1.7×) and string operations (`core.string_ops` 2.1×) are now the largest remaining gaps that are not calls. |
 

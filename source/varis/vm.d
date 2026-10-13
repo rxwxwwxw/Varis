@@ -477,6 +477,10 @@ private enum string frameLoopBody = q{
                             }
                             debugLimit = instr.a;
                             auto nativeResults = doCall(state, closure, proto, registers, instr.a, nativeArgs, curPC() - 1);
+                            if (state.raisedError !is null) {
+                                raisedError = state.takeRaised(); // no throw: straight to the frame's handler
+                                break interpret;
+                            }
                             debugLimit = proto.maxStackSize;
                             closeValuesFrom(0);
                             state.debugHook("return", -1, nativeResults, true);
@@ -616,6 +620,10 @@ private enum string frameLoopBody = q{
                             // The call and the placement of its results happen in one frame of their own so
                             // that no array holding result values stays referenced from this frame.
                             resultTop = callAndPlace(state, closure, proto, registers, instr.a, numArgs, numWantedResults, curPC() - 1);
+                            if (resultTop == callRaised) {
+                                raisedError = state.takeRaised(); // no throw: straight to the frame's handler
+                                break interpret;
+                            }
                         }
                         debugLimit = proto.maxStackSize;
                         if (resultTop < 0) {
@@ -794,6 +802,8 @@ private enum string deepFrameLoopBody = q{
                                     debugLimit = instr.a;
                                     forcedReturn = doCall(state, closure, proto, registers, instr.a, count, cast(int)(
                                             ip - codeBase) - 1);
+                                    if (state.raisedError !is null)
+                                        throw state.takeRaised(); // see the Call handler below
                                     debugLimit = proto.maxStackSize;
                                     useForcedReturn = true;
                                     goto case OpCode.Return;
@@ -965,6 +975,10 @@ private enum string deepFrameLoopBody = q{
                                     // that no array holding result values stays referenced from this frame.
                                     resultTop = callAndPlace(state, closure, proto, registers, instr.a, numArgs, numWantedResults, cast(
                                             int)(ip - codeBase) - 1);
+                                // This executor's frame handler is exception-based: an error reported
+                                // as a value is thrown here, at its boundary.
+                                if (resultTop == callRaised)
+                                    throw state.takeRaised();
                                 debugLimit = proto.maxStackSize;
                                 if (resultTop < 0) {
                                     // Variable results did not fit: grow, then copy the stashed values.
@@ -1522,8 +1536,15 @@ struct VM {
     static LuaValue[] callProtected(LuaState state, LuaValue callee, LuaValue[] args, out LuaException failure) {
         failure = null;
         auto fn = callee.isFunction ? callee.asFunction : null;
-        if (fn is null || !fn.isLuaClosure)
-            return callValue(state, callee, args);
+        if (fn is null || !fn.isLuaClosure) {
+            // A native that reports its error as a value: no throw between it and pcall.
+            auto results = callValue(state, callee, args, false, "", "", false, true);
+            if (state.raisedError !is null) {
+                failure = state.takeRaised();
+                return null;
+            }
+            return results;
+        }
         auto cThread = state.currentThread();
         if (cThread !is null) {
             ++cThread.cCalls;
@@ -2581,7 +2602,8 @@ struct VM {
         return v.match!((LuaFunction f) => cast(LuaNativeFunction) f !is null, _ => false);
     }
 
-    /// Calls the function in R[a] with `numArgs` arguments, in a frame of its own.
+    /// Calls the function in R[a] with `numArgs` arguments, in a frame of its own. A native's
+    /// error reported as a value is left in `state.raisedError`: test it before using the result.
     pragma(inline, false)
     private static LuaValue[] doCall(LuaState state, LuaClosure closure, Prototype proto, LuaValue[] registers,
             int a, int numArgs, int callPc) {
@@ -2599,7 +2621,7 @@ struct VM {
         scope (exit)
             state.callWorldObject = previous;
         auto identity = proto.callSites[callPc];
-        return callValue(state, callee, callArgs, false, identity.name, identity.kind, true);
+        return callValue(state, callee, callArgs, false, identity.name, identity.kind, true, true);
     }
 
     pragma(inline, false)
@@ -2692,6 +2714,8 @@ struct VM {
         if (stackHygiene)
             scrubDeadStack();
         auto results = doCall(state, closure, proto, registers, a, numArgs, callPc);
+        if (state.raisedError !is null)
+            return callRaised;
         if (wanted >= 0) {
             for (int i = 0; i < wanted; ++i)
                 registers[a + i] = (i < results.length) ? results[i] : luaNil();
@@ -2705,6 +2729,9 @@ struct VM {
             registers[a + i] = results[i];
         return a + cast(int) results.length;
     }
+
+    /// callAndPlace's result when the callee reported an error as a value (`state.raisedError`).
+    private enum int callRaised = int.min;
 
     pragma(inline, false)
     private static int placeStashedResults(LuaState state, LuaValue[] registers, int a) {
@@ -2841,7 +2868,10 @@ struct VM {
         return failure;
     }
 
-    static LuaValue[] callValue(LuaState state, LuaValue callee, LuaValue[] args, bool tailCall = false, string name = "", string nameKind = "", bool callSite = false) {
+    /// With `statusReturn`, an error a native reported as a value is left in `state.raisedError`
+    /// (already attributed) and null is returned; the caller must test the slot.
+    static LuaValue[] callValue(LuaState state, LuaValue callee, LuaValue[] args, bool tailCall = false, string name = "", string nameKind = "", bool callSite = false,
+            bool statusReturn = false) {
         // Emulate LUAI_MAXCCALLS: calls that re-enter the VM from native code or metamethods
         // nest on the C stack in C Lua (calls from Lua code do not).
         auto cThread = state is null ? null : state.currentThread();
@@ -2893,12 +2923,9 @@ struct VM {
                 bool hooked = cThread !is null && cThread.hookFunction !is null;
                 if (hooked)
                     state.debugHook("call", -1, args, true);
-                try {
-                    auto results = nativeFn.call(cast(void*) state, args);
-                    if (hooked || (cThread !is null && cThread.hookFunction !is null))
-                        state.debugHook("return", -1, results, true);
-                    return results;
-                } catch (LuaException failure) {
+                // What a failing native's error needs before it leaves this call, whether it
+                // arrived as a value (the state's error slot) or as an exception.
+                void attribute(LuaException failure) {
                     failure.culprit = 0;
                     if (failure.originFunction is null) {
                         failure.originFunction = nativeFn;
@@ -2917,8 +2944,27 @@ struct VM {
                     else
                         failure.locate("", -1);
                     state.dispatchError(failure);
+                }
+
+                LuaException reported;
+                try {
+                    auto results = nativeFn.callStatus(cast(void*) state, args);
+                    if (state is null || state.raisedError is null) {
+                        if (hooked || (cThread !is null && cThread.hookFunction !is null))
+                            state.debugHook("return", -1, results, true);
+                        return results;
+                    }
+                    reported = state.takeRaised();
+                } catch (LuaException failure) {
+                    attribute(failure);
                     throw failure;
                 }
+                // The native returned its error as a value.
+                attribute(reported);
+                if (!statusReturn)
+                    throw reported;
+                state.raisedError = reported;
+                return null;
             }
             if (auto closure = cast(LuaClosure) fn)
                 return execute(state, closure, args, name, nameKind);
