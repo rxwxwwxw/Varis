@@ -146,10 +146,10 @@ void openPackageLib(LuaState state) {
             "/usr/local/lib/lua/5.4/?.so;/usr/local/lib/lua/5.4/loadall.so;./?.so")));
 
     pkg.register("searchpath", (LuaState L, LuaValue[] a) {
-        string name = checkString(L, a, 1);
-        string path = checkString(L, a, 2);
-        string sep = optString(L, a, 3, ".");
-        string rep = optString(L, a, 4, "/");
+        string name, path, sep, rep;
+        if (!argString(L, a, 1, name) || !argString(L, a, 2, path)
+            || !argOptString(L, a, 3, ".", sep) || !argOptString(L, a, 4, "/", rep))
+            return null;
         string error;
         auto found = searchPath(name, path, sep, rep, error);
         if (found is null)
@@ -159,23 +159,31 @@ void openPackageLib(LuaState state) {
 
     pkg.register("loadlib", (LuaState L, LuaValue[] a) {
         string error, when;
-        auto f = lookForFunction(checkString(L, a, 1), checkString(L, a, 2), error, when);
+        string filename, symbol;
+        if (!argString(L, a, 1, filename) || !argString(L, a, 2, symbol))
+            return null;
+        auto f = lookForFunction(filename, symbol, error, when);
         if (!isNil(f))
             return [f];
         return [luaNil(), LuaValue(error), LuaValue(when)];
     });
 
-    LuaValue pathField(LuaState L, string field) {
+    bool pathField(LuaState L, string field, out string result) {
         auto v = pkg.rawget(LuaValue(field));
-        if (!isString(v))
-            throw new LuaException("'package." ~ field ~ "' must be a string");
-        return v;
+        if (!isString(v)) {
+            raise(L, new LuaException("'package." ~ field ~ "' must be a string"));
+            return false;
+        }
+        result = v.match!((string s) => s, _ => "");
+        return true;
     }
 
     // searcher 1: package.preload
     searchers.rawset(LuaValue(1L), LuaValue(new LuaNativeFunction((void* sp, LuaValue[] a) {
                 auto L = cast(LuaState) sp;
-                string name = checkString(L, a, 1);
+                string name;
+                if (!argString(L, a, 1, name))
+                    return null;
                 auto loader = preload.rawget(LuaValue(name));
                 if (isNil(loader))
                     return [LuaValue("no field package.preload['" ~ name ~ "']")];
@@ -185,8 +193,9 @@ void openPackageLib(LuaState state) {
     // searcher 2: Lua files on package.path
     searchers.rawset(LuaValue(2L), LuaValue(new LuaNativeFunction((void* sp, LuaValue[] a) {
                 auto L = cast(LuaState) sp;
-                string name = checkString(L, a, 1);
-                string path = pathField(L, "path").match!((string s) => s, _ => "");
+                string name, path;
+                if (!argString(L, a, 1, name) || !pathField(L, "path", path))
+                    return null;
                 string error;
                 auto filename = searchPath(name, path, ".", "/", error);
                 if (filename is null && path.indexOf(".lua") >= 0) {
@@ -203,14 +212,20 @@ void openPackageLib(LuaState state) {
                     return [LuaValue(error)];
                 string content, readError;
                 LuaFunction fn;
-                try {
-                    if (!readWholeFile(filename, content, readError))
-                        throw new LuaException(readError);
-                    fn = loadSourceFile(L, filename, content, "@" ~ filename, "bt");
-                } catch (LuaException failure) {
-                    throw new LuaException(
-                    "error loading module '" ~ name ~ "' from file '" ~ filename ~ "':\n\t" ~ toLuaString(
-                    failure.errorObject));
+                string failed;
+                if (!readWholeFile(filename, content, readError))
+                    failed = readError;
+                else {
+                    // loadSourceFile (lib/base) still reports by throwing.
+                    try
+                        fn = loadSourceFile(L, filename, content, "@" ~ filename, "bt");
+                    catch (LuaException failure)
+                        failed = toLuaString(failure.errorObject);
+                }
+                if (failed !is null) {
+                    raise(L, new LuaException(
+                    "error loading module '" ~ name ~ "' from file '" ~ filename ~ "':\n\t" ~ failed));
+                    return null;
                 }
                 return [LuaValue(fn), LuaValue(filename)];
             }, "searcher_Lua")));
@@ -235,14 +250,16 @@ void openPackageLib(LuaState state) {
             if (when == "open")
                 break;
         }
-        throw new LuaException("error loading module '" ~ name ~ "' from file '" ~ filename ~ "':\n\t" ~ error);
+        raise(L, new LuaException("error loading module '" ~ name ~ "' from file '" ~ filename ~ "':\n\t" ~ error));
+        return null;
     }
 
     // searcher 3: a C library named after the module
     searchers.rawset(LuaValue(3L), LuaValue(new LuaNativeFunction((void* sp, LuaValue[] a) {
                 auto L = cast(LuaState) sp;
-                string name = checkString(L, a, 1);
-                string path = pathField(L, "cpath").match!((string s) => s, _ => "");
+                string name, path;
+                if (!argString(L, a, 1, name) || !pathField(L, "cpath", path))
+                    return null;
                 string error;
                 auto filename = searchPath(name, path, ".", "/", error);
                 if (filename is null)
@@ -253,14 +270,18 @@ void openPackageLib(LuaState state) {
     // searcher 4: the library of the root name, holding submodules
     searchers.rawset(LuaValue(4L), LuaValue(new LuaNativeFunction((void* sp, LuaValue[] a) {
                 auto L = cast(LuaState) sp;
-                string name = checkString(L, a, 1);
+                string name;
+                if (!argString(L, a, 1, name))
+                    return null;
                 import std.string : indexOf;
 
                 auto dot = name.indexOf('.');
                 if (dot < 0)
                     return cast(LuaValue[])[];
                 string root = name[0 .. dot];
-                string path = pathField(L, "cpath").match!((string s) => s, _ => "");
+                string path;
+                if (!pathField(L, "cpath", path))
+                    return null;
                 string error;
                 auto filename = searchPath(root, path, ".", "/", error);
                 if (filename is null)
@@ -271,28 +292,35 @@ void openPackageLib(LuaState state) {
                 if (isNil(f)) {
                     if (when == "init")
                         return [LuaValue("no module '" ~ name ~ "' in file '" ~ filename ~ "'")];
-                    throw new LuaException(
-                    "error loading module '" ~ name ~ "' from file '" ~ filename ~ "':\n\t" ~ openError);
+                    raise(L, new LuaException(
+                    "error loading module '" ~ name ~ "' from file '" ~ filename ~ "':\n\t" ~ openError));
+                    return null;
                 }
                 return [f, LuaValue(filename)];
             }, "searcher_Croot")));
 
     state.globals.register("require", (LuaState L, LuaValue[] a) {
-        string name = checkString(L, a, 1);
+        string name;
+        if (!argString(L, a, 1, name))
+            return null;
         auto already = loaded.rawget(LuaValue(name));
         if (isTruthy(already))
             return [already];
         // findloader
         auto searchersValue = pkg.rawget(LuaValue("searchers"));
-        if (!isTable(searchersValue))
-            throw new LuaException("'package.searchers' must be a table");
+        if (!isTable(searchersValue)) {
+            raise(L, new LuaException("'package.searchers' must be a table"));
+            return null;
+        }
         auto list = searchersValue.match!((LuaTable t) => t, _ => null);
         string message;
         LuaValue loader, extra;
         for (long i = 1;; ++i) {
             auto searcher = list.rawget(LuaValue(i));
-            if (isNil(searcher))
-                throw new LuaException("module '" ~ name ~ "' not found:" ~ message);
+            if (isNil(searcher)) {
+                raise(L, new LuaException("module '" ~ name ~ "' not found:" ~ message));
+                return null;
+            }
             auto results = VM.callValue(L, searcher, [LuaValue(name)]);
             if (results.length && isFunction(results[0])) {
                 loader = results[0];

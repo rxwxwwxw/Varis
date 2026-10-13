@@ -22,11 +22,12 @@ import core.thread : Fiber;
 
 private enum maxResumeDepth = 195;
 
-private LuaThread checkThread(LuaState L, LuaValue[] a, int n) {
-    if (n <= a.length && a[n - 1].typeOf() == LuaType.Thread)
-        return a[n - 1].match!((LuaThread t) => t, _ => null);
-    typeError(L, a, n, "thread");
-    assert(0);
+private bool argThread(LuaState L, LuaValue[] a, int n, out LuaThread result) {
+    if (n <= a.length && a[n - 1].typeOf() == LuaType.Thread) {
+        result = a[n - 1].match!((LuaThread t) => t, _ => null);
+        return true;
+    }
+    return typeFail(L, a, n, "thread");
 }
 
 /// Runs `th` until it yields or finishes. Returns false (with the error object in `error`) on failure.
@@ -111,7 +112,7 @@ private final class WrapFunction : LuaNativeFunction {
 
 /// Raises the error of a failed `wrap` resume: a coroutine that failed while running is closed,
 /// and string errors get position information.
-private void raiseWrapFailure(LuaState S, LuaThread th, VarisFiber fib, LuaValue error, bool ranAndFailed) {
+private LuaException wrapFailure(LuaState S, LuaThread th, VarisFiber fib, LuaValue error, bool ranAndFailed) {
     if (ranAndFailed && fib !is null) {
         auto closed = fib.closeThread();
         if (closed.length > 1)
@@ -121,7 +122,7 @@ private void raiseWrapFailure(LuaState S, LuaThread th, VarisFiber fib, LuaValue
         error = LuaValue(S.locationPrefix(1) ~ toLuaString(error));
     auto failure = new LuaException(error);
     failure.needsLocation = false;
-    throw failure;
+    return failure;
 }
 
 /// Allocation-free call of a wrap function from the interpreter: resumes a started, suspended
@@ -147,7 +148,8 @@ private int fastWrapCall(void* sp, LuaValue[] r, int base, int n) {
         S.pushCall(w, "[C]", -1);
         scope (exit)
             S.popCall();
-        raiseWrapFailure(S, th, fib, error, ranAndFailed);
+        // The fast-call hook cannot return an error value, so this path still throws.
+        throw wrapFailure(S, th, fib, error, ranAndFailed);
     }
     if (base + results.length > r.length) {
         S.stashedResults = results;
@@ -162,13 +164,17 @@ void openCoroutineLib(LuaState state) {
     auto coroLib = new LuaTable();
 
     coroLib.register("create", (LuaState L, LuaValue[] a) {
-        if (a.length < 1 || !isFunction(a[0]))
-            typeError(L, a, 1, "function");
+        if (a.length < 1 || !isFunction(a[0])) {
+            typeFail(L, a, 1, "function");
+            return null;
+        }
         return [LuaValue(newThread(L, a[0].match!((LuaFunction f) => f, _ => null)))];
     });
 
     coroLib.register("resume", (LuaState L, LuaValue[] a) {
-        auto th = checkThread(L, a, 1);
+        LuaThread th;
+        if (!argThread(L, a, 1, th))
+            return null;
         LuaValue[] results;
         LuaValue error;
         bool ranAndFailed;
@@ -183,15 +189,17 @@ void openCoroutineLib(LuaState state) {
     coroLib.register("yield", (LuaState L, LuaValue[] a) {
         auto currentFib = currentLuaFiber();
         if (currentFib is null)
-            throw new LuaException("attempt to yield from outside a coroutine");
+            return raise(L, new LuaException("attempt to yield from outside a coroutine"));
         if (!currentFib.isYieldAllowed)
-            throw new LuaException("attempt to yield across a C-call boundary");
+            return raise(L, new LuaException("attempt to yield across a C-call boundary"));
         currentFib.yieldExecution(a);
         return currentFib.resumeArgs;
     });
 
     coroLib.register("status", (LuaState L, LuaValue[] a) {
-        auto th = checkThread(L, a, 1);
+        LuaThread th;
+        if (!argThread(L, a, 1, th))
+            return null;
         auto current = L.currentThread();
         if (th is current)
             return [LuaValue("running")];
@@ -199,12 +207,14 @@ void openCoroutineLib(LuaState state) {
     });
 
     coroLib.register("close", (LuaState L, LuaValue[] a) {
-        auto thread = checkThread(L, a, 1);
+        LuaThread thread;
+        if (!argThread(L, a, 1, thread))
+            return null;
         auto fiber = cast(VarisFiber) thread.fiber;
         auto current = L.currentThread();
         if (thread.status == "running" || thread.status == "normal" || thread is current) {
             string kind = thread is current ? "running" : "normal";
-            throw new LuaException("cannot close a " ~ kind ~ " coroutine");
+            return raise(L, new LuaException("cannot close a " ~ kind ~ " coroutine"));
         }
         if (current !is null && current.cCalls >= 195)
             return [LuaValue(false), LuaValue("C stack overflow")];
@@ -223,7 +233,9 @@ void openCoroutineLib(LuaState state) {
         auto current = currentLuaFiber();
         auto target = current;
         if (a.length >= 1) {
-            auto th = checkThread(L, a, 1);
+            LuaThread th;
+            if (!argThread(L, a, 1, th))
+                return null;
             target = cast(VarisFiber) th.fiber;
             if (th is L.mainThread)
                 target = null;
@@ -235,8 +247,10 @@ void openCoroutineLib(LuaState state) {
     });
 
     coroLib.register("wrap", (LuaState L, LuaValue[] a) {
-        if (a.length < 1 || !isFunction(a[0]))
-            typeError(L, a, 1, "function");
+        if (a.length < 1 || !isFunction(a[0])) {
+            typeFail(L, a, 1, "function");
+            return null;
+        }
         auto th = newThread(L, a[0].match!((LuaFunction f) => f, _ => null));
         auto fib = cast(VarisFiber) th.fiber;
         auto wrapFn = new WrapFunction((void* st, LuaValue[] callArgs) {
@@ -245,7 +259,7 @@ void openCoroutineLib(LuaState state) {
             LuaValue error;
             bool ranAndFailed;
             if (!resumeThread(S, th, callArgs, results, error, ranAndFailed))
-                raiseWrapFailure(S, th, fib, error, ranAndFailed);
+                return raise(S, wrapFailure(S, th, fib, error, ranAndFailed));
             return results;
         }, "wrap_fn");
         wrapFn.thread = th;

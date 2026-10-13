@@ -65,19 +65,28 @@ private LStream testStream(LuaState L, LuaValue v) {
     return cast(LStream) u.payload;
 }
 
-private LStream checkStream(LuaState L, LuaValue[] a, int n) {
-    if (n <= a.length)
-        if (auto p = testStream(L, a[n - 1]))
-            return p;
-    typeError(L, a, n, "FILE*");
-    assert(0);
+private bool failText(LuaState L, string message) {
+    raise(L, new LuaException(message));
+    return false;
 }
 
-private FILE* toFile(LuaState L, LuaValue[] a, int n = 1) {
-    auto p = checkStream(L, a, n);
+private bool argStream(LuaState L, LuaValue[] a, int n, out LStream result) {
+    if (n <= a.length)
+        if (auto p = testStream(L, a[n - 1])) {
+            result = p;
+            return true;
+        }
+    return typeFail(L, a, n, "FILE*");
+}
+
+private bool argFile(LuaState L, LuaValue[] a, int n, out FILE* result) {
+    LStream p;
+    if (!argStream(L, a, n, p))
+        return false;
     if (p.closed)
-        throw new LuaException("attempt to use a closed file");
-    return p.f;
+        return failText(L, "attempt to use a closed file");
+    result = p.f;
+    return true;
 }
 
 private LuaValue newStream(LuaState L, FILE* f, CloseKind kind) {
@@ -160,12 +169,13 @@ private ptrdiff_t indexOfChar(string s, char c) {
     return -1;
 }
 
-private FILE* getIoFile(LuaState L, string key, string what) {
+private bool getIoFile(LuaState L, string key, string what, out FILE* result) {
     auto v = L.registry.rawget(LuaValue(key));
     auto p = testStream(L, v);
     if (p is null || p.closed)
-        throw new LuaException("default " ~ what ~ " file is closed");
-    return p.f;
+        return failText(L, "default " ~ what ~ " file is closed");
+    result = p.f;
+    return true;
 }
 
 // --- reading ---------------------------------------------------------------
@@ -284,7 +294,10 @@ private LuaValue[] gRead(LuaState L, FILE* f, LuaValue[] a, int first) {
     } else {
         for (int n = first; nargs-- > 0 && success; ++n) {
             if (a[n - 1].typeOf() == LuaType.Number) {
-                size_t l = cast(size_t) checkInteger(L, a, n);
+                long count;
+                if (!argInteger(L, a, n, count))
+                    return null;
+                size_t l = cast(size_t) count;
                 if (l == 0) {
                     int c = getc(f);
                     ungetc(c, f);
@@ -297,7 +310,9 @@ private LuaValue[] gRead(LuaState L, FILE* f, LuaValue[] a, int first) {
                     results ~= LuaValue(cast(string) buffer[0 .. nr].idup);
                 }
             } else {
-                string p = checkString(L, a, n);
+                string p;
+                if (!argString(L, a, n, p))
+                    return null;
                 if (p.length && p[0] == '*')
                     p = p[1 .. $];
                 char kind = p.length ? p[0] : '\0';
@@ -320,7 +335,7 @@ private LuaValue[] gRead(LuaState L, FILE* f, LuaValue[] a, int first) {
                     success = true;
                     break;
                 default:
-                    throw new ArgError(n, "invalid format");
+                    return argFail(L, n, "invalid format");
                 }
             }
         }
@@ -342,7 +357,9 @@ private LuaValue[] gWrite(LuaState L, FILE* f, LuaValue[] a, int arg, LuaValue s
         } else if (isFloat(v)) {
             status = status && fprintf(f, "%.14g", v.match!((double d) => d, _ => 0.0)) > 0;
         } else {
-            string s = checkString(L, a, arg);
+            string s;
+            if (!argString(L, a, arg, s))
+                return null;
             status = status && fwrite(s.ptr, 1, s.length, f) == s.length;
         }
     }
@@ -355,13 +372,19 @@ private LuaValue[] linesIterator(LuaState L, LuaValue file, LuaValue[] formats, 
     auto fn = new LuaNativeFunction((void* sp, LuaValue[] ignored) {
         auto S = cast(LuaState) sp;
         auto p = testStream(S, file);
-        if (p.closed)
-            throw new LuaException("file is already closed");
+        if (p.closed) {
+            failText(S, "file is already closed");
+            return null;
+        }
         auto results = gRead(S, p.f, [file] ~ formats, 2);
+        if (results is null)
+            return null;
         if (results.length && isTruthy(results[0]))
             return results;
-        if (results.length > 1)
-            throw new LuaException(toLuaString(results[1]));
+        if (results.length > 1) {
+            failText(S, toLuaString(results[1]));
+            return null;
+        }
         if (toClose)
             closeStream(S, file);
         return cast(LuaValue[])[];
@@ -369,21 +392,27 @@ private LuaValue[] linesIterator(LuaState L, LuaValue file, LuaValue[] formats, 
     return [LuaValue(fn)];
 }
 
-private LuaValue openOrFail(LuaState L, string fname, string mode) {
+private bool openOrFail(LuaState L, string fname, string mode, out LuaValue result) {
     FILE* f = fopen(fname.toStringz, mode.toStringz);
     if (f is null) {
         string message = (cast(string) strerror(errno).fromStringz).idup;
-        throw new LuaException("cannot open file '" ~ fname ~ "' (" ~ message ~ ")");
+        return failText(L, "cannot open file '" ~ fname ~ "' (" ~ message ~ ")");
     }
-    return newStream(L, f, CloseKind.file);
+    result = newStream(L, f, CloseKind.file);
+    return true;
 }
 
 private LuaValue[] gIoFile(LuaState L, LuaValue[] a, string key, string mode) {
     if (!isNoneOrNil(a, 1)) {
         if (isString(a[0])) {
-            L.registry.rawset(LuaValue(key), openOrFail(L, a[0].match!((string s) => s, _ => ""), mode));
+            LuaValue opened;
+            if (!openOrFail(L, a[0].match!((string s) => s, _ => ""), mode, opened))
+                return null;
+            L.registry.rawset(LuaValue(key), opened);
         } else {
-            toFile(L, a, 1);
+            FILE* ignored;
+            if (!argFile(L, a, 1, ignored))
+                return null;
             L.registry.rawset(LuaValue(key), a[0]);
         }
     }
@@ -397,25 +426,46 @@ void openIoLib(LuaState state) {
     state.registry.rawset(LuaValue("FILE*"), LuaValue(fileMeta));
 
     // --- methods -------------------------------------------------------------
-    methods.register("close", (LuaState L, LuaValue[] a) { toFile(L, a); return closeStream(L, a[0]); });
+    methods.register("close", (LuaState L, LuaValue[] a) {
+        FILE* f;
+        if (!argFile(L, a, 1, f))
+            return null;
+        return closeStream(L, a[0]);
+    });
     methods.register("flush", (LuaState L, LuaValue[] a) {
-        auto f = toFile(L, a);
+        FILE* f;
+        if (!argFile(L, a, 1, f))
+            return null;
         errno = 0;
         return fileResult(fflush(f) == 0);
     });
-    methods.register("read", (LuaState L, LuaValue[] a) => gRead(L, toFile(L, a), a, 2));
-    methods.register("write", (LuaState L, LuaValue[] a) => gWrite(L, toFile(L, a), a, 2, a[0]));
+    methods.register("read", (LuaState L, LuaValue[] a) {
+        FILE* f;
+        if (!argFile(L, a, 1, f))
+            return null;
+        return gRead(L, f, a, 2);
+    });
+    methods.register("write", (LuaState L, LuaValue[] a) {
+        FILE* f;
+        if (!argFile(L, a, 1, f))
+            return null;
+        return gWrite(L, f, a, 2, a[0]);
+    });
     methods.register("lines", (LuaState L, LuaValue[] a) {
-        toFile(L, a);
+        FILE* f;
+        if (!argFile(L, a, 1, f))
+            return null;
         return linesIterator(L, a[0], a[1 .. $], false);
     });
     methods.register("seek", (LuaState L, LuaValue[] a) {
         import core.stdc.stdio : fseek, ftell;
 
         static immutable names = ["set", "cur", "end"];
-        auto f = toFile(L, a);
-        int op = checkOption(L, a, 2, "cur", names);
-        long p3 = optInteger(L, a, 3, 0);
+        FILE* f;
+        int op;
+        long p3;
+        if (!argFile(L, a, 1, f) || !argOption(L, a, 2, "cur", names, op) || !argOptInteger(L, a, 3, 0, p3))
+            return null;
         static immutable modes = [SEEK_SET, SEEK_CUR, SEEK_END];
         errno = 0;
         if (fseek(f, cast(c_long) p3, modes[op]) != 0)
@@ -424,16 +474,20 @@ void openIoLib(LuaState state) {
     });
     methods.register("setvbuf", (LuaState L, LuaValue[] a) {
         static immutable names = ["no", "full", "line"];
-        auto f = toFile(L, a);
-        int op = checkOption(L, a, 2, null, names);
-        long sz = optInteger(L, a, 3, 1024);
+        FILE* f;
+        int op;
+        long sz;
+        if (!argFile(L, a, 1, f) || !argOption(L, a, 2, null, names, op) || !argOptInteger(L, a, 3, 1024, sz))
+            return null;
         static immutable modes = [_IONBF, _IOFBF, _IOLBF];
         errno = 0;
         return fileResult(setvbuf(f, null, modes[op], cast(size_t) sz) == 0);
     });
 
     auto closeIfOpen = delegate LuaValue[](LuaState L, LuaValue[] a) {
-        auto p = checkStream(L, a, 1);
+        LStream p;
+        if (!argStream(L, a, 1, p))
+            return null;
         if (!p.closed && p.f !is null)
             closeStream(L, a[0]);
         return cast(LuaValue[])[];
@@ -443,7 +497,9 @@ void openIoLib(LuaState state) {
     fileMeta.register("__gc", closeIfOpen);
     fileMeta.register("__close", closeIfOpen);
     fileMeta.register("__tostring", (LuaState L, LuaValue[] a) {
-        auto p = checkStream(L, a, 1);
+        LStream p;
+        if (!argStream(L, a, 1, p))
+            return null;
         if (p.closed)
             return [LuaValue("file (closed)")];
         return [LuaValue("file (0x" ~ (cast(size_t) p.f).to!string(16) ~ ")")];
@@ -453,21 +509,26 @@ void openIoLib(LuaState state) {
     ioTable.register("close", (LuaState L, LuaValue[] a) {
         if (a.length == 0)
             a = [L.registry.rawget(LuaValue("_IO_output"))];
-        toFile(L, a);
+        FILE* f;
+        if (!argFile(L, a, 1, f))
+            return null;
         return closeStream(L, a[0]);
     });
     ioTable.register("flush", (LuaState L, LuaValue[] a) {
-        auto f = getIoFile(L, "_IO_output", "output");
+        FILE* f;
+        if (!getIoFile(L, "_IO_output", "output", f))
+            return null;
         errno = 0;
         return fileResult(fflush(f) == 0);
     });
     ioTable.register("input", (LuaState L, LuaValue[] a) => gIoFile(L, a, "_IO_input", "r"));
     ioTable.register("output", (LuaState L, LuaValue[] a) => gIoFile(L, a, "_IO_output", "w"));
     ioTable.register("open", (LuaState L, LuaValue[] a) {
-        string filename = checkString(L, a, 1);
-        string mode = optString(L, a, 2, "r");
+        string filename, mode;
+        if (!argString(L, a, 1, filename) || !argOptString(L, a, 2, "r", mode))
+            return null;
         if (!checkMode(mode))
-            throw new ArgError(2, "invalid mode");
+            return argFail(L, 2, "invalid mode");
         errno = 0;
         FILE* f = fopen(filename.toStringz, mode.toStringz);
         if (f is null)
@@ -477,10 +538,11 @@ void openIoLib(LuaState state) {
     ioTable.register("popen", (LuaState L, LuaValue[] a) {
         import core.sys.posix.stdio : popen;
 
-        string command = checkString(L, a, 1);
-        string mode = optString(L, a, 2, "r");
+        string command, mode;
+        if (!argString(L, a, 1, command) || !argOptString(L, a, 2, "r", mode))
+            return null;
         if (!(mode == "r" || mode == "w"))
-            throw new ArgError(2, "invalid mode");
+            return argFail(L, 2, "invalid mode");
         errno = 0;
         fflush(null);
         FILE* f = popen(command.toStringz, mode.toStringz);
@@ -496,31 +558,43 @@ void openIoLib(LuaState state) {
         return [newStream(L, f, CloseKind.file)];
     });
     ioTable.register("type", (LuaState L, LuaValue[] a) {
-        checkAny(a, 1);
+        if (!argAny(L, a, 1))
+            return null;
         auto p = testStream(L, a[0]);
         if (p is null)
             return [luaNil()];
         return [LuaValue(p.closed ? "closed file" : "file")];
     });
-    ioTable.register("read", (LuaState L, LuaValue[] a) => gRead(L, getIoFile(L, "_IO_input", "input"), [
-        luaNil()
-    ] ~ a, 2));
+    ioTable.register("read", (LuaState L, LuaValue[] a) {
+        FILE* f;
+        if (!getIoFile(L, "_IO_input", "input", f))
+            return null;
+        return gRead(L, f, [luaNil()] ~ a, 2);
+    });
     ioTable.register("write", (LuaState L, LuaValue[] a) {
-        auto f = getIoFile(L, "_IO_output", "output");
+        FILE* f;
+        if (!getIoFile(L, "_IO_output", "output", f))
+            return null;
         return gWrite(L, f, a, 1, L.registry.rawget(LuaValue("_IO_output")));
     });
     ioTable.register("lines", (LuaState L, LuaValue[] a) {
         if (isNoneOrNil(a, 1)) {
             auto input = L.registry.rawget(LuaValue("_IO_input"));
             auto p = testStream(L, input);
-            if (p is null || p.closed)
-                throw new LuaException("default input file is closed");
+            if (p is null || p.closed) {
+                failText(L, "default input file is closed");
+                return null;
+            }
             return linesIterator(L, input, a.length > 1 ? a[1 .. $] : [], false);
         }
-        string filename = checkString(L, a, 1);
+        string filename;
+        if (!argString(L, a, 1, filename))
+            return null;
         if (a.length > 251)
-            throw new ArgError(252, "too many arguments");
-        auto file = openOrFail(L, filename, "r");
+            return argFail(L, 252, "too many arguments");
+        LuaValue file;
+        if (!openOrFail(L, filename, "r", file))
+            return null;
         auto iterator = linesIterator(L, file, a[1 .. $], true);
         return [iterator[0], luaNil(), luaNil(), file];
     });
