@@ -41,7 +41,7 @@ storylet topic_key()
 end
 
 storylet topic_storm()
-    when { knows(:storm), not told(:storm), quality(:player, :resolve, ?r), ?r <= 8 }
+    when { knows(:storm), not told(:storm) }
     deck :talk
     priority 8
     repeatable false
@@ -51,7 +51,7 @@ storylet topic_storm()
         title "\"It will.\""
         effect do
             fact told(:storm)
-            adjust quality(:player, :resolve) by 2
+            adjust quality(:player, :resolve) by 2 clamp
         end
     end
 end
@@ -78,6 +78,6 @@ storylet end_talk()
     text ""
     choice bye
         title "Leave him to his pipe"
-        effect do narrative.pop_deck() end
+        effect do narrative.return_deck() end
     end
 end

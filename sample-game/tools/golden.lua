@@ -32,7 +32,6 @@ for turn = 1, 80 do
     end
     if #tokens == 0 then print("== no choices"); break end
     s:choose(tokens[(turn * 7) % #tokens + 1])
-    G.sync_periods(s)
 end
 
 local saved = s:save()

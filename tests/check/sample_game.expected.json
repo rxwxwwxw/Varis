@@ -3,23 +3,23 @@
  "problems": [
   {
    "file": "content/events.lua",
-   "line": 36,
+   "line": 37,
    "severity": "warning",
    "code": "symbol-once",
    "message": "symbol :new_day appears only here; is it misspelled?",
    "column": 24,
-   "endLine": 36,
+   "endLine": 37,
    "endColumn": 32,
    "subject": "symbol :new_day"
   },
   {
    "file": "content/events.lua",
-   "line": 92,
+   "line": 93,
    "severity": "warning",
    "code": "symbol-once",
    "message": "symbol :ellen_may appears only here; is it misspelled?",
    "column": 55,
-   "endLine": 92,
+   "endLine": 93,
    "endColumn": 65,
    "subject": "symbol :ellen_may"
   },

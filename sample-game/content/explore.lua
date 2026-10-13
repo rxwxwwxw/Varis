@@ -110,14 +110,13 @@ storylet rest()
     choice sleep
         title "Sleep"
         effect do
-            local r = quality.get(:player, :resolve)
-            quality.set(:player, :resolve, math.min(10, r + 3))
+            adjust quality(:player, :resolve) by 3 clamp
             adjust quality(:world, :hour) by 1
         end
     end
 end
 
--- Entering the market pushes a deck (Wordgrind's "leads to").
+-- Entering the market leads to its deck (Wordgrind's "leads to"); leaving returns.
 storylet go_shopping()
     when { at(:player, :market) }
     priority 45
@@ -125,8 +124,9 @@ storylet go_shopping()
     text "Fishwives and chandlers call their wares."
 
     choice browse
+        leads :market
         title "Browse"
-        effect do narrative.push_deck(:market) end
+        effect do end
     end
 end
 
@@ -137,9 +137,9 @@ storylet talk_keeper()
     text "Old Hesketh looks up from his pipe."
 
     choice talk
+        leads :talk
         title "Sit down beside him"
         effect do
-            narrative.push_deck(:talk)
             fact met(:keeper)              -- duplicate facts are no-ops
         end
     end

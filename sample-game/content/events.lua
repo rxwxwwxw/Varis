@@ -33,6 +33,7 @@ action midnight()
     effect do
         set quality(:world, :hour, 0)
         adjust quality(:world, :day) by 1
+        narrative.set_period(:day, quality.get(:world, :day))   -- visible to the next action this turn
         narrative.emit(:new_day)
     end
 end
@@ -67,14 +68,14 @@ action dawn()
     end
 end
 
--- A wage once per in-game day: a custom period (§8.3). The host must keep
--- the :day period in step with the :day quality (needed_extensions.md §3.1).
+-- A wage once per in-game day: a custom period (§8.3). The midnight action above moves
+-- the :day period with the :day quality, in the same transaction.
 action daily_wage()
-    when { told(:lamp), quality(:player, :coins, ?c), ?c <= 97 }
+    when { told(:lamp) }
     priority 10
     once_per :day
     effect do
-        quality.add(:player, :coins, 2)
+        quality.add(:player, :coins, 2, {clamp = true})
         narrative.emit(:say, "Hesketh presses two coins into your hand.")
     end
 end

@@ -13,18 +13,11 @@ local seed = tonumber(arg and arg[1]) or 1
 local session = G.new_session(seed)
 local SAVE = "saltmarsh.sav"
 
--- Narrative messages travel through the committed event history: the host
--- reads every event with a sequence number above the last one it printed.
+-- Narrative messages travel through the committed event history: the session hands
+-- the host the events after the last sequence number it printed, in order.
 local last_seq = 0
 local function show_events()
-    local new = {}
-    logic (session:world()) do
-        for e in query narrative_event(?seq, ?turn, ?kind, ?args) do
-            if e.seq > last_seq then new[#new + 1] = e end
-        end
-    end
-    table.sort(new, function(a, b) return a.seq < b.seq end)
-    for _, e in ipairs(new) do
+    for _, e in ipairs(session:events_since(last_seq)) do
         if e.kind == :say then
             print("  " .. e.args[1])
         elseif e.kind == :bought then
@@ -32,7 +25,7 @@ local function show_events()
         elseif e.kind == :storm_struck then
             print("  The storm breaks over the marsh.")
         end
-        last_seq = e.seq
+        last_seq = e.sequence
     end
 end
 
@@ -96,11 +89,7 @@ while true do
                 unwatch(); session = s; unwatch = watch(session); p = nil
                 -- re-seed last_seq from restored history so old events aren't reprinted
                 last_seq = 0
-                logic (session:world()) do
-                    for e in query narrative_event(?seq, ?turn, ?kind, ?args) do
-                        if e.seq > last_seq then last_seq = e.seq end
-                    end
-                end
+                for _, e in ipairs(session:events_since(0)) do last_seq = e.sequence end
                 print("Loaded.")
             else
                 print("Could not load: " .. tostring(s))
@@ -111,7 +100,6 @@ while true do
         if c then
             local okc, err = pcall(session.choose, session, c.token)
             if not okc then print("  (" .. tostring(err) .. ")") else p = nil end
-            G.sync_periods(session)
             narrative.flush(session:world())
             if G.is_over(session) then show_events(); print("\n*** THE END ***"); break end
         else

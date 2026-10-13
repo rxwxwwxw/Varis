@@ -16,9 +16,12 @@ The game itself uses only current-spec features. Where it has to work around a g
 Status of the triage (October 13, 2026, milestone 27): every topic below has a disposition in the
 table; the constructs marked **Implemented** have grammar in
 [docs/syntax.md](../docs/syntax.md) §10 and semantics in the manual; the scene-body and
-input-statement items, and the migration of this game off its workarounds (for example the host
-`sync_periods` that `narrative.set_period` now makes unnecessary), are accepted work that is not
-yet done, and stay here and in milestone 29 until they land.
+input-statement items landed with milestone 29 (October 13, 2026; manual 6.11a). This game has
+been migrated off the workarounds the implemented items replace: the `:day` period moves in the
+midnight action (`narrative.set_period`, no host `sync_periods`), decks are entered with
+`leads` and left with `narrative.return_deck`, the host reads `session:events_since`, and
+the resolve and coin adjustments saturate with `clamp`. The sections below still describe the
+original gaps for reference.
 
 Current status (October 12, 2026): declarative scenes, characters, stage state, scene
 input/menu beats, format 3 mid-scene saves, scene-line localization and an initial SDL3

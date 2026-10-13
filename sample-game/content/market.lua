@@ -60,6 +60,6 @@ storylet leave_market()
     text ""
     choice leave
         title "Back to the street"
-        effect do narrative.pop_deck() end
+        effect do narrative.return_deck() end
     end
 end

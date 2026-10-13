@@ -39,19 +39,11 @@ function G.new_session(seed)
     local s = narrative.new(w)
     s:seed(seed)
     s:limits(200, 50)
-    G.sync_periods(s)
+    s:set_period(:day, quality.get(:world, :day, w))   -- the first day; midnight moves it on
     return s
 end
 
--- Keep the :day once-per period in step with the :day quality. Effects cannot
--- call session methods, so the host does it at idle boundaries.
-function G.sync_periods(s)
-    s:set_period(:day, quality.get(:world, :day, s:world()))
-end
-
 function G.load(text)
-    -- Periods are part of the saved state; re-syncing here would append a
-    -- spurious replay record and break byte-identical round trips.
     return narrative.load(text, G.build_world)
 end
 
