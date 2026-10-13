@@ -128,7 +128,7 @@ def main():
     for group in ("backgrounds", "sprites", "portraits", "audio"):
         for asset in original[group]:
             asset["file"] = str(ROOT / "sample-vn" / asset["file"])
-    original["content"] = str(ROOT / "sample-vn/content.lua")
+    original["content"] = str(ROOT / "sample-vn/content.varis")
     with tempfile.TemporaryDirectory() as directory:
         directory = Path(directory)
         manifest = directory / "presentation.json"

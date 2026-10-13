@@ -462,5 +462,8 @@
  {"key":"walk.title","text":"Aller à {to}","status":"draft","revision":"156196bba456e277"},
  {"key":"watch_trials.text","text":"Vous n'avez pas payé le droit, et le greffier a déjà rangé son registre. Vous ne faites pas partie de ceux de la place.","status":"draft","revision":"a9beb1a048254b93"},
  {"key":"watch_trials.title","text":"Vous ne pouvez pas participer","status":"draft","revision":"7e729064c89204b9"},
- {"key":"watch_trials.watch.title","text":"Regarder depuis la foule","status":"draft","revision":"f4dfdaf664d70f82"}
+ {"key":"watch_trials.watch.title","text":"Regarder depuis la foule","status":"draft","revision":"f4dfdaf664d70f82"},
+ {"key":"scene.prologue.eager.label","text":"« Je la gagnerai. »","status":"draft","revision":"eddc2f464155d203"},
+ {"key":"scene.prologue.wary.label","text":"« Où est le piège ? »","status":"draft","revision":"0c1fcf8fbb5d2904"},
+ {"key":"scene.prologue.tired.label","text":"« Puis-je m'asseoir d'abord ? »","status":"draft","revision":"e088d4eb0c1ed140"}
 ]}

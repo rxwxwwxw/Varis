@@ -4,7 +4,7 @@ return {
     id       = "lanternfall",
     language = "en",
     entry    = "game",
-    content  = { "content/*.lua", "scenes/*.lua", "qualities.lua", "battle/kinds.lua" },
+    content  = { "content/*.varis", "scenes/*.varis", "qualities.varis", "battle/kinds.varis" },
     scripts  = { "main.lua", "game.lua", "world.lua", "battle/*.lua", "tools/*.lua" },
     session  = "game.new_session",
     load     = "game.load",

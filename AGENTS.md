@@ -292,6 +292,8 @@ How the core reaches the layers above it without importing them (the seam, stage
 
 ### Phase 9 additions (milestones 26–29, October 13, 2026)
 
+- **Menu labels** are catalog messages `scene.<label_id>.label`; `label_id` is a choice field
+  (`<scene>.<option id>` from readable scenes, else `<scene>.<choice id>`), unique per registry.
 - **Readable scenes** are lowered by the parser (`parseReadableScene` in `parser.d`) to
   `narrative.scene(:name, {beats})` calls, plus generated scenes (`<scene>__<what><n>`) for menu
   options, `if` branches and their join points and generated procedures for `effect using`. The

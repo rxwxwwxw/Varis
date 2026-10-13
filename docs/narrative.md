@@ -736,8 +736,11 @@ inserting or moving beats. The localization catalog key is `scene.<id>.text`;
 character names use `character.<character>.name`. Scene line text uses ordinary
 narrative templates with the current locals as bindings. `set_language` and
 `render(presentation, language)` translate scene line text; re-rendering preserves
-the token, captured template trace, position, and stage. Menu labels and character
-metadata are currently delivered as authored text.
+the token, captured template trace, position, and stage. Menu option labels have the key
+`scene.<label id>.label`, where the label id is the option's `label_id` (a readable scene
+sets it to `<scene>.<option id>`, and a duplicate is rejected) or `<scene>.<choice id>`; the
+presentation delivers the translated label, and the source wording when there is none.
+Character display names are `character.<character>.name`, translated by the host.
 
 ### 6.11a — Readable scenes
 

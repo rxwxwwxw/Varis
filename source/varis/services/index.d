@@ -1007,6 +1007,14 @@ private final class Builder {
                     if (choices !is null)
                         foreach (option; choices.fields)
                             if (auto choice = as!TableConstructorExpr(option.value)) {
+                                if (auto label = tableValue(choice, "text")) {
+                                    auto labelStart = file.messages.length;
+                                    message(definition, "text", label);
+                                    auto labelId = literalName(tableValue(choice, "label_id"));
+                                    if (!labelId.length)
+                                        labelId = definition.name ~ "." ~ literalName(tableValue(choice, "id"));
+                                    file.messages[labelStart].key = "scene." ~ labelId ~ ".label";
+                                }
                                 auto target_ = tableValue(choice, "target");
                                 if (target_ !is null)
                                     refer("scene", literalName(target_), "read", -1, rangeOf(target_.loc, target_.end));

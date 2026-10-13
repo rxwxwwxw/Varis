@@ -81,7 +81,6 @@ while not G.is_over(session) or session:present().beats do
         status()
         local n = pick(options)
         session:choose(options[n].token)
-        G.sync_periods(session)
     end
 end
 print("The summer is over.")

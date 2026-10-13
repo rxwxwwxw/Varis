@@ -243,7 +243,7 @@ string validateScenes(ContentRegistry registry) {
         if (problem.length)
             return problem;
     }
-    string[] ids;
+    string[] ids, labelIds;
     foreach (ref definition; registry.scenes) {
         foreach (i, ref beat; definition.beats) {
             if (!isRecord(beat))
@@ -313,6 +313,11 @@ string validateScenes(ContentRegistry registry) {
                         if (previous == id)
                             return "duplicate menu choice";
                     choices ~= id;
+                    auto labelId = sceneLabelId(definition.id, option);
+                    foreach (previous; labelIds)
+                        if (previous == labelId)
+                            return "duplicate menu label id: " ~ labelId;
+                    labelIds ~= labelId;
                     if (registry.scene(nameOf(field(option, "target"))) is null)
                         return "unknown menu target";
                 }
@@ -611,6 +616,12 @@ SceneState restoreScene(ContentRegistry registry, LuaValue value, out string pro
                 return null;
         }
     return state;
+}
+
+/// The localization id of a menu option: its `label_id`, or `<scene>.<choice id>`.
+string sceneLabelId(string scene, LuaValue choice) {
+    auto explicit = nameOf(field(choice, "label_id"));
+    return explicit.length ? explicit : scene ~ "." ~ nameOf(field(choice, "id"));
 }
 
 /// The index of a `branch` beat's operator in `== ~= < <= > >=`, or -1.

@@ -1633,6 +1633,10 @@ class Parser {
             auto optionLoc = current.loc;
             advance();
             auto id = sceneName("option id");
+            auto labelId = build.root ~ "." ~ id.text;
+            if (labelId in build.labelIds)
+                syntaxError("duplicate option id '" ~ id.text ~ "' in scene '" ~ build.root ~ "'", id);
+            build.labelIds[labelId] = true;
             auto label = consume(TokenType.String, "option text expected");
             consume(TokenType.KwDo, "'do' expected after the option text");
             auto segment = build.open(build.fresh("option"));
@@ -1647,6 +1651,7 @@ class Parser {
             choices ~= new TableConstructorExpr([
                 sceneField("id", new LiteralStringExpr(id.text, id.loc), optionLoc),
                 sceneField("text", text, optionLoc),
+                sceneField("label_id", new LiteralStringExpr(labelId, optionLoc), optionLoc),
                 sceneField("target", sceneSymbol(target, optionLoc), optionLoc)
             ], optionLoc);
         }
@@ -2314,7 +2319,7 @@ private final class SceneBuilder {
     string root;
     SceneSegment[] segments;
     NarrativeDefinitionStmt[] procedures;
-    bool[string] ids;
+    bool[string] ids, labelIds;
     int counter;
 
     this(string root) {

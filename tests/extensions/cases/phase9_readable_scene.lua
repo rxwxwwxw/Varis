@@ -74,6 +74,13 @@ local function run(choice)
     assert(loaded:save() == s:save())
     p = s:present()
     assert(loaded:present().beats[1].kind == :menu)
+    assert(p.beats[1].choices[1].text == "Ask for tea")
+    -- Option labels are catalog text, keyed scene.<scene>.<option id>.label
+    narrative.translate("fr", {["scene.greeting.tea.label"] = "Demander du thé"})
+    local french = s:render(p, "fr")
+    assert(french.beats[1].choices[1].text == "Demander du thé")
+    assert(french.beats[1].choices[2].text == "Say goodbye")   -- untranslated: source wording
+    assert(french.token == p.token)
     s:advance(p.token, choice)
     return s
 end

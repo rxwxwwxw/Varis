@@ -65,6 +65,7 @@ storylet sleep(?day)
         title "Sleep until morning"
         effect do
             adjust quality(:world, :day) by 1
+            narrative.set_period(:day, day + 1)   -- the once-per-day period follows the day
             set quality(:world, :slot, 1)
             set quality(:player, :stamina, 10)
             if day == 9 then

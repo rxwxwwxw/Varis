@@ -41,7 +41,7 @@ the night again.
 
 | Engine feature | Where |
 | --- | --- |
-| `battle_request` set by an ordinary choice | `content/hub.lua` (`go_up`) |
+| `battle_request` set by an ordinary choice | `content/hub.varis` (`go_up`) |
 | `battle_setup` derived by rules from relationships, fortress, flags | `game.lua` `battle_setup`, rules in `world.lua` (`deployed`, `obeys`, `ward`, `rally`, `wide_flare`, `reliable_repair`, `bonded`) |
 | Setup validation refuses a bad setup and leaves the world untouched | `tests/bridge.lua` (seven fixtures), `varis check` negative fixtures in `tests/check/fixtures/battle` |
 | All ten triggers | `battle/setup.lua` (moments), covered by `tests/branches.lua` |
@@ -62,8 +62,8 @@ the night again.
 | File | Contents |
 | --- | --- |
 | `project.lua` | The manifest: entry, session/load hooks, the four battle hooks, locales |
-| `world.lua`, `qualities.lua`, `game.lua` | Schemas and rules; quality metadata and names; sessions, hooks, the host loop, journal |
-| `content/` | Hub storylets (`hub.lua`), people (`heroes.lua`) |
+| `world.lua`, `qualities.varis`, `game.lua` | Schemas and rules; quality metadata and names; sessions, hooks, the host loop, journal |
+| `content/` | Hub storylets (`hub.varis`), people (`heroes.varis`) |
 | `scenes/` | Characters and procedures, prologue, moments, dawns, endings |
 | `battle/` | `kinds.lua`, `waves.lua`, `setup.lua` (map and setups), `sync.lua` (decisions to modifiers) |
 | `tools/` | `bot.lua` (the scripted player), `gen_assets.py`, `fr_draft.py` |

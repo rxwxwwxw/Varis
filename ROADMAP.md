@@ -386,9 +386,9 @@ documented syntax freeze remain work. Approval of these targets does not complet
 
 **Status, October 13, 2026:** milestones 26, 27, 28 and 29 are done (see their rows), which
 completes Phase 9: readable scenes with explicit text ids and input statements, *Saltmarsh
-Light* migrated off its workarounds, `sample-vn` in `.varis`. Left over and not blocking: menu
-labels are not yet in the localization catalog, and the other samples keep the `.lua`
-extension (their migration is mechanical).
+Light* migrated off its workarounds, `sample-vn` in `.varis`. Menu option labels are catalog text
+(`scene.<label id>.label`), character names were already (`character.<id>.name`), and all
+three samples keep content in `.varis` with their French packs rebuilt.
 
 Decided October 12, 2026 (owner, asked while planning the executor work):
 

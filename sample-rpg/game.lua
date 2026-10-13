@@ -97,16 +97,10 @@ function G.new_session(seed)
     local s = narrative.new(w)
     s:seed(seed or 1)
     s:limits(200, 50)
-    G.sync_periods(s)
+    s:set_period(:day, 1)
     attach(s)
     attach_notes(s)
     return s
-end
-
--- Keep the :day once-per period in step with the day quality. Effects cannot call session
--- methods, so the host does it at idle boundaries (after every choice).
-function G.sync_periods(s)
-    s:set_period(:day, quality.get(:world, :day, s:world()))
 end
 
 function G.load(text)

@@ -577,6 +577,32 @@ class Session : TransactionParticipant {
                 }
             beat = replaceField(beat, "text", LuaValue(text_));
         }
+        if (nameOf(field(beat, "kind")) == "menu") {
+            // Option labels are translatable text: key `scene.<label id>.label`, where the label
+            // id is the choice's `label_id` or `<scene>.<choice id>`. A label that cannot be
+            // rendered in the target language stays in the source language.
+            auto locals = cast(ImmutableRecord) frame.locals.asUserData.payload;
+            string[] names;
+            foreach (name; locals.fields.keys)
+                names ~= name;
+            LuaValue[] labelled;
+            foreach (choice; sequence(field(beat, "choices"))) {
+                auto key = "scene." ~ sceneLabelId(frame.id, choice) ~ ".label";
+                if (target.length)
+                    if (auto translated = registry.translation(target, key)) {
+                        RenderTrace trace;
+                        string output;
+                        auto template_ = new NarrativeTemplate(field(choice, "text").asString, names);
+                        template_.render(state, world.cloneSnapshot(), locals.fields, &registry.display, null, &trace,
+                                registry.sourceLanguage);
+                        if (renderTranslation(translated, locals.fields, (LuaValue v) => registry.displayIn(target, v),
+                                trace, target, output))
+                            choice = replaceField(choice, "text", LuaValue(output));
+                    }
+                labelled ~= choice;
+            }
+            beat = replaceField(beat, "choices", immutableSequence(labelled));
+        }
         auto character = registry.character(nameOf(field(beat, "character")));
         if (character !is null)
             beat = replaceField(beat, "speaker", character.fields);

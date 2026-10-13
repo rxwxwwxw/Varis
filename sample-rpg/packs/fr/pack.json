@@ -452,5 +452,8 @@
  "walk.title":"Aller à {to}",
  "watch_trials.text":"Vous n'avez pas payé le droit, et le greffier a déjà rangé son registre. Vous ne faites pas partie de ceux de la place.",
  "watch_trials.title":"Vous ne pouvez pas participer",
- "watch_trials.watch.title":"Regarder depuis la foule"
+ "watch_trials.watch.title":"Regarder depuis la foule",
+ "scene.prologue.eager.label":"« Je la gagnerai. »",
+ "scene.prologue.wary.label":"« Où est le piège ? »",
+ "scene.prologue.tired.label":"« Puis-je m'asseoir d'abord ? »"
 }}
