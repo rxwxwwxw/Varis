@@ -29,7 +29,7 @@ which also gives the combined order of the two plans.
 | Variants and templates | Named variants, plural and select blocks, generated plural rules, translated names and pseudo-localization exist. | Legacy unnamed variants retain positional identity. |
 | Fingerprints and saves | Wording is excluded from format 2/3 content identity; template structure remains significant. Format 1 retains legacy validation. Translations are never saved or fingerprinted. | Structural edits still invalidate content identity; scene saves use format 3. |
 | Catalogs and handoff | Extract/status, CSV/JSON/XLIFF, revision tracking, kits/delta kits, glossary, import/review, checks, packs and character-set output. | Font subsetting itself and configurable per-locale manifest coverage remain unfinished. |
-| Tools and presentation | CLI locale options, workbench selector/editor, engine grapheme/line-break/ruby/particle helpers, initial SDL3 scene player with a supplied UTF-8 font. | Complete CJK layout, font fallback/switching, ruby drawing and native-reader validation remain T5 work. |
+| Tools and presentation | CLI locale options, workbench selector/editor, engine grapheme/line-break/ruby/particle helpers, initial SDL3 scene player with a supplied UTF-8 font. | Complete CJK layout, font fallback within one text run (per-language font switching exists), ruby drawing and native-reader validation remain T5 work. |
 
 ## 1. Targets and what they imply
 

@@ -163,3 +163,32 @@ mixin UnitMain;
     assert(host.view.stories[0].id == first && host.view.values["strength"] == strength);
     assert(host.choose(0, 0), host.error); // the restored token is usable again
 }
+
+@("embeddingContract") unittest {
+    // The calls docs/embedding.md shows: statuses with reasons, atomic failures, inert reads.
+    auto host = new GameHost;
+    assert(!host.loadProject("no-such-project-directory", "start"));
+    assert(host.error.length);
+    host = new GameHost;
+    assert(host.loadProject("sample-rpg", "prologue"), host.error);
+    assert(host.newGame(7), host.error);
+    // Reading the view repeatedly consumes nothing: two saves stay byte-identical.
+    string a, b;
+    assert(host.save(a));
+    auto before = host.view.beat.text;
+    assert(host.view.beat.text == before && host.save(b) && a == b);
+    // An invalid save is refused and the live session keeps playing.
+    assert(!host.restore("not a save"));
+    assert(host.error.length);
+    string c;
+    assert(host.save(c) && c == a);
+    // An out-of-range hub choice is a status, not an exception.
+    assert(!host.choose(999, 0));
+    assert(host.save(c) && c == a);
+    // Toasts are taken once.
+    host.takeToasts();
+    assert(host.takeToasts().length == 0);
+    // The idle call changes no session state.
+    host.idle();
+    assert(host.save(c) && c == a);
+}

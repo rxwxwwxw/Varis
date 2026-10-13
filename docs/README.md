@@ -76,4 +76,5 @@ manual remains an upstream compatibility reference, not a prerequisite for
 understanding Varis relations or narrative behavior.
 
 The optional native scene player and D scene-host adapter are documented in
-[SDL3 presentation](presentation.md).
+[SDL3 presentation](presentation.md); a host written in D is described in
+[Embedding Varis in a D host](embedding.md).

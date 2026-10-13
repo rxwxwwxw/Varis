@@ -8,7 +8,7 @@ kind = "d-unit"
 tags = ["unit"]
 timeout = 600
 expect_count = 9
-expect_results = 91
+expect_results = 92
 cases = [
   { id = "foundation", unit = "test_foundation", tier = "smoke" },
   { id = "parser", unit = "test_parser", tier = "smoke" },
