@@ -579,9 +579,11 @@ files needs a port; a Windows build still has to replace them (or compile them o
 `version (Windows)`), and the frozen weak-table emulation in `gc.d` is the only one that has no
 direct substitute. That is not attempted here: it cannot be verified without a Windows machine.
 
-- Re-measure RSS after W1–W2 and L2; most of today's heap is garbage produced by copying. Then
-  revisit `heapSizeFactor:4` in `cli.d`, which was chosen for the Phase 8 work and trades memory
-  for fewer collections.
+- **Re-measured October 13, 2026, and `heapSizeFactor:4` kept.** After W and L2 the reference-scale
+  game peaks at 49.2 MB with factor 4 and 49.4 MB with factor 2 (budget 64 MB), so the factor no
+  longer buys memory there (the turn-boundary collection of stage M does that). Factor 2 does cost
+  the core: `regression.deepframes` 1.76× against its 1.63× gate and `programs.bintrees` 1.56× →
+  1.67×. The setting stays; the item is closed.
 - D's collector stops the world. Offer the host an "idle now" call that collects after a
   presentation has been handed over, and keep per-turn allocation low enough that no collection
   starts inside a turn.
