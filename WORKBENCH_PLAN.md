@@ -63,8 +63,12 @@ Language selection is retained on reload without a new presentation or random dr
 
 ### Remaining acceptance work
 
-- **42:** JSON request/response/event protocol over WebSocket, with pushed output and
-  state/debug notifications. HTTP remains the tested compatibility transport.
+- **42 done (October 13, 2026):** the WebSocket transport. `/ws?token=...` upgrades; each text
+  message is `{"id", "method", "path", "query", "body"}` served by the same handlers as HTTP and
+  answered `{"id", "status", "body"}`; the server pushes `{"event":"hello"}` on connect and
+  `{"event":"stopped","data":...}` when the debugger stops. Ping/pong, close, fragmentation and
+  64-bit lengths are handled; client frames must be masked. HTTP remains the transport the page
+  uses. Further events (`output`, `workspaceChanged`, `publishDiagnostics`) are not pushed yet.
 - **43 UI delivered:** CodeMirror, inline diagnostics and breakpoint gutters, resizable
   panels, persistent command history and browser coverage. The fix → Run → reconstructed
   presentation workflow is covered by the browser test.

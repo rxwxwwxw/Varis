@@ -20,6 +20,81 @@ import urllib.request
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 
 
+class WebSocketClient:
+    """A minimal RFC 6455 client (masked text frames) over a raw socket."""
+
+    def __init__(self, base, token, path="/ws"):
+        import base64, os, socket
+        host, port = base.replace("http://", "").split(":")
+        self.sock = socket.create_connection((host, int(port)), timeout=30)
+        key = base64.b64encode(os.urandom(16)).decode()
+        self.sock.sendall((f"GET {path}?token={token} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\n"
+                           f"Connection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
+        data = b""
+        while b"\r\n\r\n" not in data:
+            chunk = self.sock.recv(1)
+            if not chunk:
+                break
+            data += chunk
+        self.status = data.split(b"\r\n")[0].decode()
+        import hashlib
+        accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
+        self.accepted = ("Sec-WebSocket-Accept: " + accept) in data.decode()
+
+    def _exact(self, n):
+        out = b""
+        while len(out) < n:
+            chunk = self.sock.recv(n - len(out))
+            if not chunk:
+                raise EOFError
+            out += chunk
+        return out
+
+    def send(self, obj, opcode=1):
+        import os, struct
+        payload = (obj if isinstance(obj, bytes) else json.dumps(obj).encode())
+        head = bytes([0x80 | opcode])
+        n = len(payload)
+        if n < 126:
+            head += bytes([0x80 | n])
+        elif n < 65536:
+            head += bytes([0x80 | 126]) + struct.pack(">H", n)
+        else:
+            head += bytes([0x80 | 127]) + struct.pack(">Q", n)
+        mask = os.urandom(4)
+        self.sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
+
+    def receive(self):
+        import struct
+        while True:
+            b0, b1 = self._exact(2)
+            n = b1 & 0x7F
+            if n == 126:
+                n = struct.unpack(">H", self._exact(2))[0]
+            elif n == 127:
+                n = struct.unpack(">Q", self._exact(8))[0]
+            payload = self._exact(n)
+            opcode = b0 & 0x0F
+            if opcode == 1:
+                return json.loads(payload.decode())
+            if opcode == 8:
+                return None
+            if opcode == 10:
+                return ("pong", payload)
+
+    def request(self, id, path, query=None, body=None, method=None):
+        message = {"id": id, "method": method or ("POST" if body is not None else "GET"), "path": path}
+        if query:
+            message["query"] = query
+        if body is not None:
+            message["body"] = body
+        self.send(message)
+        while True:
+            reply = self.receive()
+            if isinstance(reply, dict) and reply.get("id") == id:
+                return reply
+
+
 def main():
     binary = str(pathlib.Path(sys.argv[1]).resolve())
     scratch = tempfile.TemporaryDirectory(prefix="varis-workbench-")
@@ -435,6 +510,41 @@ end}
         stopped_worker.join(30)
         assert not stopped_box["ok"] and "interrupted" in stopped_box["error"], stopped_box
         assert call("/api/stack")["stopped"] is False
+
+
+        # WebSocket transport: same handlers as HTTP, pushed events, token required.
+        try:
+            WebSocketClient(base, "wrong")
+            bad_ws = WebSocketClient(base, "wrong")
+            assert "403" in bad_ws.status, bad_ws.status
+        except (ConnectionError, EOFError):
+            pass
+        ws = WebSocketClient(base, token)
+        assert ws.status.startswith("HTTP/1.1 101") and ws.accepted, (ws.status, ws.accepted)
+        assert ws.receive() == {"event": "hello", "protocol": 1}
+        reply = ws.request(1, "/api/eval", body="1 + 2")
+        assert reply["status"] == 200 and reply["body"] == {"ok": True, "incomplete": False, "output": "3\n", "error": ""}, reply
+        assert ws.request("a", "/api/workspace")["body"]["variables"] is not None
+        assert ws.request(3, "/nope")["status"] in (200, 404)
+        ws.send(b"not json")
+        assert ws.receive()["status"] == 400
+        ws.send(b"\x01\x02", opcode=9)
+        assert ws.receive() == ("pong", b"\x01\x02")
+        # A stop is pushed as an event; the request that started it is answered, then resumed.
+        assert call("/api/breakpoints", body="command:2")["breakpoints"] == [{"file": "command", "line": 2}]
+        ws.send({"id": 11, "method": "POST", "path": "/api/eval", "body": "local a = 1\nlocal b = a + 1\nc = b\n"})
+        seen = []
+        while len(seen) < 2:
+            seen.append(ws.receive())
+        events = [m for m in seen if "event" in m]
+        replies = [m for m in seen if m.get("id") == 11]
+        assert events and events[0]["event"] == "stopped" and events[0]["data"]["line"] == 2, seen
+        assert replies and replies[0]["body"] == {"stopped": True, "file": "command", "line": 2}, seen
+        assert ws.request(12, "/api/stack")["body"]["stopped"] is True
+        resumed = ws.request(13, "/api/continue", body="")
+        assert resumed["body"]["ok"] is True, resumed
+        assert call("/api/breakpoints", body="")["breakpoints"] == []
+        ws.sock.close()
 
         # Stop aborts a running command without a pause; the next command runs normally.
         worker, box = background("/api/eval", {}, "while true do end")

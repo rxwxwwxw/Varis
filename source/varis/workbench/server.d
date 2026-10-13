@@ -13,8 +13,8 @@
 /// One thread owns the project's Lua state and answers HTTP requests on the loopback interface,
 /// one at a time, so nothing ever touches the state concurrently. Requests carry a token printed
 /// at start-up, because the command window runs arbitrary code. This first version speaks plain
-/// request/response HTTP (text bodies, JSON editor requests/replies); server-pushed events
-/// and the WebSocket transport of the plan remain to be implemented.
+/// request/response HTTP (text bodies, JSON editor requests/replies) and the same requests over a
+/// WebSocket (`/ws`), where the server also pushes events such as `stopped`.
 ///
 /// Tools layer: nothing in the runtime imports this module.
 module varis.workbench.server;
@@ -38,6 +38,7 @@ import varis.exception : LuaException;
 import varis.logic.world : World, Relation, unwrapWorld, visibleRelation;
 import varis.workbench.page : workbenchPage;
 import varis.narrative.registry : narrativeRegistry;
+import varis.services.json : JsonValue, parseJson;
 
 private enum loopbackAddress = 0x7F000001; // 127.0.0.1
 
@@ -422,6 +423,7 @@ private struct Request {
     string path;
     string[string] query;
     string body_;
+    string wsKey; // Sec-WebSocket-Key of an upgrade request
 }
 
 public string jsonQuote(const(char)[] text) {
@@ -501,7 +503,239 @@ private bool sendAll(int socket, const(char)[] data) {
     return true;
 }
 
+// ---- WebSocket transport ----------------------------------------------------------------------
+//
+// One endpoint, `/ws?token=...`. Each text message is a JSON envelope
+//   {"id": 1, "method": "GET"|"POST", "path": "/api/eval", "query": {...}, "body": "..."}
+// that is served by the same handlers as the HTTP request it names (the connection's token is
+// added), and answered with {"id": 1, "status": 200, "body": <JSON, or a string for other types>}.
+// The server also pushes events: {"event": "hello"} on connect and {"event": "stopped", "data": ...}
+// when the debugger stops, so a client need not hold a request open to learn of it. A request is
+// given a virtual connection number (at or above `virtualBase`), which `respond` and
+// `closeConnection` route back into the WebSocket, so no handler knows the transport.
+
+private enum virtualBase = 1_000_000;
+
+private struct WebSocketReply {
+    int socket;
+    string id; // the request's id as JSON text
+}
+
+private __gshared WebSocketReply[int] webSocketReplies;
+private __gshared int[] webSocketClients;
+private __gshared int nextVirtual = virtualBase;
+private __gshared Mutex webSocketLock;
+
+private void sendFrame(int socket, const(char)[] payload, ubyte opcode = 1) {
+    ubyte[10] head;
+    size_t n;
+    head[n++] = 0x80 | opcode;
+    if (payload.length < 126)
+        head[n++] = cast(ubyte) payload.length;
+    else if (payload.length < 65536) {
+        head[n++] = 126;
+        head[n++] = cast(ubyte)(payload.length >> 8);
+        head[n++] = cast(ubyte) payload.length;
+    } else {
+        head[n++] = 127;
+        foreach (i; 0 .. 8)
+            head[n++] = cast(ubyte)(cast(ulong) payload.length >> (56 - 8 * i));
+    }
+    webSocketLock.lock();
+    scope (exit)
+        webSocketLock.unlock();
+    if (sendAll(socket, cast(const(char)[]) head[0 .. n]))
+        sendAll(socket, payload);
+}
+
+private void webSocketRespond(int virtual, int status, string contentType, const(char)[] content) {
+    WebSocketReply reply;
+    webSocketLock.lock();
+    auto found = virtual in webSocketReplies;
+    if (found is null) {
+        webSocketLock.unlock();
+        return;
+    }
+    reply = *found;
+    webSocketLock.unlock();
+    char[] message;
+    message ~= `{"id":`;
+    message ~= reply.id;
+    message ~= `,"status":`;
+    message ~= numberJson(status);
+    message ~= `,"body":`;
+    if (contentType.length >= 16 && contentType[0 .. 16] == "application/json" && content.length)
+        message ~= content;
+    else
+        message ~= jsonQuote(content);
+    message ~= '}';
+    sendFrame(reply.socket, message);
+}
+
+/// Closes a real connection, or forgets a virtual one (its answer has been sent).
+private void closeConnection(int connection) {
+    if (connection >= virtualBase) {
+        webSocketLock.lock();
+        webSocketReplies.remove(connection);
+        webSocketLock.unlock();
+    } else
+        close(connection);
+}
+
+/// Pushes an event to every connected WebSocket client.
+private void webSocketBroadcast(string name, const(char)[] data) {
+    if (webSocketLock is null)
+        return;
+    string message = `{"event":` ~ jsonQuote(name) ~ (data.length ? `,"data":` ~ data.idup : "") ~ `}`;
+    webSocketLock.lock();
+    auto clients = new int[webSocketClients.length];
+    clients[] = webSocketClients[];
+    webSocketLock.unlock();
+    foreach (client; clients)
+        sendFrame(client, message);
+}
+
+private bool receiveExactly(int socket, ubyte[] into) {
+    size_t have;
+    while (have < into.length) {
+        auto got = recv(socket, into.ptr + have, into.length - have, 0);
+        if (got <= 0)
+            return false;
+        have += got;
+    }
+    return true;
+}
+
+private void webSocketReader(int socket) {
+    scope (exit) {
+        webSocketLock.lock();
+        foreach (i, client; webSocketClients)
+            if (client == socket) {
+                webSocketClients = webSocketClients[0 .. i] ~ webSocketClients[i + 1 .. $];
+                break;
+            }
+        webSocketLock.unlock();
+        close(socket);
+    }
+    enum maxMessage = 16 * 1024 * 1024;
+    char[] message;
+    for (;;) {
+        ubyte[2] head;
+        if (!receiveExactly(socket, head[]))
+            return;
+        bool fin = (head[0] & 0x80) != 0;
+        ubyte opcode = head[0] & 0x0f;
+        bool masked = (head[1] & 0x80) != 0;
+        ulong length = head[1] & 0x7f;
+        if (length == 126) {
+            ubyte[2] ext;
+            if (!receiveExactly(socket, ext[]))
+                return;
+            length = (cast(ulong) ext[0] << 8) | ext[1];
+        } else if (length == 127) {
+            ubyte[8] ext;
+            if (!receiveExactly(socket, ext[]))
+                return;
+            length = 0;
+            foreach (b; ext)
+                length = (length << 8) | b;
+        }
+        if (!masked || length > maxMessage || message.length + length > maxMessage)
+            return; // clients must mask; refuse oversized messages
+        ubyte[4] mask;
+        if (!receiveExactly(socket, mask[]))
+            return;
+        auto payload = new ubyte[cast(size_t) length];
+        if (!receiveExactly(socket, payload))
+            return;
+        foreach (i, ref b; payload)
+            b ^= mask[i & 3];
+        if (opcode == 8) {
+            sendFrame(socket, null, 8);
+            return;
+        }
+        if (opcode == 9) {
+            sendFrame(socket, cast(const(char)[]) payload, 10);
+            continue;
+        }
+        if (opcode == 10)
+            continue;
+        if (opcode != 0 && opcode != 1 && opcode != 2)
+            return;
+        message ~= cast(const(char)[]) payload;
+        if (!fin)
+            continue;
+        auto text = message.idup;
+        message = null;
+        webSocketMessage(socket, text);
+    }
+}
+
+/// One envelope from a client: builds the request it names and queues it for the interpreter.
+private void webSocketMessage(int socket, string text) {
+    JsonValue envelope;
+    string problem;
+    string id = "null";
+    if (!parseJson(text, envelope, problem) || envelope.kind != JsonValue.Kind.object) {
+        sendFrame(socket, `{"id":null,"status":400,"body":{"error":"message must be a JSON object"}}`);
+        return;
+    }
+    if (auto given = envelope.get("id")) {
+        if (given.kind == JsonValue.Kind.number)
+            id = numberJson(cast(long) given.number);
+        else if (given.kind == JsonValue.Kind.string_)
+            id = jsonQuote(given.text);
+    }
+    Request request;
+    request.method = envelope.stringOr("method", "GET");
+    request.path = envelope.stringOr("path");
+    request.body_ = envelope.stringOr("body");
+    if (auto query = envelope.get("query"))
+        if (query.kind == JsonValue.Kind.object)
+            foreach (i, key; query.keys) {
+                auto value = query.items[i];
+                request.query[key] = value.kind == JsonValue.Kind.string_ ? value.text
+                    : value.kind == JsonValue.Kind.number ? numberJson(cast(long) value.number) : "";
+            }
+    request.query["token"] = debugger.token;
+    if (request.path.length == 0 || request.path[0] != '/') {
+        sendFrame(socket, `{"id":` ~ id ~ `,"status":400,"body":{"error":"path must start with /"}}`);
+        return;
+    }
+    webSocketLock.lock();
+    int virtual = nextVirtual++;
+    webSocketReplies[virtual] = WebSocketReply(socket, id);
+    webSocketLock.unlock();
+    queueRequest(virtual, request);
+}
+
+/// Accepts the upgrade: the handshake reply, then a reader thread for the connection.
+private void webSocketUpgrade(int connection, string key) {
+    import std.digest.sha : sha1Of;
+    import std.base64 : Base64;
+
+    auto digest = sha1Of(key ~ "258EAFA5-E914-47DA-95CA-C5AB0DC85B11");
+    auto accept = Base64.encode(digest[]);
+    string reply = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+        ~ "Sec-WebSocket-Accept: " ~ accept.idup ~ "\r\n\r\n";
+    if (!sendAll(connection, reply)) {
+        close(connection);
+        return;
+    }
+    webSocketLock.lock();
+    webSocketClients ~= connection;
+    webSocketLock.unlock();
+    sendFrame(connection, `{"event":"hello","protocol":1}`);
+    auto thread = new Thread({ webSocketReader(connection); });
+    thread.isDaemon = true;
+    thread.start();
+}
+
 private void respond(int socket, int status, string contentType, const(char)[] content) {
+    if (socket >= virtualBase) {
+        webSocketRespond(socket, status, contentType, content);
+        return;
+    }
     char[256] header;
     auto n = snprintf(header.ptr, header.length,
             "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %zu\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
@@ -556,6 +790,21 @@ private bool readRequest(int socket, out Request request) {
         auto end = indexOf(headers, "\r\n");
         auto line = end < 0 ? headers : headers[0 .. end];
         headers = end < 0 ? null : headers[end + 2 .. $];
+        enum keyName = "sec-websocket-key:";
+        if (line.length > keyName.length) {
+            bool isKey = true;
+            foreach (i, char c; keyName)
+                if ((line[i] | 0x20) != c && line[i] != c) {
+                    isKey = false;
+                    break;
+                }
+            if (isKey) {
+                auto value = line[keyName.length .. $];
+                while (value.length && value[0] == ' ')
+                    value = value[1 .. $];
+                request.wsKey = value.idup;
+            }
+        }
         enum name = "content-length:";
         if (line.length > name.length) {
             bool matches = true;
@@ -1135,6 +1384,21 @@ private bool answeredAsynchronously(ref Request request) {
     return true;
 }
 
+/// Hands a parsed request to the interpreter thread, or answers a Pause/Stop right here.
+private void queueRequest(int connection, Request request) {
+    bool answered;
+    pendingLock.lock();
+    answered = answeredAsynchronously(request);
+    if (!answered)
+        pendingConnections ~= PendingConnection(connection, request);
+    pendingLock.unlock();
+    if (answered) {
+        respond(connection, 200, "application/json", `{"ok":true,"running":true}`);
+        closeConnection(connection);
+    } else
+        pendingReady.notify();
+}
+
 private void acceptLoop() {
     while (true) {
         int connection = accept(debugger.listener, null, null);
@@ -1145,21 +1409,21 @@ private void acceptLoop() {
             close(connection);
             continue;
         }
-        bool answered;
-        pendingLock.lock();
-        answered = answeredAsynchronously(request);
-        if (!answered)
-            pendingConnections ~= PendingConnection(connection, request);
-        pendingLock.unlock();
-        if (answered) {
-            respond(connection, 200, "application/json", `{"ok":true,"running":true}`);
-            close(connection);
-        } else
-            pendingReady.notify();
+        if (request.wsKey.length && request.path == "/ws") {
+            auto given = "token" in request.query;
+            if (given is null || *given != debugger.token) {
+                respond(connection, 403, "text/plain", "missing or wrong token\n");
+                close(connection);
+            } else
+                webSocketUpgrade(connection, request.wsKey);
+            continue;
+        }
+        queueRequest(connection, request);
     }
 }
 
 private void startAcceptThread() {
+    webSocketLock = new Mutex;
     pendingLock = new Mutex;
     pendingReady = new Condition(pendingLock);
     auto thread = new Thread(&acceptLoop);
@@ -1297,7 +1561,8 @@ private LuaValue[] debuggerHook(LuaState state, long line) {
     debugger.stoppedDepth = depth;
     // The waiting connection learns that execution stopped; whoever resumes gets the result.
     respond(debugger.resultSocket, 200, "application/json", stoppedJson());
-    close(debugger.resultSocket);
+    closeConnection(debugger.resultSocket);
+    webSocketBroadcast("stopped", stoppedJson());
     debugger.resultSocket = -1;
     while (debugger.stopped) {
         int connection;
@@ -1305,7 +1570,7 @@ private LuaValue[] debuggerHook(LuaState state, long line) {
         nextConnection(connection, request);
         auto disposition = handle(state, connection, request, debugger.token);
         if (disposition == Disposition.done)
-            close(connection);
+            closeConnection(connection);
         requestFinished();
     }
     syncHook(state);
@@ -1610,7 +1875,7 @@ private Disposition finishEvaluation(LuaState state, int socket, scope Evaluatio
     respond(target, 200, "application/json", evaluationJson(result));
     if (target == socket)
         return Disposition.done;
-    close(target);
+    closeConnection(target);
     return Disposition.closed;
 }
 
@@ -1638,7 +1903,7 @@ private Disposition finishStory(LuaState state, int socket, string name, LuaValu
     respond(target, 200, "application/json", result);
     if (target == socket)
         return Disposition.done;
-    close(target);
+    closeConnection(target);
     return Disposition.closed;
 }
 
@@ -2220,7 +2485,7 @@ int serveWorkbench(LuaState state, string directory, ushort port) {
         nextConnection(connection, request);
         auto disposition = handle(state, connection, request, token);
         if (disposition == Disposition.done)
-            close(connection);
+            closeConnection(connection);
         requestFinished();
     }
 }
