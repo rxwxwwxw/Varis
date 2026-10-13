@@ -1511,6 +1511,11 @@ struct VM {
             }
             if (curPC() > 0 && curPC() <= codeLen)
                 e.locateLua(proto.sourceName, proto.code[curPC() - 1].line);
+            if (state.errorStopHook !is null && !e.stopOffered) {
+                // A debugger may stop here, with this frame and its callers still alive.
+                e.stopOffered = true;
+                state.errorStopHook(state, e);
+            }
             state.dispatchError(e);
             auto fiber = currentLuaFiber();
             if (fiber !is null && !fiber.closing && !fiber.protectedDepth &&
@@ -2160,6 +2165,11 @@ struct VM {
                     }
                     if (cast(int)(ip - codeBase) > 0 && cast(int)(ip - codeBase) <= code.length)
                         e.locateLua(proto.sourceName, proto.code[cast(int)(ip - codeBase) - 1].line);
+                    if (state.errorStopHook !is null && !e.stopOffered) {
+                        // A debugger may stop here, with this frame and its callers still alive.
+                        e.stopOffered = true;
+                        state.errorStopHook(state, e);
+                    }
                     state.dispatchError(e);
                     auto fiber = currentLuaFiber();
                     bool suspended = false;

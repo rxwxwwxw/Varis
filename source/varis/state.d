@@ -226,6 +226,10 @@ class LuaState {
     Object logicCache; // owned by varis.logic.evaluate (derived relations per closure)
     // Per-Fiber so a suspended ordinary coroutine cannot leak its call context.
     Object mainCallWorld;
+    /// Called once per raised Lua error, in the innermost Lua frame, while the frame and its
+    /// callers are still alive (before unwinding). Tools use it to stop on errors; it must not
+    /// change execution state other than by running to completion.
+    void delegate(LuaState, LuaException) errorStopHook;
 
     /// The lexical world of the call in progress, as an opaque reference: the core carries it
     /// from call sites to natives without knowing its type (varis.logic.world gives it one).

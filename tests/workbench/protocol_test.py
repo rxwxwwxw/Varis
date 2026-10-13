@@ -512,6 +512,23 @@ end}
         assert call("/api/stack")["stopped"] is False
 
 
+        # Stop on error: an uncaught error stops with its frames alive; a pcall'd one does not.
+        assert call("/api/breakonerror", body="1") == {"breakOnError": True}
+        boom = "local function f(x)\n  local y = x * 2\n  error('boom ' .. y)\nend\nf(21)\n"
+        stop = call("/api/eval", body=boom)
+        assert stop["stopped"] is True and stop["reason"] == "error" and "boom 42" in stop["message"], stop
+        assert stop["line"] == 3 and stop["file"] == "command", stop
+        locals_at_error = {v["name"]: v["value"] for v in call("/api/locals")["locals"]}
+        assert locals_at_error == {"x": "21", "y": "42"}, locals_at_error
+        assert call("/api/stack")["frames"][0]["line"] == 3
+        failed = call("/api/continue", body="")
+        assert not failed["ok"] and "boom 42" in failed["error"], failed
+        caught = call("/api/eval", body="print(pcall(function() error('quiet') end))")
+        assert caught["ok"] and "quiet" in caught["output"], caught
+        assert call("/api/breakonerror", body="0") == {"breakOnError": False}
+        plain = call("/api/eval", body="error('plain')")
+        assert not plain["ok"] and "plain" in plain["error"], plain
+
         # WebSocket transport: same handlers as HTTP, pushed events, token required.
         try:
             WebSocketClient(base, "wrong")

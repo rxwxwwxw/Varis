@@ -39,6 +39,8 @@ class LuaException : Exception {
     string errorSource;
     bool needsLocation;
     Object processedBy;
+    /// An attached debugger has already been offered a stop at this error (see `errorStopHook`).
+    bool stopOffered;
     /// Operand (1 or 2) whose variable name should be appended to the message by the executing frame.
     int culprit;
     /// Innermost native function that raised this error (kept in the traceback of a failed coroutine).

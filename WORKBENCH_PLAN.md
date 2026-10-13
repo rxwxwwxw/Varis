@@ -72,8 +72,10 @@ Language selection is retained on reload without a new presentation or random dr
 - **43 UI delivered:** CodeMirror, inline diagnostics and breakpoint gutters, resizable
   panels, persistent command history and browser coverage. The fix → Run → reconstructed
   presentation workflow is covered by the browser test.
-- **44:** error stops, which need the error-status prerequisite (L1), and the separate
-  fast/instrumented executor (S1), each in its planned stage. Asynchronous Pause and Stop,
+- **44:** error stops are done (October 13, 2026): `POST /api/breakonerror` (body `1`/`0`) makes
+  an uncaught error stop where it was raised, with frames, locals and frame expressions available
+  and `reason`/`message` in the stop; errors that a `pcall`/`xpcall` or a coroutine will catch do
+  not stop. The separate fast/instrumented executor (S1) is still open. Asynchronous Pause and Stop,
   explanations of a selected choice and bounded analysis in the UI are done.
 - **Scene-beat playtesting** is connected to the scene host: the story panel plays scenes
   (`/api/play`, `/api/advance`), shows beats, stage and locals, and Reload/Rewind replay them.

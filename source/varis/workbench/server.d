@@ -1466,6 +1466,9 @@ private struct Debugger {
     int listener = -1;
     string token;
     LuaNativeFunction hook;
+    bool breakOnError; // stop at an uncaught error, before the stack unwinds
+    string stoppedReason; // "" for a breakpoint or step, "error" for an error stop
+    string stoppedMessage;
 }
 
 private __gshared Debugger debugger;
@@ -1500,6 +1503,7 @@ private void syncHook(LuaState state) {
 
     auto thread = state.mainThread;
     debugger.thread = thread; // a reload replaces the state, and with it the thread
+    state.errorStopHook = debugger.breakOnError ? (LuaState s, LuaException e) { errorStop(s, e); } : null;
     bool wanted = debugger.breakpoints.length != 0 || debugger.step != StepMode.run
         || debugger.pauseRequested;
     if (wanted) {
@@ -1516,7 +1520,59 @@ private void syncHook(LuaState state) {
 private string stoppedJson() {
     char[32] number;
     auto n = snprintf(number.ptr, number.length, "%lld", debugger.stoppedLine);
-    return `{"stopped":true,"file":` ~ jsonQuote(debugger.stoppedFile) ~ `,"line":` ~ number[0 .. n].idup ~ `}`;
+    string json = `{"stopped":true,"file":` ~ jsonQuote(debugger.stoppedFile) ~ `,"line":` ~ number[0 .. n].idup;
+    if (debugger.stoppedReason.length)
+        json ~= `,"reason":` ~ jsonQuote(debugger.stoppedReason) ~ `,"message":` ~ jsonQuote(debugger.stoppedMessage);
+    return json ~ `}`;
+}
+
+/// Reports a stop to the connection waiting for the evaluation, then serves requests with every
+/// Lua frame still alive until one of them resumes execution.
+private void stopAndServe(LuaState state, string file, long line, size_t depth, string reason, string message) {
+    debugger.stopped = true;
+    debugger.step = StepMode.run;
+    debugger.stoppedFile = file;
+    debugger.stoppedLine = line;
+    debugger.stoppedDepth = depth;
+    debugger.stoppedReason = reason;
+    debugger.stoppedMessage = message;
+    // The waiting connection learns that execution stopped; whoever resumes gets the result.
+    respond(debugger.resultSocket, 200, "application/json", stoppedJson());
+    closeConnection(debugger.resultSocket);
+    webSocketBroadcast("stopped", stoppedJson());
+    debugger.resultSocket = -1;
+    while (debugger.stopped) {
+        int connection;
+        Request request;
+        nextConnection(connection, request);
+        auto disposition = handle(state, connection, request, debugger.token);
+        if (disposition == Disposition.done)
+            closeConnection(connection);
+        requestFinished();
+    }
+    debugger.stoppedReason = "";
+    debugger.stoppedMessage = "";
+    syncHook(state);
+}
+
+/// An uncaught error in author code (`state.errorStopHook`): stop where it was raised. Errors a
+/// `pcall` or a coroutine boundary will catch, and errors in the workbench's own prelude, do not stop.
+private void errorStop(LuaState state, LuaException error) {
+    import varis.fiber : currentLuaFiber;
+
+    if (!debugger.breakOnError || debugger.stopped || debugger.resultSocket < 0)
+        return;
+    auto thread = state.currentThread();
+    if (thread is null || thread.errorBoundaries.length != 0 || currentLuaFiber() !is null)
+        return;
+    auto top = innermostLuaFrame(state);
+    if (top < 0)
+        return;
+    auto frames = state.callStack();
+    auto file = normalizeSource((cast(LuaClosure) frames[top].fn).proto.sourceName);
+    if (file == "workbench")
+        return;
+    stopAndServe(state, file, frames[top].line(), cast(size_t) top, "error", errorText(error.errorObject));
 }
 
 /// The line hook: decides whether to stop here and, if so, serves requests until resumed.
@@ -1554,26 +1610,7 @@ private LuaValue[] debuggerHook(LuaState state, long line) {
             }
     if (!stop || debugger.resultSocket < 0)
         return null;
-    debugger.stopped = true;
-    debugger.step = StepMode.run;
-    debugger.stoppedFile = file;
-    debugger.stoppedLine = line;
-    debugger.stoppedDepth = depth;
-    // The waiting connection learns that execution stopped; whoever resumes gets the result.
-    respond(debugger.resultSocket, 200, "application/json", stoppedJson());
-    closeConnection(debugger.resultSocket);
-    webSocketBroadcast("stopped", stoppedJson());
-    debugger.resultSocket = -1;
-    while (debugger.stopped) {
-        int connection;
-        Request request;
-        nextConnection(connection, request);
-        auto disposition = handle(state, connection, request, debugger.token);
-        if (disposition == Disposition.done)
-            closeConnection(connection);
-        requestFinished();
-    }
-    syncHook(state);
+    stopAndServe(state, file, line, depth, "", "");
     return null;
 }
 
@@ -2039,6 +2076,13 @@ private Disposition handle(ref LuaState state, int socket, ref Request request, 
         return Disposition.done;
     case "/api/eval":
         return finishEvaluation(state, socket, () => evaluate(state, request.body_, "=command"));
+    case "/api/breakonerror":
+        if (request.method == "POST") {
+            debugger.breakOnError = request.body_.length && request.body_[0] == '1';
+            syncHook(state);
+        }
+        respond(socket, 200, "application/json", `{"breakOnError":` ~ (debugger.breakOnError ? "true" : "false") ~ `}`);
+        return Disposition.done;
     case "/api/breakpoints": {
             // Body: one "file:line" per line; replaces the whole set.
             if (request.method == "POST") {
