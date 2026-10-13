@@ -13,7 +13,6 @@ module varis.table;
 import varis.types;
 import varis.exception;
 import std.math : isNaN;
-import std.sumtype;
 
 /// Emulates an allocation failure: the array part of a table never grows past this many slots
 /// (C Lua fails the allocation when the machine runs out of memory; a bounded limit keeps the

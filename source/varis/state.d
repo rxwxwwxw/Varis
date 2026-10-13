@@ -14,7 +14,6 @@ import varis.types;
 import varis.opcode : Instruction;
 import varis.table;
 import varis.exception;
-import std.sumtype;
 import core.thread : Fiber;
 
 import varis.vm : LuaClosure;

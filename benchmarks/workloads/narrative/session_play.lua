@@ -12,7 +12,6 @@ for _ = 1, 60 do
     end
     if not token then break end
     s:choose(token)
-    G.sync_periods(s)
     turns = turns + 1
 end
 assert(turns > 0)

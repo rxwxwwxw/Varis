@@ -10,7 +10,6 @@ for _ = 1, 30 do
     end
     if not token then break end
     s:choose(token)
-    G.sync_periods(s)
 end
 local saved = s:save()
 local restored = G.load(saved)

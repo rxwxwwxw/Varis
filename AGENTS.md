@@ -194,7 +194,6 @@ How the core reaches the layers above it without importing them (the seam, stage
 
 - `LuaValue` is a 16-byte `struct` holding a `LuaPayload`: one 8-byte word (integer, float, boolean or pointer), a 32-bit length and a one-byte tag (`TagNil` … `TagThread`). The value kinds are Nil, bool, long, double, string, Symbol, LuaTable, LuaFunction, LuaUserData, LightUserData and LuaThread. Nil is all zero bytes (`LuaValue.init`; registers are cleared with `memset`).
 - **Strings stay D slices**: a string value stores the slice's pointer in the word and its length in the 32-bit field, so creating a string value allocates nothing and `asString` returns the same slice. Strings (and symbol names) are therefore limited to 4 GiB.
-- **`match` still works** (`value.match!(…)`): it converts the value to a `std.sumtype` and dispatches. That is convenient and slow; runtime code uses the accessors (`isInteger`, `asTable`, …) and the tags.
 - **Reference objects are D GC classes**: `LuaTable`, `LuaFunction`, `LuaUserData`, and `LuaThread` are managed by D's garbage collector.
 - **Custom Equality & Hashing**:
   - `opEquals`: Follows Lua rules: integers and floats representing the same value are mathematically equal (`1L == 1.0`). `NaN == NaN` is false. Strings compare by value. Reference types compare by reference (`is`).
@@ -202,7 +201,8 @@ How the core reaches the layers above it without importing them (the seam, stage
 - **Matching Precedence**: In D, `long` implicitly converts to `double`. When writing handlers over the value's type, **always handle `long` before `double`** to avoid unwanted numeric conversion.
 - **Symbols**: Use the inline symbol payload backed by a state-owned intern pool, shared across worlds. Audit exhaustive visitors/type switches. Keep logic variables in declarative AST/IR and binding environments, not in general `LuaValue`.
 - **Numeric prerequisite**: Audit mixed integer/float equality and `floatToInteger` at large integer boundaries before using them for tuple sets. Converting both operands to `double` can lose precision above 2^53 and break equality/hash consistency.
-- **Still planned (rest of stage L2):** convert the remaining `match!` uses to tag switches so `std.sumtype` can be dropped, and decide on measurement whether strings should become objects with a cached hash. Compile-time string constants are interned (`VM.prepareForExecution`); run-time strings are not, and must not be (an intern pool on D's collector would keep every string alive).
+- **`match` is a tag switch** (`types.d`): the first handler that accepts the value's kind runs, `std.sumtype` is no longer imported anywhere. Still convenient and slower than the accessors; runtime code uses the accessors.
+- **Still planned (rest of stage L2):** decide on measurement whether strings should become objects with a cached hash. Compile-time string constants are interned (`VM.prepareForExecution`); run-time strings are not, and must not be (an intern pool on D's collector would keep every string alive).
 
 ### 4.3 Memory management
 
@@ -365,7 +365,7 @@ Use this table to avoid coding against a design that has not landed.
 | Aspect | Today (code against this) | Target | Changes in |
 | --- | --- | --- | --- |
 | Errors | `LuaException` objects. Between Lua frames they are **returned** (`TailRequest.returnErrors`), and `error` raises without a throw; natives and out-of-line helpers still `throw`, and `pcall` still catches those | Status returns everywhere; error object on the thread | L1 (first step done) |
-| Value | 16-byte tagged payload; strings are slices packed as pointer + 32-bit length; `match!` converts to `std.sumtype` | Same, with `std.sumtype` gone; cached string hashes if measurement supports it | L2 (main step done) |
+| Value | 16-byte tagged payload; strings are slices packed as pointer + 32-bit length; `match!` is a tag switch (no `std.sumtype`) | Same; cached string hashes if measurement supports it | L2 (done except string objects) |
 | Instructions executed | `execCode` = canonical 32-byte instructions plus a final `Return` | Compact specialized encoding derived from `code` | L3 |
 | Executors | `executeFrame` and `executeDeepFrame`; 40 of 43 handlers shared through `sharedOpcodeCases*` mixins, calls and returns still per executor | One executor with frames as records; fast and instrumented variants | S1 (first step done) |
 | Core and world model | No core module imports `logic` or `narrative` (enforced by `make check-sources`); the world model plugs in through hooks (`narrative/vmops.d`). The executor still carries an opaque call world on every Lua call | Same, with the call world resolved only for natives that ask | S1 (boundary done) |

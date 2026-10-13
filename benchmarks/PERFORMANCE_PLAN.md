@@ -437,8 +437,11 @@ field beside the tag (`LuaPayload` in `types.d`), so no string code changed and 
 value still allocates nothing; strings are limited to 4 GiB. `match!` keeps working by converting
 to `std.sumtype` on demand. Measured against C Lua: `core.array_access` 1.83× → 1.51×,
 `core.sieve` 1.35× → 1.16×, `core.table_sort` 0.95× → 0.76×, `programs.bintrees` 1.84× → 1.59×,
-`core.fib` 2.45× → 2.28×; nothing slower. Remaining: convert the 281 `match!` uses and drop the
-`std.sumtype` import; string objects with a cached hash only if a profile asks for them.
+`core.fib` 2.45× → 2.28×; nothing slower. *`std.sumtype` removed October 13, 2026:* `match` in
+`types.d` is now a switch on the tag that picks the first handler accepting the kind (same
+ordering rule as before, so `long` before `double`); no call site changed and no module imports
+`std.sumtype`. Gates and ratios unchanged. Remaining: string objects with a cached hash only if a
+profile asks for them.
 
 - Replace `std.sumtype` with a hand-written tagged union. The hot paths already bypass `SumType`
   (`getVal`, `typeIndex`, `memcpy` assignment), so this mostly converts the 281 `match!` uses to

@@ -10,7 +10,8 @@
 
 module varis.types;
 
-import std.sumtype : sumtypeMatch = match, SumType;
+import std.meta : AliasSeq;
+import std.traits : CommonType;
 import std.format : format;
 import std.conv : to;
 import std.math : isNaN, floor;
@@ -81,20 +82,9 @@ struct Symbol {
     }
 }
 
-/// Internal sumtype payload
-alias LuaSumType = SumType!(
-        Nil,
-        bool,
-        long,
-        double,
-        string,
-        Symbol,
-        LuaTable,
-        LuaFunction,
-        LuaUserData,
-        LightUserData,
-        LuaThread
-);
+/// The value kinds, in the order `match` tries them.
+private alias LuaKinds = AliasSeq!(Nil, bool, long, double, string, Symbol, LuaTable, LuaFunction,
+        LuaUserData, LightUserData, LuaThread);
 
 /// Try to convert a float to an integer if it represents an exact integer value
 bool floatToInteger(double d, out long i) @safe pure nothrow {
@@ -210,34 +200,6 @@ private LuaPayload packValue(T)(T val) @trusted pure nothrow @nogc {
             static assert(0, "not a Lua value type: " ~ T.stringof);
     }
     return st;
-}
-
-/// The value as a `std.sumtype`, for `match` (convenient, not for hot paths).
-private LuaSumType toSumType(ref const LuaPayload st) @trusted pure nothrow {
-    switch (st.tag) {
-    case TagBool:
-        return LuaSumType(st.b);
-    case TagLong:
-        return LuaSumType(st.i);
-    case TagDouble:
-        return LuaSumType(st.d);
-    case TagString:
-        return LuaSumType(getVal!(string, TagString)(st));
-    case TagSymbol:
-        return LuaSumType(getVal!(Symbol, TagSymbol)(st));
-    case TagTable:
-        return LuaSumType(getVal!(LuaTable, TagTable)(st));
-    case TagFunction:
-        return LuaSumType(getVal!(LuaFunction, TagFunction)(st));
-    case TagUserData:
-        return LuaSumType(getVal!(LuaUserData, TagUserData)(st));
-    case TagLightUserData:
-        return LuaSumType(getVal!(LightUserData, TagLightUserData)(st));
-    case TagThread:
-        return LuaSumType(getVal!(LuaThread, TagThread)(st));
-    default:
-        return LuaSumType(Nil());
-    }
 }
 
 /// The central struct representing all Lua values (16 bytes, see LuaPayload)
@@ -570,9 +532,80 @@ struct LuaValue {
     }
 }
 
-/// Free function UFCS pattern matching for LuaValue
+/// The first handler that accepts a value of type `T`, or -1.
+private template handlerIndex(T, Handlers...) {
+    private template find(size_t i) {
+        static if (i == Handlers.length)
+            enum find = -1;
+        else static if (is(typeof((T v) => Handlers[i](v))))
+            enum find = cast(int) i;
+        else
+            enum find = find!(i + 1);
+    }
+
+    enum handlerIndex = find!0;
+}
+
+private template resultOf(alias h, T) {
+    alias resultOf = typeof({ T v; return h(v); }());
+}
+
+private template matchResult(Handlers...) {
+    private template results(size_t k) {
+        static if (k == LuaKinds.length)
+            alias results = AliasSeq!();
+        else {
+            enum h = handlerIndex!(LuaKinds[k], Handlers);
+            static assert(h >= 0, "match: no handler accepts " ~ LuaKinds[k].stringof);
+            alias results = AliasSeq!(resultOf!(Handlers[h], LuaKinds[k]), results!(k + 1));
+        }
+    }
+
+    alias matchResult = CommonType!(results!0);
+}
+
+private T unpackKind(T, size_t tag)(ref const LuaPayload st) @trusted pure nothrow {
+    static if (is(T == bool))
+        return st.b;
+    else static if (is(T == long))
+        return st.i;
+    else static if (is(T == double))
+        return st.d;
+    else
+        return getVal!(T, tag)(st);
+}
+
+/// Free function UFCS pattern matching for LuaValue: the first handler that accepts the
+/// value's kind runs. A switch on the tag; convenient, not for hot paths.
 auto match(Handlers...)(auto ref LuaValue val) {
-    return sumtypeMatch!Handlers(toSumType(val.data));
+    alias R = matchResult!Handlers;
+    enum size_t[10] tags = [
+        TagBool, TagLong, TagDouble, TagString, TagSymbol, TagTable, TagFunction,
+        TagUserData, TagLightUserData, TagThread
+    ];
+    switch (val.data.tag) {
+        static foreach (i, T; AliasSeq!(bool, long, double, string, Symbol, LuaTable,
+                LuaFunction, LuaUserData, LightUserData, LuaThread)) {
+    case tags[i]: {
+                enum h = handlerIndex!(T, Handlers);
+                static if (is(R == void)) {
+                    Handlers[h](unpackKind!(T, tags[i])(val.data));
+                    return;
+                } else
+                    return cast(R) Handlers[h](unpackKind!(T, tags[i])(val.data));
+            }
+        }
+    default: {
+            enum h = handlerIndex!(Nil, Handlers);
+            static if (is(R == void))
+                Handlers[h](Nil());
+            else
+                return cast(R) Handlers[h](Nil());
+        }
+    }
+    static if (!is(R == void)) {
+        assert(0);
+    }
 }
 
 /// Helper constructor functions
