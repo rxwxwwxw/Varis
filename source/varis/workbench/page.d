@@ -97,7 +97,7 @@ immutable string workbenchPage = q"HTML
     <div class="body" id="workspaceBody"></div></section>
   <section id="editor"><header>Editor <select id="files"></select><span id="dirty" class="muted"></span>
       <span class="spacer"></span><input id="breakLine" class="mono" size="4" placeholder="line" title="Line number for a breakpoint in this file">
-      <button id="toggleBreak">Break</button><button id="definition" title="Go to the definition of the name under the cursor (F12)">Definition</button><button id="hover">Hover</button><button id="rename">Rename</button><button id="save">Save all</button><button id="run">Run</button></header>
+      <button id="toggleBreak">Break</button><label class="muted" title="Stop where an uncaught error is raised, with the stack and locals available"><input type="checkbox" id="breakOnError"> stop on errors</label><button id="definition" title="Go to the definition of the name under the cursor (F12)">Definition</button><button id="hover">Hover</button><button id="rename">Rename</button><button id="save">Save all</button><button id="run">Run</button></header>
     <div id="debugBar" class="mono" hidden><span id="where"></span> <button id="dbgContinue">Continue</button>
       <button id="dbgOver">Step over</button><button id="dbgInto">Step into</button><button id="dbgOut">Step out</button></div>
     <div id="breaks" class="muted mono"></div>
@@ -186,8 +186,9 @@ async function submit(text) {
 async function showOutcome(result) {
   if (result.stopped) {
     $("debugBar").hidden = false;
-    $("where").textContent = "stopped at " + result.file + ":" + result.line;
-    logLine("stopped at " + result.file + ":" + result.line + "\n", "err");
+    const why = result.reason === "error" ? " (error: " + result.message + ")" : "";
+    $("where").textContent = "stopped at " + result.file + ":" + result.line + why;
+    logLine("stopped at " + result.file + ":" + result.line + why + "\n", "err");
     if (result.file !== current && [...$("files").options].some(o => o.value === result.file)) await openFile(result.file);
     if (result.file === current) { selectLine(result.line); source.stoppedLine(result.line); }
     showLocals();
@@ -251,6 +252,10 @@ function movedBreakpoints(lines) {
   if (next.join("\n") !== breakpoints.join("\n")) commitBreakpoints(next);
 }
 $("toggleBreak").onclick = () => toggleBreakpoint(parseInt($("breakLine").value, 10));
+$("breakOnError").onchange = async () => {
+  const r = await api("/api/breakonerror", {}, $("breakOnError").checked ? "1" : "0");
+  $("breakOnError").checked = !!r.breakOnError;
+};
 function toggleBreakpoint(line) {
   if (!current || !(line > 0)) return;
   const key = current + ":" + line;
