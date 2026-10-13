@@ -588,6 +588,23 @@ Read this before starting any of the stages below; several are no longer worth d
 | L3, compact execution encoding | **Open, low expected value.** | Loops are at 1.2–1.5× after the 16-byte value; halving the instruction size helps cache density but not the dependency chain of dispatch. Measure on one handler group before converting all of them. |
 | X1–X4 | **Open** (arithmetic: October 13, 2026, mixed integer/float operands and `/` have inline paths in the shared handlers: `programs.mandel` 1.92× → 1.80×; the loops themselves are at the dispatch floor and need L3; string natives: October 13, 2026, `string.find` of a plain pattern, `string.char` and `string.rep` have allocation-light fast entry points and `gsub` reuses one match state and copies runs: `core.string_ops` 1.76× → 1.40×, gate 2.0 → 1.7). | Inline caches for method dispatch (`core.method_dispatch` 1.7×) and string operations (`core.string_ops` 2.1×) are now the largest remaining gaps that are not calls. |
 
+**L4 reopened, measured October 13, 2026 (owner chose "reopen L4 / lazy call records").** Upper
+bounds, measurement only, on `core.fib` (2.31× baseline), each applied to `executeFrame` with
+nothing else changed:
+
+| Experiment | `core.fib` |
+| --- | ---: |
+| Register slice and clear without the 8 spare slots | 2.33× (no gain) |
+| No call record, no transaction exit guard, no upvalue-close guard (all three removed) | 2.06× |
+
+Everything lazy call records and a transaction-free frame could remove is therefore worth about
+11 %, which is not parity, and removing the call record is not even safe (tracebacks,
+`debug.getinfo`, hooks and the weak-table emulation read it). The rest is per-instruction cost
+(`numeric_loop` is 1.44× with no calls at all), so the route to 1.0× on calls runs through L3
+(compact `execCode`, 8-byte instructions, fused compare-and-jump) *and* a lean frame together.
+Neither was started: L3 is a rewrite of every handler group and has to be measured on one group
+first (this section, L3), and the lean frame is worth building only on top of it.
+
 ## 6. Deliberately not planned
 
 - **A second collector, reference counting, or arenas that hide references from D's collector**
