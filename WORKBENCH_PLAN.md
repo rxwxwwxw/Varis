@@ -42,7 +42,7 @@ a token and serves one page with the layout of §3.
 | Story | Works after manifest-backed Start or `story(session)` in the command window: presents on request, choices are buttons. It presents only when asked, because presenting appends to the session's replay log. |
 | Story-level debugging | Partly: after a choice the command window lists the facts the turn added and removed, per relation (computed from the immutable fact tables before and after). "Why?" explains any storylet through `narrative.explain`: eligible or not, each condition's outcome and candidate counts, each instance's exclusions. Manifest-backed Start accepts a seed; Reload rebuilds and replays panel commands by stable instance keys; Rewind reconstructs an earlier turn. History lists the commands. Failed reconstruction retains the live playtest. |
 | Editor | Vendored CodeMirror 6 with syntax highlighting, inline diagnostics, clickable breakpoint gutters that move with edits, retained drafts and undo across file switches, Save all, and Run. Source completion, F12/Definition, Hover and Rename use the same frontend services as LSP, with unsaved drafts overlaid across files. Rename previews all edits, applies to drafts and writes only on Save all. Command completion still reads live state. In a manifest-backed playtest, Run saves drafts and rebuilds/replays the project; otherwise it runs the open file in the live state. |
-| Source-level debugging | File/line breakpoints and step over/into/out work for commands, Run and story-panel present/choose. Clicking a frame selects its locals. The paused command prompt reads expressions in that frame, including upvalues and raw table fields; it rejects calls, queries, assignments and unsupported operators without invoking metamethods. Effect breakpoints preserve tentative transaction state until continuation. **Pause** stops a running command or story operation at its next line with frames alive; **Stop** aborts it with "interrupted!" (also from a stopped program). Stop-on-error remains planned. |
+| Source-level debugging | File/line breakpoints and step over/into/out work for commands, Run and story-panel present/choose. Clicking a frame selects its locals. The paused command prompt reads expressions in that frame, including upvalues and raw table fields; it rejects calls, queries, assignments and unsupported operators without invoking metamethods. Effect breakpoints preserve tentative transaction state until continuation. **Pause** stops a running command or story operation at its next line with frames alive; **Stop** aborts it with "interrupted!" (also from a stopped program). **Stop on errors** stops an uncaught error where it was raised. All of this runs on the interpreter's instrumented loop; with no breakpoint, step, pause or hook pending, programs run on the fast loop, which contains no debugging code (`/api/breakpoints` reports `"instrumented"`). |
 | Problems | Project-wide static/compile diagnostics include unsaved drafts; clicking a diagnostic opens its file and line. Load and bounded analysis passes remain CLI operations. |
 | Localization | Language selector re-renders the retained presentation; translation panel lists messages, previews plural/select branches and saves drafts. |
 
@@ -74,7 +74,11 @@ Language selection is retained on reload without a new presentation or random dr
 - **43 UI delivered:** CodeMirror, inline diagnostics and breakpoint gutters, resizable
   panels, persistent command history and browser coverage. The fix → Run → reconstructed
   presentation workflow is covered by the browser test.
-- **44:** error stops are done (October 13, 2026): `POST /api/breakonerror` (body `1`/`0`) makes
+- **44 done (October 13, 2026).** Every feature of §5.1 and §5.2 exists, the debugger runs on
+  the instrumented loop of stage S1, and the protocol test checks that the fast loop is back
+  after breakpoints, steps, pauses, stops, error stops, a program's own hook and an analysis.
+  Not built, and not part of the milestone: a per-function breakpoint table (a line hook is
+  used), and changing a local from the paused prompt (§5.2 "Evaluate" is read-only). Error stops: `POST /api/breakonerror` (body `1`/`0`) makes
   an uncaught error stop where it was raised, with frames, locals and frame expressions available
   and `reason`/`message` in the stop; errors that a `pcall`/`xpcall` or a coroutine will catch do
   not stop. The editor header has a "stop on errors" switch and the stop line names the error.
@@ -219,8 +223,8 @@ The target implementation: stage S1 of [benchmarks/PERFORMANCE_PLAN.md](benchmar
 generates two executors from one handler source. The **fast** executor contains no debugging
 code. The **instrumented** executor checks, per instruction, a per-function table of breakpoint
 positions and the stepping state. A function runs on the instrumented executor when a debugger is
-attached. The current debugger uses a line hook on the instrumented loop (a per-function
-breakpoint table is not built); status-returning errors are not complete. Once errors are values (ROADMAP D7), "stop where the error happened" is a status
+attached. The debugger as built (milestone 44, done) uses a line hook on the instrumented loop; a
+per-function breakpoint table is not built, and status-returning errors are not complete. Once errors are values (ROADMAP D7), "stop where the error happened" is a status
 check, not an exception filter.
 
 Stopping inside an effect means stopping inside an open transaction. While stopped, the workspace

@@ -2118,7 +2118,9 @@ private Disposition handle(ref LuaState state, int socket, ref Request request, 
                 auto n = snprintf(number.ptr, number.length, "%lld", breakpoint.line);
                 json ~= (i ? "," : "") ~ `{"file":` ~ jsonQuote(breakpoint.file) ~ `,"line":` ~ number[0 .. n].idup ~ `}`;
             }
-            respond(socket, 200, "application/json", json ~ "]}");
+            // `instrumented`: whether programs currently run on the interpreter's instrumented loop
+            // (a breakpoint, a step, a pause, a hook or an analysis needs it). False means full speed.
+            respond(socket, 200, "application/json", json ~ `],"instrumented":` ~ (vmSlowMode ? "true" : "false") ~ "}");
             return Disposition.done;
         }
     case "/api/inspect": {

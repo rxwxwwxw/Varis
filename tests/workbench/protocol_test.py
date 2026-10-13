@@ -245,6 +245,8 @@ def main():
         assert all(i["choices"][0]["id"] == ":go" and i["choices"][0]["eligible"] for i in walk_why["instances"]), walk_why
         before_tools = call("/api/eval", body="s:save()")["output"]
         bounded = call("/api/analyze", {"depth": 0, "max_nodes": 1}, body="")
+        # A finished analysis leaves the interpreter on its fast loop.
+        assert call("/api/breakpoints")["instrumented"] is False
         assert bounded["scope"] == "seeded_presentation_tree_without_external_inputs", bounded
         assert bounded["nodes"] == 1 and bounded["complete"] is False and bounded["frontier"], bounded
         assert bounded["frontier"][0]["reason"] == "depth_limit", bounded
@@ -275,10 +277,19 @@ def main():
         assert step == {"stopped": True, "file": "command", "line": 4}, step
         done = call("/api/continue", body="")
         assert done["ok"] and done["output"] == "3\n", done
-        # Without breakpoints the same program runs straight through.
-        assert call("/api/breakpoints", body="")["breakpoints"] == []
+        # Without breakpoints the same program runs straight through, and on the interpreter's
+        # fast loop again: the instrumented loop is used only while something needs it.
+        cleared = call("/api/breakpoints", body="")
+        assert cleared["breakpoints"] == [] and cleared["instrumented"] is False, cleared
         assert call("/api/eval", body=program)["output"] == "3\n"
         assert call("/api/continue", body="")["error"] == "not stopped"
+        assert call("/api/breakpoints", body="command:3")["instrumented"] is True
+        assert call("/api/breakpoints", body="")["instrumented"] is False
+        # A program's own hook keeps it on until the program removes it.
+        assert call("/api/eval", body="debug.sethook(function() end, 'l')")["ok"]
+        assert call("/api/breakpoints")["instrumented"] is True
+        assert call("/api/eval", body="debug.sethook()")["ok"]
+        assert call("/api/breakpoints")["instrumented"] is False
 
         # Select outer frames; reads resolve locals before captured values and globals.
         nested = ('local outside = 17\nlocal function child()\n'
@@ -604,6 +615,9 @@ end}
         assert box.get("stopped") is True, box
         resumed = call("/api/continue", body="")
         assert resumed["ok"] and resumed["output"] == "done\n", resumed
+        # After pauses, stops, steps and error stops, with no breakpoint left, programs run on
+        # the fast loop again.
+        assert call("/api/breakpoints", body="")["instrumented"] is False
     finally:
         server.kill()
         server.wait()
