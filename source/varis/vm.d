@@ -595,6 +595,8 @@ private enum string sharedOpcodeCases1 = q{
                         }
                         if (outcome != (instr.c != 0))
                             ip++;
+                        else if (!attention && ip.op == OpCode.Jmp)
+                            ip += ip.sBx + 1; // fused compare-and-jump: no dispatch of the Jmp
                     }
                     break;
 
