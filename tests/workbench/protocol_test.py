@@ -36,6 +36,7 @@ class WebSocketClient:
             if not chunk:
                 break
             data += chunk
+        self.events = []
         self.status = data.split(b"\r\n")[0].decode()
         import hashlib
         accept = base64.b64encode(hashlib.sha1((key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode()).digest()).decode()
@@ -93,6 +94,8 @@ class WebSocketClient:
             reply = self.receive()
             if isinstance(reply, dict) and reply.get("id") == id:
                 return reply
+            if isinstance(reply, dict) and "event" in reply:
+                self.events.append(reply)
 
 
 def main():
@@ -543,6 +546,30 @@ end}
         assert reply["status"] == 200 and reply["body"] == {"ok": True, "incomplete": False, "output": "3\n", "error": ""}, reply
         assert ws.request("a", "/api/workspace")["body"]["variables"] is not None
         assert ws.request(3, "/nope")["status"] in (200, 404)
+        # Pushed events: output and workspaceChanged after a command; fileChanged and
+        # publishDiagnostics after a save.
+        ws.events.clear()
+        ws.request(4, "/api/eval", body="print('pushed')")
+        seen = {e["event"]: e.get("data") for e in ws.events}
+        for _ in range(4):
+            if "workspaceChanged" in seen:
+                break
+            event = ws.receive()
+            seen[event["event"]] = event.get("data")
+        assert seen.get("output") == {"text": "pushed\n"}, seen
+        assert "workspaceChanged" in seen, seen
+        ws.events.clear()
+        ws.request(5, "/api/file", query={"path": "scratch_ws.lua"}, body="local x = = 1\n", method="POST")
+        got = {}
+        for _ in range(4):
+            if {"fileChanged", "publishDiagnostics"} <= got.keys():
+                break
+            event = ws.receive()
+            got[event["event"]] = event.get("data")
+        for event in ws.events:
+            got[event["event"]] = event.get("data")
+        assert got["fileChanged"] == {"path": "scratch_ws.lua"}, got
+        assert got["publishDiagnostics"]["path"] == "scratch_ws.lua" and got["publishDiagnostics"]["result"]["problems"], got
         ws.send(b"not json")
         assert ws.receive()["status"] == 400
         ws.send(b"\x01\x02", opcode=9)

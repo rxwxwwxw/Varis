@@ -911,7 +911,10 @@ private Evaluation evaluate(LuaState state, string text, string chunkName) {
     return result;
 }
 
+private __gshared string pendingOutput; // the last evaluation's output, pushed as an `output` event
+
 private string evaluationJson(Evaluation e) {
+    pendingOutput = e.output;
     return `{"ok":` ~ (e.ok ? "true" : "false") ~ `,"incomplete":` ~ (e.incomplete ? "true" : "false") ~ `,"output":` ~ jsonQuote(
             e.output) ~ `,"error":` ~ jsonQuote(e.error) ~ `}`;
 }
@@ -1548,6 +1551,7 @@ private void stopAndServe(LuaState state, string file, long line, size_t depth, 
         auto disposition = handle(state, connection, request, debugger.token);
         if (disposition == Disposition.done)
             closeConnection(connection);
+        announce(state, request);
         requestFinished();
     }
     debugger.stoppedReason = "";
@@ -2198,46 +2202,13 @@ private Disposition handle(ref LuaState state, int socket, ref Request request, 
             // The language services over the project (services/lang.d): every syntax error of
             // the file, and the project-wide checks, with the editor's unsaved text in place of
             // the file's. Compile-time errors the parser does not find come from the compiler.
-            import varis.services.lang : Workspace;
-            import varis.services.diagnostic : diagnosticJson, Diagnostic;
-
             auto path = parameter("path");
             string content = request.body_;
             if (request.method != "POST" && (!safePath(path) || !readFile(path, content))) {
                 respond(socket, 404, "application/json", `{"problems":[]}`);
                 return Disposition.done;
             }
-            auto workspace = new Workspace();
-            workspace.load();
-            workspace.setContent(path, content);
-            auto all = workspace.diagnostics();
-            Diagnostic[] mine;
-            if (auto list = path in all)
-                mine = *list;
-            bool hasSyntax;
-            foreach (ref d; mine)
-                if (d.code == "syntax")
-                    hasSyntax = true;
-            if (!hasSyntax) {
-                try {
-                    state.loadString(content, "@" ~ path);
-                } catch (LuaException failure) {
-                    mine ~= Diagnostic("compile", "error", path, 0, 0, 0, 0, "", errorText(failure.errorObject));
-                }
-            }
-            string problems = "[", objects = "[";
-            foreach (i, ref d; mine) {
-                string text;
-                if (d.line > 0)
-                    text = numberJson(d.line) ~ (d.column > 0 ? ":" ~ numberJson(d.column) : "") ~ " ";
-                text ~= d.severity ~ ": " ~ d.message;
-                if (d.suggestion.length)
-                    text ~= " (did you mean " ~ d.suggestion ~ "?)";
-                text ~= " [" ~ d.code ~ "]";
-                problems ~= (i ? "," : "") ~ jsonQuote(text);
-                objects ~= (i ? "," : "") ~ diagnosticJson(d);
-            }
-            respond(socket, 200, "application/json", `{"problems":` ~ problems ~ `],"diagnostics":` ~ objects ~ `]}`);
+            respond(socket, 200, "application/json", checkJson(state, path, content));
             return Disposition.done;
         }
     case "/api/start", "/api/reload", "/api/rewind": {
@@ -2474,6 +2445,73 @@ private Disposition handle(ref LuaState state, int socket, ref Request request, 
     }
 }
 
+/// The language services over the project (services/lang.d): every syntax error of the file and
+/// the project-wide checks, with `content` in place of the file's text. Compile-time errors the
+/// parser does not find come from the compiler. Used by `/api/check` and `publishDiagnostics`.
+private string checkJson(LuaState state, string path, string content) {
+    import varis.services.lang : Workspace;
+    import varis.services.diagnostic : diagnosticJson, Diagnostic;
+
+    auto workspace = new Workspace();
+    workspace.load();
+    workspace.setContent(path, content);
+    auto all = workspace.diagnostics();
+    Diagnostic[] mine;
+    if (auto list = path in all)
+        mine = *list;
+    bool hasSyntax;
+    foreach (ref d; mine)
+        if (d.code == "syntax")
+            hasSyntax = true;
+    if (!hasSyntax) {
+        try {
+            state.loadString(content, "@" ~ path);
+        } catch (LuaException failure) {
+            mine ~= Diagnostic("compile", "error", path, 0, 0, 0, 0, "", errorText(failure.errorObject));
+        }
+    }
+    string problems = "[", objects = "[";
+    foreach (i, ref d; mine) {
+        string text;
+        if (d.line > 0)
+            text = numberJson(d.line) ~ (d.column > 0 ? ":" ~ numberJson(d.column) : "") ~ " ";
+        text ~= d.severity ~ ": " ~ d.message;
+        if (d.suggestion.length)
+            text ~= " (did you mean " ~ d.suggestion ~ "?)";
+        text ~= " [" ~ d.code ~ "]";
+        problems ~= (i ? "," : "") ~ jsonQuote(text);
+        objects ~= (i ? "," : "") ~ diagnosticJson(d);
+    }
+    return `{"problems":` ~ problems ~ `],"diagnostics":` ~ objects ~ `]}`;
+}
+
+/// Pushes what a served request changed to WebSocket clients (WORKBENCH_PLAN.md section 6): the
+/// command's `output`, `workspaceChanged` after anything that can alter state, and for a saved
+/// file `fileChanged` and `publishDiagnostics`.
+private void announce(LuaState state, ref Request request) {
+    if (pendingOutput.length) {
+        webSocketBroadcast("output", `{"text":` ~ jsonQuote(pendingOutput) ~ `}`);
+        pendingOutput = null;
+    }
+    switch (request.path) {
+    case "/api/eval", "/api/run", "/api/continue", "/api/step", "/api/start", "/api/reload",
+        "/api/rewind", "/api/play", "/api/advance", "/api/choose", "/api/language":
+        webSocketBroadcast("workspaceChanged", "");
+        break;
+    case "/api/file":
+        auto given = "path" in request.query;
+        if (request.method != "POST" || given is null || !safePath(*given))
+            break;
+        auto path = *given;
+        webSocketBroadcast("fileChanged", `{"path":` ~ jsonQuote(path) ~ `}`);
+        webSocketBroadcast("publishDiagnostics", `{"path":` ~ jsonQuote(path) ~ `,"result":`
+                ~ checkJson(state, path, request.body_) ~ `}`);
+        break;
+    default:
+        break;
+    }
+}
+
 /// Serves the workbench for the project in `directory` until the process is interrupted.
 /// `port` 0 lets the system choose. Returns a process exit status.
 int serveWorkbench(LuaState state, string directory, ushort port) {
@@ -2530,6 +2568,7 @@ int serveWorkbench(LuaState state, string directory, ushort port) {
         auto disposition = handle(state, connection, request, token);
         if (disposition == Disposition.done)
             closeConnection(connection);
+        announce(state, request);
         requestFinished();
     }
 }

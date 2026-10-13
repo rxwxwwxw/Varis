@@ -68,7 +68,9 @@ Language selection is retained on reload without a new presentation or random dr
   answered `{"id", "status", "body"}`; the server pushes `{"event":"hello"}` on connect and
   `{"event":"stopped","data":...}` when the debugger stops. Ping/pong, close, fragmentation and
   64-bit lengths are handled; client frames must be masked. HTTP remains the transport the page
-  uses. Further events (`output`, `workspaceChanged`, `publishDiagnostics`) are not pushed yet.
+  uses. Events: `hello`, `stopped`, `output` (the text of a command or run), `workspaceChanged` (after
+  anything that can alter state), `fileChanged` and `publishDiagnostics` (after a save, with the
+  file's check result). Milestone 42's protocol scope is complete.
 - **43 UI delivered:** CodeMirror, inline diagnostics and breakpoint gutters, resizable
   panels, persistent command history and browser coverage. The fix → Run → reconstructed
   presentation workflow is covered by the browser test.
