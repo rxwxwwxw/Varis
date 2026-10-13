@@ -494,9 +494,9 @@ private void* pointerOf(LuaValue v) {
 void openStringLib(LuaState state) {
     auto strTable = new LuaTable();
 
-    strTable.register("pack", (LuaState L, LuaValue[] a) => packValues(a));
-    strTable.register("packsize", (LuaState L, LuaValue[] a) => packedSize(a));
-    strTable.register("unpack", (LuaState L, LuaValue[] a) => unpackValues(a));
+    strTable.register("pack", (LuaState L, LuaValue[] a) => packValues(L, a));
+    strTable.register("packsize", (LuaState L, LuaValue[] a) => packedSize(L, a));
+    strTable.register("unpack", (LuaState L, LuaValue[] a) => unpackValues(L, a));
 
     strTable.register("len", (LuaState L, LuaValue[] a) {
         string s;

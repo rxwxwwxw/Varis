@@ -11,6 +11,7 @@ module varis.lib.pack;
 
 // Port of the format and byte algorithms in Lua 5.4 lstrlib.c.
 import varis.types;
+import varis.state : LuaState, raise;
 import varis.exception : LuaException;
 import varis.vm : VM;
 import core.stdc.config : c_long;
@@ -52,6 +53,14 @@ private struct Format {
     size_t position;
     bool little = nativeLittle;
     int maxAlign = 1;
+    /// Set by the parser (and left set) when the format is invalid; the caller reports it.
+    string error;
+
+    private bool fail(string message) {
+        if (error is null)
+            error = message;
+        return false;
+    }
 
     int numeral(int fallback) {
         if (position >= text.length || text[position] < '0' || text[position] > '9')
@@ -66,14 +75,18 @@ private struct Format {
 
     int integerSize(int fallback) {
         int size = numeral(fallback);
-        if (size < 1 || size > 16)
-            throw new LuaException(format("integral size (%d) out of limits [1,16]", size));
+        if (size < 1 || size > 16) {
+            fail(format("integral size (%d) out of limits [1,16]", size));
+            return 1;
+        }
         return size;
     }
 
     Part option() {
-        if (position >= text.length || text[position] == '\0')
-            throw new LuaException("invalid next option for option 'X'");
+        if (position >= text.length || text[position] == '\0') {
+            fail("invalid next option for option 'X'");
+            return Part(Kind.none);
+        }
         char option = text[position++];
         switch (option) {
         case 'b':
@@ -107,8 +120,10 @@ private struct Format {
             return Part(Kind.string_, integerSize(size_t.sizeof));
         case 'c':
             int size = numeral(-1);
-            if (size < 0)
-                throw new LuaException("missing size for format option 'c'");
+            if (size < 0) {
+                fail("missing size for format option 'c'");
+                return Part(Kind.none);
+            }
             return Part(Kind.fixedString, size);
         case 'z':
             return Part(Kind.zeroString);
@@ -131,7 +146,7 @@ private struct Format {
         case ' ':
             break;
         default:
-            throw new LuaException(format("invalid format option '%c'", option));
+            fail(format("invalid format option '%c'", option));
         }
         return Part(Kind.none);
     }
@@ -140,45 +155,61 @@ private struct Format {
         if (position >= text.length || text[position] == '\0')
             return false;
         part = option();
+        if (error !is null)
+            return true;
         int alignment = part.size;
         if (part.kind == Kind.alignment) {
             auto next = option();
-            if (next.kind == Kind.fixedString || next.size == 0)
-                throw new LuaException("invalid next option for option 'X'");
+            if (error !is null)
+                return true;
+            if (next.kind == Kind.fixedString || next.size == 0) {
+                fail("invalid next option for option 'X'");
+                return true;
+            }
             alignment = next.size;
         }
         if (alignment > 1 && part.kind != Kind.fixedString) {
             if (alignment > maxAlign)
                 alignment = maxAlign;
-            if ((alignment & (alignment - 1)) != 0)
-                throw new LuaException("format asks for alignment not power of 2");
+            if ((alignment & (alignment - 1)) != 0) {
+                fail("format asks for alignment not power of 2");
+                return true;
+            }
             part.padding = (alignment - (total & (alignment - 1))) & (alignment - 1);
         }
         return true;
     }
 }
 
-private string stringArg(LuaValue[] args, size_t index) {
+private bool failText(LuaState L, string message) {
+    raise(L, new LuaException(message));
+    return false;
+}
+
+private bool stringArg(LuaState L, LuaValue[] args, size_t index, out string result) {
     if (index >= args.length || (!isString(args[index]) && !isNumber(args[index])))
-        throw new LuaException("string expected");
-    return toLuaString(args[index]);
+        return failText(L, "string expected");
+    result = toLuaString(args[index]);
+    return true;
 }
 
-private LuaValue numberArg(LuaValue[] args, size_t index) {
-    LuaValue number;
+private bool numberArg(LuaState L, LuaValue[] args, size_t index, out LuaValue number) {
     if (index >= args.length || !VM.toCoercedNumber(args[index], number))
-        throw new LuaException("number expected");
-    return number;
+        return failText(L, "number expected");
+    return true;
 }
 
-private long integerArg(LuaValue[] args, size_t index) {
-    auto number = numberArg(args, index);
-    if (isInteger(number))
-        return number.match!((long value) => value, _ => 0L);
-    long value;
-    if (!floatToInteger(number.match!((double value) => value, _ => double.nan), value))
-        throw new LuaException("number has no integer representation");
-    return value;
+private bool integerArg(LuaState L, LuaValue[] args, size_t index, out long value) {
+    LuaValue number;
+    if (!numberArg(L, args, index, number))
+        return false;
+    if (isInteger(number)) {
+        value = number.match!((long v) => v, _ => 0L);
+        return true;
+    }
+    if (!floatToInteger(number.match!((double v) => v, _ => double.nan), value))
+        return failText(L, "number has no integer representation");
+    return true;
 }
 
 private void pad(ref char[] output, size_t count) {
@@ -196,7 +227,8 @@ private void putInteger(ref char[] output, ulong value, int size, bool little, b
     }
 }
 
-private long getInteger(string data, size_t position, int size, bool little, bool signed_) {
+/// Returns false (nothing read) when a wide integer does not fit a Lua integer.
+private bool getInteger(string data, size_t position, int size, bool little, bool signed_, out long result) {
     ulong value;
     int limit = size < 8 ? size : 8;
     for (int i = limit - 1; i >= 0; --i)
@@ -208,9 +240,10 @@ private long getInteger(string data, size_t position, int size, bool little, boo
         ubyte extension = signed_ && cast(long) value < 0 ? 0xff : 0;
         for (int i = 8; i < size; ++i)
             if (cast(ubyte) data[position + (little ? i : size - i - 1)] != extension)
-                throw new LuaException(format("%d-byte integer does not fit into Lua Integer", size));
+                return false;
     }
-    return cast(long) value;
+    result = cast(long) value;
+    return true;
 }
 
 private union SingleBits {
@@ -223,30 +256,45 @@ private union DoubleBits {
     ulong bits;
 }
 
-LuaValue[] packValues(LuaValue[] args) {
-    auto parser = Format(stringArg(args, 0));
+LuaValue[] packValues(LuaState L, LuaValue[] args) {
+    string fmt;
+    if (!stringArg(L, args, 0, fmt))
+        return null;
+    auto parser = Format(fmt);
     char[] output;
     Part part;
     size_t argument = 1;
     while (parser.next(output.length, part)) {
+        if (parser.error !is null) {
+            failText(L, parser.error);
+            return null;
+        }
         pad(output, part.padding);
         final switch (part.kind) {
         case Kind.signedInt:
         case Kind.unsignedInt:
-            long integer = integerArg(args, argument++);
+            long integer;
+            if (!integerArg(L, args, argument++, integer))
+                return null;
             if (part.size < 8) {
                 if (part.kind == Kind.signedInt) {
                     long limit = 1L << (part.size * 8 - 1);
-                    if (integer < -limit || integer >= limit)
-                        throw new LuaException("integer overflow");
-                } else if (cast(ulong) integer >= (1UL << (part.size * 8)))
-                    throw new LuaException("unsigned overflow");
+                    if (integer < -limit || integer >= limit) {
+                        failText(L, "integer overflow");
+                        return null;
+                    }
+                } else if (cast(ulong) integer >= (1UL << (part.size * 8))) {
+                    failText(L, "unsigned overflow");
+                    return null;
+                }
             }
             putInteger(output, cast(ulong) integer, part.size, parser.little, part.kind == Kind.signedInt && integer < 0);
             break;
         case Kind.single:
         case Kind.double_:
-            auto number = numberArg(args, argument++);
+            LuaValue number;
+            if (!numberArg(L, args, argument++, number))
+                return null;
             double value = number.match!((long integer) => cast(double) integer, (double value) => value, _ => 0.0);
             if (part.kind == Kind.single) {
                 SingleBits bits;
@@ -259,23 +307,35 @@ LuaValue[] packValues(LuaValue[] args) {
             }
             break;
         case Kind.fixedString:
-            string value = stringArg(args, argument++);
-            if (value.length > part.size)
-                throw new LuaException("string longer than given size");
+            string value;
+            if (!stringArg(L, args, argument++, value))
+                return null;
+            if (value.length > part.size) {
+                failText(L, "string longer than given size");
+                return null;
+            }
             output ~= value;
             pad(output, part.size - value.length);
             break;
         case Kind.string_:
-            string value = stringArg(args, argument++);
-            if (part.size < size_t.sizeof && value.length >= (1UL << (part.size * 8)))
-                throw new LuaException("string length does not fit in given size");
+            string value;
+            if (!stringArg(L, args, argument++, value))
+                return null;
+            if (part.size < size_t.sizeof && value.length >= (1UL << (part.size * 8))) {
+                failText(L, "string length does not fit in given size");
+                return null;
+            }
             putInteger(output, value.length, part.size, parser.little);
             output ~= value;
             break;
         case Kind.zeroString:
-            string value = stringArg(args, argument++);
-            if (value.indexOf('\0') >= 0)
-                throw new LuaException("string contains zeros");
+            string value;
+            if (!stringArg(L, args, argument++, value))
+                return null;
+            if (value.indexOf('\0') >= 0) {
+                failText(L, "string contains zeros");
+                return null;
+            }
             output ~= value;
             output ~= '\0';
             break;
@@ -287,70 +347,116 @@ LuaValue[] packValues(LuaValue[] args) {
             break;
         }
     }
+    if (parser.error !is null) {
+        failText(L, parser.error);
+        return null;
+    }
     return [LuaValue(cast(string) output)];
 }
 
-LuaValue[] packedSize(LuaValue[] args) {
-    auto parser = Format(stringArg(args, 0));
+LuaValue[] packedSize(LuaState L, LuaValue[] args) {
+    string fmt;
+    if (!stringArg(L, args, 0, fmt))
+        return null;
+    auto parser = Format(fmt);
     size_t total;
     Part part;
     while (parser.next(total, part)) {
-        if (part.kind == Kind.string_ || part.kind == Kind.zeroString)
-            throw new LuaException("variable-length format");
+        if (parser.error !is null) {
+            failText(L, parser.error);
+            return null;
+        }
+        if (part.kind == Kind.string_ || part.kind == Kind.zeroString) {
+            failText(L, "variable-length format");
+            return null;
+        }
         size_t size = part.size + part.padding;
-        if (size > int.max || total > int.max - size)
-            throw new LuaException("format result too large");
+        if (size > int.max || total > int.max - size) {
+            failText(L, "format result too large");
+            return null;
+        }
         total += size;
+    }
+    if (parser.error !is null) {
+        failText(L, parser.error);
+        return null;
     }
     return [LuaValue(cast(long) total)];
 }
 
-LuaValue[] unpackValues(LuaValue[] args) {
-    auto parser = Format(stringArg(args, 0));
-    string data = stringArg(args, 1);
-    long initial = args.length > 2 && !isNil(args[2]) ? integerArg(args, 2) : 1;
+LuaValue[] unpackValues(LuaState L, LuaValue[] args) {
+    string fmt, data;
+    if (!stringArg(L, args, 0, fmt) || !stringArg(L, args, 1, data))
+        return null;
+    auto parser = Format(fmt);
+    long initial = 1;
+    if (args.length > 2 && !isNil(args[2]) && !integerArg(L, args, 2, initial))
+        return null;
     if (initial < 0)
         initial = initial < -cast(long) data.length ? 1 : cast(long) data.length + initial + 1;
     if (initial == 0)
         initial = 1;
     size_t position = cast(size_t)(initial - 1);
-    if (position > data.length)
-        throw new LuaException("initial position out of string");
+    if (position > data.length) {
+        failText(L, "initial position out of string");
+        return null;
+    }
     LuaValue[] output;
     Part part;
+    long integer;
     while (parser.next(position, part)) {
-        if (part.padding + part.size > data.length - position)
-            throw new LuaException("data string too short");
+        if (parser.error !is null) {
+            failText(L, parser.error);
+            return null;
+        }
+        if (part.padding + part.size > data.length - position) {
+            failText(L, "data string too short");
+            return null;
+        }
         position += part.padding;
         final switch (part.kind) {
         case Kind.signedInt:
         case Kind.unsignedInt:
-            output ~= LuaValue(getInteger(data, position, part.size, parser.little, part.kind == Kind.signedInt));
+            if (!getInteger(data, position, part.size, parser.little, part.kind == Kind.signedInt, integer)) {
+                failText(L, format("%d-byte integer does not fit into Lua Integer", part.size));
+                return null;
+            }
+            output ~= LuaValue(integer);
             break;
         case Kind.single:
             SingleBits bits;
-            bits.bits = cast(uint) getInteger(data, position, 4, parser.little, false);
+            getInteger(data, position, 4, parser.little, false, integer);
+            bits.bits = cast(uint) integer;
             output ~= LuaValue(cast(double) bits.number);
             break;
         case Kind.double_:
             DoubleBits bits;
-            bits.bits = cast(ulong) getInteger(data, position, 8, parser.little, false);
+            getInteger(data, position, 8, parser.little, false, integer);
+            bits.bits = cast(ulong) integer;
             output ~= LuaValue(bits.number);
             break;
         case Kind.fixedString:
             output ~= LuaValue(data[position .. position + part.size]);
             break;
         case Kind.string_:
-            ulong length = cast(ulong) getInteger(data, position, part.size, parser.little, false);
-            if (length > data.length - position - part.size)
-                throw new LuaException("data string too short");
+            if (!getInteger(data, position, part.size, parser.little, false, integer)) {
+                failText(L, format("%d-byte integer does not fit into Lua Integer", part.size));
+                return null;
+            }
+            ulong length = cast(ulong) integer;
+            if (length > data.length - position - part.size) {
+                failText(L, "data string too short");
+                return null;
+            }
             output ~= LuaValue(data[position + part.size .. position + part.size + cast(size_t) length]);
             position += length;
             break;
         case Kind.zeroString:
             auto end = data[position .. $].indexOf('\0');
-            if (end < 0)
-                throw new LuaException("unfinished string for format 'z'");
+            if (end < 0) {
+                failText(L, "unfinished string for format 'z'");
+                return null;
+            }
             output ~= LuaValue(data[position .. position + end]);
             position += end + 1;
             break;
@@ -360,6 +466,10 @@ LuaValue[] unpackValues(LuaValue[] args) {
             break;
         }
         position += part.size;
+    }
+    if (parser.error !is null) {
+        failText(L, parser.error);
+        return null;
     }
     output ~= LuaValue(cast(long) position + 1);
     return output;
