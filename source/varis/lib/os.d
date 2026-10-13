@@ -14,7 +14,7 @@ module varis.lib.os;
 import varis.types;
 import varis.table;
 import varis.state;
-import varis.exception : LuaException, ExitRequest;
+import varis.exception : LuaException, ExitSignal;
 import varis.lib.auxlib;
 import core.stdc.stdio : remove, rename;
 import core.stdc.stdlib : exit, getenv, system;
@@ -276,7 +276,7 @@ void openOsLib(LuaState state) {
             status = cast(int) code;
         }
         if (a.length > 1 && isTruthy(a[1]))
-            throw new ExitRequest(status);
+            return raise(L, new ExitSignal(status));
         fflush(null);
         exit(status);
         return cast(LuaValue[])[];

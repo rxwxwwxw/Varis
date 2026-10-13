@@ -99,6 +99,16 @@ class LuaException : Exception {
     }
 }
 
+/// What `os.exit(code, true)` reports as a value (`raise`); `LuaState.takeRaised` turns it into
+/// the `ExitRequest` unwind where the executor takes a native's error, so `pcall` never sees it.
+final class ExitSignal : LuaException {
+    int status;
+    this(int status) {
+        super("exit requested");
+        this.status = status;
+    }
+}
+
 /// Raised by os.exit(code, true): unwinds the stack (closing pending to-be-closed
 /// variables) and lets the host close the state. Not an Exception on purpose, so
 /// that pcall and friends cannot swallow it.

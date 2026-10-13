@@ -277,9 +277,13 @@ class LuaState {
     /// throw; `LuaNativeFunction.call` throws it for callers that still expect exceptions.
     LuaException raisedError;
 
-    final LuaException takeRaised() nothrow @nogc {
+    final LuaException takeRaised() {
+        import varis.exception : ExitSignal, ExitRequest;
+
         auto error = raisedError;
         raisedError = null;
+        if (auto exit = cast(ExitSignal) error)
+            throw new ExitRequest(exit.status);
         return error;
     }
     /// Called once per raised Lua error, in the innermost Lua frame, while the frame and its
