@@ -17,22 +17,22 @@ import varis.exception : LuaException, shortSourceName;
 import varis.vm : LuaClosure, VM;
 import varis.lib.auxlib;
 
-private LuaClosure closureArgument(LuaValue[] args, size_t index, string name) {
-    if (index >= args.length || !isFunction(args[index]))
-        throw new LuaException("bad argument to '" ~ name ~ "' (function expected)");
-    return cast(LuaClosure) args[index].match!((LuaFunction fn) => fn, _ => null);
+private bool failText(LuaState L, string message) {
+    raise(L, new LuaException(message));
+    return false;
 }
 
-private long upvalueIndex(LuaValue[] args, size_t index, string name) {
-    long result;
+private bool upvalueIndex(LuaState L, LuaValue[] args, size_t index, string name, out long result) {
     LuaValue number;
     if (index >= args.length || !VM.toCoercedNumber(args[index], number))
-        throw new LuaException("bad argument to '" ~ name ~ "' (integer expected)");
-    if (isInteger(number))
-        return number.match!((long value) => value, _ => 0L);
+        return failText(L, "bad argument to '" ~ name ~ "' (integer expected)");
+    if (isInteger(number)) {
+        result = number.match!((long value) => value, _ => 0L);
+        return true;
+    }
     if (!floatToInteger(number.match!((double value) => value, _ => double.nan), result))
-        throw new LuaException("bad argument to '" ~ name ~ "' (number has no integer representation)");
-    return result;
+        return failText(L, "bad argument to '" ~ name ~ "' (number has no integer representation)");
+    return true;
 }
 
 private CallInfo[] threadFrames(LuaState state, LuaThread thread) {
@@ -75,9 +75,13 @@ void openDebugLib(LuaState state) {
     }
 
     dbgTable.register("getupvalue", (LuaState L, LuaValue[] a) {
-        long index = checkInteger(L, a, 2);
-        if (a.length < 1 || !isFunction(a[0]))
-            typeError(L, a, 1, "function");
+        long index;
+        if (!argInteger(L, a, 2, index))
+            return null;
+        if (a.length < 1 || !isFunction(a[0])) {
+            typeFail(L, a, 1, "function");
+            return null;
+        }
         auto closure = cast(LuaClosure) a[0].match!((LuaFunction fn) => fn, _ => null);
         if (closure is null) {
             auto native = cast(LuaNativeFunction) a[0].match!((LuaFunction fn) => fn, _ => null);
@@ -94,10 +98,13 @@ void openDebugLib(LuaState state) {
     });
 
     dbgTable.register("setupvalue", (LuaState L, LuaValue[] a) {
-        checkAny(a, 3);
-        long index = checkInteger(L, a, 2);
-        if (a.length < 1 || !isFunction(a[0]))
-            typeError(L, a, 1, "function");
+        long index;
+        if (!argAny(L, a, 3) || !argInteger(L, a, 2, index))
+            return null;
+        if (a.length < 1 || !isFunction(a[0])) {
+            typeFail(L, a, 1, "function");
+            return null;
+        }
         auto closure = cast(LuaClosure) a[0].match!((LuaFunction fn) => fn, _ => null);
         if (closure is null || index <= 0 || index > closure.upvalues.length)
             return cast(LuaValue[])[];
@@ -107,9 +114,13 @@ void openDebugLib(LuaState state) {
     });
 
     dbgTable.register("upvalueid", (LuaState L, LuaValue[] a) {
-        long index = checkInteger(L, a, 2);
-        if (a.length < 1 || !isFunction(a[0]))
-            typeError(L, a, 1, "function");
+        long index;
+        if (!argInteger(L, a, 2, index))
+            return null;
+        if (a.length < 1 || !isFunction(a[0])) {
+            typeFail(L, a, 1, "function");
+            return null;
+        }
         auto closure = cast(LuaClosure) a[0].match!((LuaFunction fn) => fn, _ => null);
         if (closure is null) {
             auto native = cast(LuaNativeFunction) a[0].match!((LuaFunction fn) => fn, _ => null);
@@ -125,18 +136,25 @@ void openDebugLib(LuaState state) {
     });
 
     dbgTable.register("upvaluejoin", (LuaState L, LuaValue[] a) {
-        long i = checkInteger(L, a, 2);
-        if (a.length < 1 || !isFunction(a[0]))
-            typeError(L, a, 1, "function");
+        long i, j;
+        if (!argInteger(L, a, 2, i))
+            return null;
+        if (a.length < 1 || !isFunction(a[0])) {
+            typeFail(L, a, 1, "function");
+            return null;
+        }
         auto first = cast(LuaClosure) a[0].match!((LuaFunction fn) => fn, _ => null);
         if (first is null || i <= 0 || i > first.upvalues.length)
-            throw new ArgError(2, "invalid upvalue index");
-        long j = checkInteger(L, a, 4);
-        if (a.length < 3 || !isFunction(a[2]))
-            typeError(L, a, 3, "function");
+            return argFail(L, 2, "invalid upvalue index");
+        if (!argInteger(L, a, 4, j))
+            return null;
+        if (a.length < 3 || !isFunction(a[2])) {
+            typeFail(L, a, 3, "function");
+            return null;
+        }
         auto second = cast(LuaClosure) a[2].match!((LuaFunction fn) => fn, _ => null);
         if (second is null || j <= 0 || j > second.upvalues.length)
-            throw new ArgError(4, "invalid upvalue index");
+            return argFail(L, 4, "invalid upvalue index");
         first.upvalues[i - 1] = second.upvalues[j - 1];
         return cast(LuaValue[])[];
     });
@@ -144,7 +162,9 @@ void openDebugLib(LuaState state) {
     dbgTable.register("getregistry", (LuaState L, LuaValue[] a) => [LuaValue(L.registry)]);
 
     dbgTable.register("getuservalue", (LuaState L, LuaValue[] a) {
-        long n = optInteger(L, a, 2, 1);
+        long n;
+        if (!argOptInteger(L, a, 2, 1, n))
+            return null;
         if (a.length < 1 || a[0].typeOf() != LuaType.UserData)
             return [luaNil()];
         auto u = a[0].match!((LuaUserData x) => x, _ => null);
@@ -154,10 +174,15 @@ void openDebugLib(LuaState state) {
     });
 
     dbgTable.register("setuservalue", (LuaState L, LuaValue[] a) {
-        long n = optInteger(L, a, 3, 1);
-        if (a.length < 1 || a[0].typeOf() != LuaType.UserData)
-            typeError(L, a, 1, "userdata");
-        checkAny(a, 2);
+        long n;
+        if (!argOptInteger(L, a, 3, 1, n))
+            return null;
+        if (a.length < 1 || a[0].typeOf() != LuaType.UserData) {
+            typeFail(L, a, 1, "userdata");
+            return null;
+        }
+        if (!argAny(L, a, 2))
+            return null;
         auto u = a[0].match!((LuaUserData x) => x, _ => null);
         if (n < 1 || n > 1000)
             return [luaNil()];
@@ -168,7 +193,9 @@ void openDebugLib(LuaState state) {
     });
 
     dbgTable.register("setcstacklimit", (LuaState L, LuaValue[] a) {
-        checkInteger(L, a, 1);
+        long ignored;
+        if (!argInteger(L, a, 1, ignored))
+            return null;
         return [LuaValue(0L)];
     });
 
@@ -181,7 +208,10 @@ void openDebugLib(LuaState state) {
                 thread = args[0].match!((LuaThread thread) => thread, _ => null);
                 args = args[1 .. $];
             }
-            long index = cast(int) upvalueIndex(args, 1, operation);
+            long index;
+            if (!upvalueIndex(s, args, 1, operation, index))
+                return null;
+            index = cast(int) index;
             if (!setter && args.length && isFunction(args[0])) {
                 auto closure = cast(LuaClosure) args[0].match!((LuaFunction fn) => fn, _ => null);
                 if (closure is null || index <= 0)
@@ -192,15 +222,22 @@ void openDebugLib(LuaState state) {
                         return [LuaValue(local.name)];
                 return [luaNil()];
             }
-            long level = cast(int) upvalueIndex(args, 0, operation);
+            long level;
+            if (!upvalueIndex(s, args, 0, operation, level))
+                return null;
+            level = cast(int) level;
             auto frames = threadFrames(s, thread);
-            if (level < 0 || level >= frames.length)
-                throw new LuaException("bad argument to '" ~ operation ~ "' (level out of range)");
+            if (level < 0 || level >= frames.length) {
+                failText(s, "bad argument to '" ~ operation ~ "' (level out of range)");
+                return null;
+            }
             auto frame = frames[$ - 1 - level];
             string name;
             if (setter) {
-                if (args.length < 3)
-                    throw new LuaException("bad argument #3 to 'setlocal' (value expected)");
+                if (args.length < 3) {
+                    failText(s, "bad argument #3 to 'setlocal' (value expected)");
+                    return null;
+                }
                 name = frame.setLocal(index, args[2]);
                 return [name is null ? luaNil() : LuaValue(name)];
             }
@@ -244,12 +281,22 @@ void openDebugLib(LuaState state) {
                     }
                     return cast(LuaValue[])[];
                 }
-                if (args.length <= offset + 1 || (!isString(args[offset + 1]) && !isNumber(args[offset + 1])))
-                    throw new LuaException("bad argument to 'sethook' (string expected)");
-                if (!isFunction(args[offset]))
-                    throw new LuaException("bad argument to 'sethook' (function expected)");
+                if (args.length <= offset + 1 || (!isString(args[offset + 1]) && !isNumber(args[offset + 1]))) {
+                    failText(s, "bad argument to 'sethook' (string expected)");
+                    return null;
+                }
+                if (!isFunction(args[offset])) {
+                    failText(s, "bad argument to 'sethook' (function expected)");
+                    return null;
+                }
                 string mask = toLuaString(args[offset + 1]);
-                int count = args.length > offset + 2 && !isNil(args[offset + 2]) ? cast(int) upvalueIndex(args, offset + 2, "sethook") : 0;
+                int count;
+                if (args.length > offset + 2 && !isNil(args[offset + 2])) {
+                    long countArg;
+                    if (!upvalueIndex(s, args, offset + 2, "sethook", countArg))
+                        return null;
+                    count = cast(int) countArg;
+                }
                 import std.string : indexOf;
 
                 thread.hookFunction = args[offset].match!((LuaFunction fn) => fn, _ => null);
@@ -305,8 +352,9 @@ void openDebugLib(LuaState state) {
                         message = message[0 .. nul];
                     trace = message ~ "\n";
                 }
-                long level = args.length > 1 && !isNil(args[1]) ? upvalueIndex(args, 1, "traceback")
-                : thread is s.currentThread() ? 1 : 0;
+                long level = thread is s.currentThread() ? 1 : 0;
+                if (args.length > 1 && !isNil(args[1]) && !upvalueIndex(s, args, 1, "traceback", level))
+                    return null;
                 trace ~= "stack traceback:";
                 auto frames = threadFrames(s, thread);
                 long last = cast(long) frames.length - 1;
@@ -345,7 +393,8 @@ void openDebugLib(LuaState state) {
             }, "traceback")));
 
     dbgTable.register("getmetatable", (LuaState L, LuaValue[] a) {
-        checkAny(a, 1);
+        if (!argAny(L, a, 1))
+            return null;
         auto mt = L.getMetatable(a[0]);
         if (mt is null)
             return [luaNil()];
@@ -353,8 +402,10 @@ void openDebugLib(LuaState state) {
     });
 
     dbgTable.register("setmetatable", (LuaState L, LuaValue[] a) {
-        if (a.length < 2 || !(isNil(a[1]) || isTable(a[1])))
-            typeError(L, a, 2, "nil or table");
+        if (a.length < 2 || !(isNil(a[1]) || isTable(a[1]))) {
+            typeFail(L, a, 2, "nil or table");
+            return null;
+        }
         auto mt = isTable(a[1]) ? a[1].match!((LuaTable t) => t, _ => null) : null;
         L.setMetatable(a[0], mt);
         if (mt !is null && !isNil(mt.rawget(LuaValue("__gc"))))
@@ -376,22 +427,28 @@ void openDebugLib(LuaState state) {
                 if (args[0].typeOf() == LuaType.Thread) {
                     target = args[0].match!((LuaThread thread) => thread, _ => null);
                     args = args[1 .. $];
-                    if (!args.length)
-                        throw new LuaException("bad argument to 'getinfo' (function or level expected)");
+                    if (!args.length) {
+                        failText(s, "bad argument to 'getinfo' (function or level expected)");
+                        return null;
+                    }
                 }
                 auto frames = threadFrames(s, target);
 
                 string options = "flnSrtu";
                 if (args.length > 1 && !isNil(args[1])) {
-                    if (!isString(args[1]))
-                        throw new LuaException("bad argument #2 to 'getinfo' (string expected)");
+                    if (!isString(args[1])) {
+                        failText(s, "bad argument #2 to 'getinfo' (string expected)");
+                        return null;
+                    }
                     options = args[1].match!((string value) => value, _ => "");
                 }
                 import std.string : indexOf, startsWith;
 
                 foreach (option; options)
-                    if ("nSlutfLr".indexOf(option) < 0)
-                        throw new LuaException("bad argument #2 to 'getinfo' (invalid option)");
+                    if ("nSlutfLr".indexOf(option) < 0) {
+                        failText(s, "bad argument #2 to 'getinfo' (invalid option)");
+                        return null;
+                    }
                 CallInfo ci;
                 bool byFunction = isFunction(args[0]);
                 if (byFunction) {
@@ -400,7 +457,9 @@ void openDebugLib(LuaState state) {
                     ci.source = closure is null ? "=[C]" : closure.proto.sourceName;
                     ci.currentLine = -1;
                 } else {
-                    long level = upvalueIndex(args, 0, "getinfo");
+                    long level;
+                    if (!upvalueIndex(s, args, 0, "getinfo", level))
+                        return null;
                     ptrdiff_t stackIdx = cast(ptrdiff_t) frames.length - 1 - level;
                     if (level < 0 || stackIdx < 0 || stackIdx >= frames.length)
                         return [luaNil()];
