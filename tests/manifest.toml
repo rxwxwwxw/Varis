@@ -69,7 +69,7 @@ tier = "fast"
 tags = ["extensions"]
 glob = "tests/extensions/cases/*.varis"
 helpers = "tests/extensions/helpers.varis"
-expect_count = 90
+expect_count = 91
 timeout = 300
 
 [suite.override.negative_unsafe_head]
@@ -95,6 +95,9 @@ expect = "anonymous variable.*rule head"
 
 [suite.override.negative_anonymous_guard]
 expect = "anonymous variable.*procedural guard"
+
+[suite.override.negative_anonymous_comparison]
+expect = "anonymous variable.*comparison"
 
 [[suite]]
 id = "regression"
@@ -335,11 +338,6 @@ reason = "excluded by owner decision: exact reachability conflicts with D-access
 id = "official.all"
 status = "partial"
 reason = "suite driver runs in a scratch copy with gc.lua stubbed"
-
-[[ledger]]
-id = "gap.anonymous_in_comparison"
-status = "known-gap"
-reason = "documented spec deviation; see tests/datalog/known_gaps/anonymous_in_comparison.lua"
 
 [[ledger]]
 id = "gap.constant_left_comparison"

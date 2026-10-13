@@ -2336,6 +2336,9 @@ class Compiler {
                 gt.compOp = comp.op;
                 gt.leftTerm = compileTermTemplate(comp.left, varMap, varNames, constRegs);
                 gt.rightTerm = compileTermTemplate(comp.right, varMap, varNames, constRegs);
+                if (gt.leftTerm.kind == TermKind.Anonymous || gt.rightTerm.kind == TermKind.Anonymous) {
+                    throw new LuaException("anonymous variable '?_' not permitted in a comparison");
+                }
                 templates ~= gt;
             } else if (auto guard = as!AstGuardGoal(g)) {
                 GoalTemplate gt;

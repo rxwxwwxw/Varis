@@ -1,0 +1,5 @@
+-- Extension regression: negative_anonymous_comparison
+-- Spec §3.4: an anonymous variable cannot appear in a comparison.
+relation num(1)
+fact num(1)
+rule bad(?a) :- num(?a), ?a == ?_

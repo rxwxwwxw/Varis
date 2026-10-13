@@ -78,7 +78,6 @@ change is noticed and the program is moved into the numbered suite.
 | Program | Spec | Current behaviour |
 | --- | --- | --- |
 | `constant_left_comparison` | §17.6 | `limit < ?a` is a syntax error; only `?a > limit` parses |
-| `anonymous_in_comparison` | §3.4 | `?a == ?_` is accepted; the spec says it is an error |
 | `world_block_checks_entry` | §11.7 | `logic (5) do end` is accepted; only a declarative statement inside notices |
 
 ## Performance notes
