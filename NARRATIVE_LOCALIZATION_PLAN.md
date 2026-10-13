@@ -382,11 +382,15 @@ current declarative beat records use an `id` field, with a positional fallback.
 The workbench language selector, draft editor and branch previews work. T4 includes
 kits with context/glossary/character sets/ids, delta kits, CSV/JSON/XLIFF adapters,
 review states, kit checks, built packs with whole-pack rejection, key display and the
-reviewed-translation gate. Font subsetting and manifest per-locale coverage policy remain.
+reviewed-translation gate. `varis l10n fonts` (October 13, 2026) checks each language's
+character set against the font configured for it (a presentation manifest's `font` and
+`languages[].font`, or `--font TAG=FILE`) by reading the font's `cmap`, and fails on missing
+characters; the subsetting itself is left to the publisher's font tool, fed by the kit's
+`charset.json`.
 
 T5 is partial: engine text helpers (`particle`, `graphemes`, `truncate`, `line_breaks`,
 `ruby`) and character-set output exist. The [SDL3 player](docs/presentation.md) renders
-UTF-8 through SDL3_ttf with one supplied font. Per-locale font chains, ruby drawing,
+UTF-8 through SDL3_ttf with one supplied font. Per-language fonts and the coverage check exist; font fallback within one run, ruby drawing,
 complete CJK layout and native-reader validation remain unfinished. Production localization
 is not complete merely because translated strings render.
 

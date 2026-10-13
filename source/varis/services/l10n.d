@@ -20,6 +20,8 @@ import varis.services.diagnostic;
 import varis.services.index;
 import varis.services.manifest;
 import varis.services.xliff;
+import varis.services.fontcheck : fontCodePoints, needsGlyph;
+import varis.services.json : JsonValue, parseJson;
 import varis.narrative.translation : parseTranslation, TranslationTemplate;
 import varis.narrative.plural : pluralCategoryAllowed, requiredPluralCategories;
 import std.algorithm : sort;
@@ -1371,9 +1373,152 @@ string branchPreviewJson(string locale, string text) {
 }
 
 /// `varis l10n <command> ...`: returns the process exit status.
+/// `varis l10n fonts`: does the font a game uses for a language cover the characters that
+/// language's messages need? Fonts come from a presentation manifest (`--manifest FILE`: its
+/// `font`, and each `languages` entry's `font`) and/or `--font TAG=FILE` (the source language's
+/// tag, or an empty tag, names the font of the source text). Exit 1 when a font lacks characters
+/// or none is configured for a checked language.
+private int fontsCommand(string[] args) {
+    string manifestFile, wanted = "all";
+    string[string] fonts; // locale tag -> file ("" is the default font)
+    for (size_t i = 0; i < args.length; ++i) {
+        if (args[i] == "--manifest" && i + 1 < args.length)
+            manifestFile = args[++i];
+        else if (args[i] == "--locale" && i + 1 < args.length)
+            wanted = args[++i];
+        else if (args[i] == "--font" && i + 1 < args.length) {
+            auto spec = args[++i];
+            ptrdiff_t eq = -1;
+            foreach (k, char c; spec)
+                if (c == '=') {
+                    eq = k;
+                    break;
+                }
+            if (eq < 0) {
+                warn("--font expects TAG=FILE\n");
+                return 2;
+            }
+            fonts[spec[0 .. eq].idup] = spec[eq + 1 .. $].idup;
+        } else {
+            warn("usage: varis l10n fonts [--manifest presentation.json] [--font TAG=FILE ...] [--locale L|all]\n");
+            return 2;
+        }
+    }
+    if (manifestFile.length) {
+        string text;
+        if (!readFile(manifestFile, text)) {
+            warn("cannot read " ~ manifestFile ~ "\n");
+            return 1;
+        }
+        JsonValue root;
+        string error;
+        if (!parseJson(text, root, error)) {
+            warn(manifestFile ~ ": " ~ error ~ "\n");
+            return 1;
+        }
+        string directory;
+        foreach (i, char c; manifestFile)
+            if (c == '/')
+                directory = manifestFile[0 .. i + 1].idup;
+        string resolve(string file) {
+            return file.length && file[0] == '/' ? file : directory ~ file;
+        }
+
+        auto base = root.stringOr("font");
+        if (base.length && ("" !in fonts))
+            fonts[""] = resolve(base);
+        if (auto list = root.get("languages"))
+            foreach (ref entry; list.items) {
+                auto tag = entry.stringOr("tag");
+                auto file = entry.stringOr("font");
+                if (file.length && !(tag in fonts))
+                    fonts[tag] = resolve(file);
+            }
+    }
+    if (fonts.length == 0) {
+        warn("no fonts configured: give --manifest or --font\n");
+        return 2;
+    }
+    auto project = loadProject();
+    report(project);
+    if (!project.ok)
+        return 1;
+    string[] locales;
+    if (wanted == "all")
+        locales = project.manifest.locales.dup;
+    else
+        locales = [wanted];
+    bool failed;
+    // The source language is checked too: against its own font, or the default.
+    struct Job {
+        string tag;
+        bool[uint] chars;
+    }
+
+    Job[] jobs;
+    {
+        Job job;
+        job.tag = "";
+        foreach (ref m; project.source.messages)
+            collectCodePoints(m.text, job.chars);
+        jobs ~= job;
+    }
+    foreach (tag; locales) {
+        LocaleCatalog catalog;
+        if (!loadLocale(tag, catalog))
+            return 1;
+        Job job;
+        job.tag = tag;
+        foreach (ref e; catalog.entries)
+            collectCodePoints(e.text, job.chars);
+        jobs ~= job;
+    }
+    foreach (ref job; jobs) {
+        string label = job.tag.length ? job.tag : "source";
+        auto given = job.tag in fonts;
+        if (given is null)
+            given = "" in fonts;
+        if (given is null) {
+            say(label ~ ": no font configured\n");
+            failed = true;
+            continue;
+        }
+        string data;
+        if (!readFile(*given, data)) {
+            say(label ~ ": cannot read font " ~ *given ~ "\n");
+            failed = true;
+            continue;
+        }
+        bool[uint] covered;
+        string error;
+        if (!fontCodePoints(cast(const(ubyte)[]) data, covered, error)) {
+            say(label ~ ": " ~ *given ~ ": " ~ error ~ "\n");
+            failed = true;
+            continue;
+        }
+        bool[uint] missing;
+        size_t needed;
+        foreach (code, _; job.chars) {
+            if (!needsGlyph(code))
+                continue;
+            ++needed;
+            if (code !in covered)
+                missing[code] = true;
+        }
+        if (missing.length == 0)
+            say(label ~ ": " ~ *given ~ " covers all " ~ number(needed) ~ " characters\n");
+        else {
+            say(label ~ ": " ~ *given ~ " lacks " ~ number(missing.length) ~ " of " ~ number(
+                    needed) ~ " characters: " ~ codePointsText(missing) ~ "\n");
+            failed = true;
+        }
+    }
+    return failed ? 1 : 0;
+}
+
 int l10nMain(string[] args) {
     if (args.length == 0) {
-        warn("usage: varis l10n extract|status|export|import|check|review|build ...\n");
+        warn("usage: varis l10n extract|status|export|import|check|review|build|fonts ...\n");
         return 2;
     }
     switch (args[0]) {
@@ -1391,8 +1536,10 @@ int l10nMain(string[] args) {
         return reviewCommand(args[1 .. $]);
     case "build":
         return buildPacks(args[1 .. $]);
+    case "fonts":
+        return fontsCommand(args[1 .. $]);
     default:
-        warn("unknown l10n command `" ~ args[0] ~ "`; the commands are: extract, status, export, import, check, review, build\n");
+        warn("unknown l10n command `" ~ args[0] ~ "`; the commands are: extract, status, export, import, check, review, build, fonts\n");
         return 2;
     }
 }

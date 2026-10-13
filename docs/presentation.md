@@ -167,7 +167,7 @@ Extra manifest fields of a whole game:
 | `scene` | Scene started for a new game. |
 | `seed` | Fixed seed; omitted: derived from the clock. |
 | `autosave`, `settings` | Files written beside the manifest: the autosave after each choice (the title's Continue) and `{volume, fullscreen, language}`. |
-| `languages` | `[{ "tag": "fr", "name": "Français" }]`; an empty tag is the source language. Packs are loaded by the project. A language may add `"font"` (body font file; headings follow it) and `"heading_font"`, so a script the default font lacks is drawn with a font that covers it; the switch happens with the language and drops cached text. |
+| `languages` | `[{ "tag": "fr", "name": "Français" }]`; an empty tag is the source language. Packs are loaded by the project. A language may add `"font"` (body font file; headings follow it) and `"heading_font"`, so a script the default font lacks is drawn with a font that covers it; the switch happens with the language and drops cached text. `varis l10n fonts --manifest FILE` checks that each language's font covers its messages. |
 | `clock` | Names of the four times of day, shown from the `slot` quality. |
 | `map` | `{ "places": [{id,x,y}], "roads": [[a,b]] }` for the map overlay; clicking a reachable place chooses the `walk` storylet bound to it. |
 | `choice_labels` | Storylets whose hub rows are labelled by their choice rather than the storylet title. |

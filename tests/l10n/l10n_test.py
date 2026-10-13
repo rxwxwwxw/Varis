@@ -24,6 +24,34 @@ def varis(binary, cwd, *args, expect=0):
     return done.stdout
 
 
+def make_font(path, ranges12=(), ranges4=()):
+    """A font with only a cmap table: format 4 for BMP ranges, format 12 for any range."""
+    import struct
+    subtables = []
+    if ranges4:
+        segs = [(a, b) for a, b in ranges4] + [(0xFFFF, 0xFFFF)]
+        n = len(segs)
+        tail = b"".join(struct.pack(">H", b) for a, b in segs) + struct.pack(">H", 0)
+        tail += b"".join(struct.pack(">H", a) for a, b in segs)
+        tail += b"".join(struct.pack(">h", 1) for _ in segs)  # idDelta 1: glyph = code + 1
+        tail += b"".join(struct.pack(">H", 0) for _ in segs)  # idRangeOffset
+        body = struct.pack(">HHHHHHH", 4, 14 + len(tail), 0, n * 2, 0, 0, 0) + tail
+        subtables.append((3, 1, body))
+    if ranges12:
+        groups = b"".join(struct.pack(">III", a, b, 1) for a, b in ranges12)
+        subtables.append((3, 10, struct.pack(">HHIII", 12, 0, 16 + len(groups), 0, len(ranges12)) + groups))
+    cmap = struct.pack(">HH", 0, len(subtables))
+    offset = 4 + 8 * len(subtables)
+    blobs = b""
+    for platform, encoding, blob in subtables:
+        cmap += struct.pack(">HHI", platform, encoding, offset + len(blobs))
+        blobs += blob
+    cmap += blobs
+    header = struct.pack(">IHHHH", 0x00010000, 1, 16, 0, 0)
+    record = b"cmap" + struct.pack(">III", 0, 12 + 16, len(cmap))
+    path.write_bytes(header + record + cmap)
+
+
 def main():
     binary = str(pathlib.Path(sys.argv[1]).resolve())
     update = "--update" in sys.argv
@@ -204,6 +232,31 @@ def main():
         fr = json.loads((game / "l10n" / "fr.json").read_text())
         assert "lamp.ignite.title" in {e["key"] for e in fr["entries"]}
         print("l10n tests passed")
+        # Font coverage: the character set of each language against the font configured for it.
+        fr = json.loads((game / "l10n" / "fr.json").read_text())
+        fr["entries"] = [e for e in fr["entries"] if e["key"] != "quality.oil.label"]
+        fr["entries"].append({"key": "quality.oil.label", "text": "Huile de lampe \u00e9\u706f", "status": "draft",
+                              "revision": keys["quality.oil.label"]["revision"]})
+        (game / "l10n" / "fr.json").write_text(json.dumps(fr))
+        latin = game / "latin.ttf"
+        make_font(latin, ranges4=[(0x20, 0x7E), (0xE9, 0xE9)])
+        done = subprocess.run([binary, "l10n", "fonts", "--locale", "fr", "--font", f"={latin}"], cwd=game,
+                              capture_output=True, text=True)
+        assert done.returncode == 1 and "fr: " in done.stdout and "lacks 1 of" in done.stdout and "\u706f" in done.stdout, done.stdout
+        assert "source: " in done.stdout and "covers all" in done.stdout, done.stdout
+        wide = game / "wide.ttf"
+        make_font(wide, ranges12=[(0x20, 0x7E), (0xE9, 0xE9), (0x706F, 0x706F), (0x4E00, 0x9FFF)])
+        manifest = game / "presentation.json"
+        manifest.write_text(json.dumps({"font": "latin.ttf", "languages": [{"tag": "", "name": "English"},
+                                                                          {"tag": "fr", "name": "Fran\u00e7ais", "font": "wide.ttf"}]}))
+        done = subprocess.run([binary, "l10n", "fonts", "--manifest", str(manifest), "--locale", "fr"], cwd=game,
+                              capture_output=True, text=True)
+        assert done.returncode == 0 and done.stdout.count("covers all") == 2, done.stdout
+        not_font = game / "bad.ttf"
+        not_font.write_bytes(b"plainly not a font")
+        done = subprocess.run([binary, "l10n", "fonts", "--locale", "fr", "--font", f"={not_font}"], cwd=game,
+                              capture_output=True, text=True)
+        assert done.returncode == 1 and "not a TrueType" in done.stdout, done.stdout
     finally:
         shutil.rmtree(work, ignore_errors=True)
     return 0
