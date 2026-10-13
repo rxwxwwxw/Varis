@@ -65,6 +65,7 @@ private struct Channel {
 
 private struct Language {
     string tag, name;
+    string font, headingFont; // absolute paths; empty: the manifest's fonts
 }
 
 private struct Node {
@@ -280,6 +281,7 @@ class GamePlayer {
     int volume = 8, textScaleIndex = 2, layoutIndex;
     bool fullscreen, failed;
     string fontPath, headingFontPath;
+    void*[string] openFonts; // by file path, so a language switch never reopens a font
     int windowWidth = 1280, windowHeight = 720;
     bool sceneOnly;
     private Widget lastRoot;
@@ -389,11 +391,11 @@ class GamePlayer {
             return fail(fromStringz(v_error()).idup);
         ui = new Ui;
         ui.theme = theme;
-        ui.fontBody = v_font(font.toStringz);
+        ui.fontBody = openFont(font);
         if (!ui.fontBody)
             return fail("font " ~ font ~ ": " ~ fromStringz(v_error()).idup);
         if (headingFontPath.length)
-            ui.fontHeading = v_font(headingFontPath.toStringz);
+            ui.fontHeading = openFont(headingFontPath);
         savePath = path(config.stringOr("save", "quicksave.json"));
         autosavePath = path(config.stringOr("autosave", "autosave.json"));
         settingsPath = path(config.stringOr("settings", "settings.json"));
@@ -438,7 +440,9 @@ class GamePlayer {
         if (auto values = config.get("languages")) {
             languages = null;
             foreach (ref l; values.items)
-                languages ~= Language(l.stringOr("tag"), l.stringOr("name", l.stringOr("tag")));
+                languages ~= Language(l.stringOr("tag"), l.stringOr("name", l.stringOr("tag")),
+                        l.stringOr("font").length ? path(l.stringOr("font")) : "",
+                        l.stringOr("heading_font").length ? path(l.stringOr("heading_font")) : "");
         }
         if (auto values = config.get("map")) {
             if (auto list = values.get("places"))
@@ -459,6 +463,7 @@ class GamePlayer {
                 clock ~= c.text;
         }
         loadSettings();
+        applyLanguageFonts();
         applySettings();
         return true;
     }
@@ -486,6 +491,38 @@ class GamePlayer {
         foreach (ref l; languages)
             if (l.tag == tag)
                 host.language = tag;
+        applyLanguageFonts();
+    }
+
+    /// Opens a font once per path; null (with the SDL error left set) when it cannot be read.
+    void* openFont(string file) {
+        if (auto found = file in openFonts)
+            return *found;
+        auto f = v_font(file.toStringz);
+        if (f)
+            openFonts[file] = f;
+        return f;
+    }
+
+    /// Selects the body and heading fonts of the current language: its `font` when the manifest
+    /// gives one (headings follow it unless it also gives `heading_font`), else the manifest's.
+    /// A font that cannot be opened keeps the previous one. Cached text textures are dropped.
+    void applyLanguageFonts() {
+        if (ui is null)
+            return;
+        string body = fontPath, heading = headingFontPath;
+        foreach (ref l; languages)
+            if (l.tag == host.language) {
+                if (l.font.length) {
+                    body = l.font;
+                    heading = l.headingFont.length ? l.headingFont : l.font;
+                } else if (l.headingFont.length)
+                    heading = l.headingFont;
+            }
+        if (auto f = openFont(body))
+            ui.fontBody = f;
+        ui.fontHeading = heading.length ? openFont(heading) : null;
+        ui.release();
     }
 
     void saveSettings() {
@@ -1866,6 +1903,7 @@ class GamePlayer {
                 index = i;
         index = (index + languages.length + direction) % languages.length;
         host.setLanguage(languages[index].tag);
+        applyLanguageFonts();
         if (mode == Mode.play)
             afterBoundary();
         saveSettings();
@@ -2157,8 +2195,9 @@ class GamePlayer {
     void close() {
         if (ui !is null) {
             ui.release();
-            v_font_free(ui.fontBody);
-            v_font_free(ui.fontHeading);
+            foreach (f; openFonts)
+                v_font_free(f);
+            openFonts = null;
         }
         foreach (ref c; channels)
             v_channel_free(c.track);
