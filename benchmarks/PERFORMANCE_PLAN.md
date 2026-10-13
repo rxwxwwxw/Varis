@@ -518,9 +518,11 @@ exists and one module uses it:
   throws at its two call sites.
 - `lib/auxlib.d` has the status forms of the argument checks (`argNumber`, `argInteger`,
   `argOptNumber`, `argOptInteger`, `argAny`, `argFail`).
-- `lib/math.d` is converted: no `throw`, no `check*`. Suite case `native_errors_as_values`
-  pins messages, positions, tracebacks and cleanup; it passes unchanged on the build before
-  the conversion.
+- `lib/math.d` and `lib/table.d` are converted: no `throw`, no `check*` (in `table.d` that
+  includes the helpers and the sort, whose "invalid order function" error now comes back
+  through the recursion as a status). Suite case `native_errors_as_values` pins messages,
+  positions, tracebacks and cleanup; it passes unchanged on the build before the conversion, and
+  a 152-line dump of every table function's error cases is byte-identical before and after.
 - Measured: an argument error raised by a math function called from Lua code and caught by
   `pcall` costs 0.45 µs (was 16.5 µs; C Lua 0.57 µs). `pcall(math.floor, "x")` costs 5.6 µs
   (was 19.7 µs; C Lua 1.1 µs); what is left there is not a throw but the search of
@@ -528,7 +530,8 @@ exists and one module uses it:
 
 To convert a module: replace each `throw new X(...)` in a native's own body by
 `return raise(state, new X(...))`, each `check*` call by its `arg*` form followed by
-`return null` on false, and make helper functions that can fail return a status. A helper that
+`return null` on false, and make helper functions that can fail return a status (`bool`, with
+the result in an `out` parameter). A helper that
 still throws (`VM.callValue`, `VM.opLt`, the pattern engine) keeps working through the adapter;
 the module is done when `grep -n "throw \|check[A-Z]"` finds nothing in it. Remaining: every
 other core module (about 400 throw sites; the largest are `types.d`, `vm.d`, `dump.d`,

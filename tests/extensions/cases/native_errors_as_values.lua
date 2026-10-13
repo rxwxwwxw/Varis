@@ -69,4 +69,26 @@ local seen
 assert(not xpcall(function() local v = math.acos("h") end, function(err) seen = err return err end))
 assert(seen:find("to 'acos'", 1, true))
 assert(math.floor(2.5) == 2 and math.max(1, 5, 3) == 5 and math.tointeger("8") == 8 and math.fmod(7, 3) == 1)
+
+-- the table library is converted as well, including errors found deep inside a sort
+assert(msg(table.insert, {1, 2, 3}, 5, "x") == "bad argument #2 to 'table.insert' (position out of bounds)")
+assert(msg(table.insert, {1}, 1, 2, 3) == "wrong number of arguments to 'insert'")
+assert(msg(table.remove, {1, 2, 3}, 7) == "bad argument #2 to 'table.remove' (position out of bounds)")
+assert(msg(table.concat, {1, {}, 3}) == "invalid value (table) at index 2 in table for 'concat'")
+assert(msg(table.concat, 5) == "bad argument #1 to 'table.concat' (table expected, got number)")
+assert(msg(table.unpack, {}, 1, 1e7) == "too many results to unpack")
+assert(msg(table.move, {1, 2, 3}, 1, math.maxinteger, 2) == "bad argument #4 to 'table.move' (destination wrap around)")
+assert(msg(table.sort, {3, 1, 2}, 5) == "bad argument #2 to 'table.sort' (function expected, got number)")
+assert(msg(function() table.sort({1, 2, 3}, 5) end) == "@: bad argument #2 to 'sort' (function expected, got number)")
+assert(msg(table.insert, setmetatable({}, {__len = function() return "x" end, __index = print, __newindex = print}), 1)
+    == "object length is not an integer")
+local scrambled = {}
+for i = 1, 300 do scrambled[i] = (i * 7919) % 300 end
+assert(msg(table.sort, scrambled, function() return true end) == "invalid order function for sorting")
+assert(msg(function() table.sort(scrambled, function() return true end) end) == "@: invalid order function for sorting")
+-- an error thrown by code the library calls still passes through it
+assert(msg(table.sort, {3, 1, 2}, function() error("from the comparator", 0) end) == "from the comparator")
+local t = {5, 3, 9}
+table.sort(t, function(a, b) return a > b end)
+assert(table.concat(t, ",") == "9,5,3" and table.remove(t) == 3 and select("#", table.unpack(t)) == 2)
 print("ok")

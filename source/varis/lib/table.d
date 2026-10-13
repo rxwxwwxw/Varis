@@ -21,18 +21,20 @@ import std.array : appender;
 
 private enum TAB_R = 1, TAB_W = 2, TAB_L = 4, TAB_RW = TAB_R | TAB_W;
 
-private void checkTab(LuaState L, LuaValue[] a, int arg, int what) {
+// This module reports errors as values (varis.lib.auxlib, status forms): it contains no `throw`.
+// A function returning bool has reported an error in the state's slot when it returns false.
+private bool argTab(LuaState L, LuaValue[] a, int arg, int what) {
     if (arg <= a.length && isTable(a[arg - 1]))
-        return;
+        return true;
     if (arg <= a.length) {
         auto mt = L.getMetatable(a[arg - 1]);
         if (mt !is null &&
                 (!(what & TAB_R) || !isNil(mt.rawget(LuaValue("__index")))) &&
                 (!(what & TAB_W) || !isNil(mt.rawget(LuaValue("__newindex")))) &&
                 (!(what & TAB_L) || !isNil(mt.rawget(LuaValue("__len")))))
-            return;
+            return true;
     }
-    typeError(L, a, arg, "table");
+    return typeFail(L, a, arg, "table");
 }
 
 private LuaValue geti(LuaState L, LuaValue t, long i) {
@@ -110,17 +112,19 @@ private bool shiftRemove(LuaValue t, long size, long pos, out LuaValue removed) 
 }
 
 /// luaL_len: length honoring __len, which must produce an integer.
-private long lenOf(LuaState L, LuaValue t) {
+private bool lenOf(LuaState L, LuaValue t, out long length) {
     auto n = VM.opLen(L, t);
     long result;
-    if (!isInteger(n) && !(isFloat(n) && floatToInteger(n.match!((double d) => d, _ => 0.0), result)))
-        throw new LuaException("object length is not an integer");
-    return isInteger(n) ? n.match!((long i) => i, _ => 0L) : result;
+    if (!isInteger(n) && !(isFloat(n) && floatToInteger(n.match!((double d) => d, _ => 0.0), result))) {
+        raise(L, "object length is not an integer");
+        return false;
+    }
+    length = isInteger(n) ? n.match!((long i) => i, _ => 0L) : result;
+    return true;
 }
 
-private long auxGetN(LuaState L, LuaValue[] a, int arg, int what) {
-    checkTab(L, a, arg, what | TAB_L);
-    return lenOf(L, a[arg - 1]);
+private bool auxGetN(LuaState L, LuaValue[] a, int arg, int what, out long length) {
+    return argTab(L, a, arg, what | TAB_L) && lenOf(L, a[arg - 1], length);
 }
 
 // --- sort -------------------------------------------------------------------
@@ -148,7 +152,8 @@ private struct Sorter {
         seti(L, table, i, v);
     }
 
-    uint partition(uint lo, uint up, LuaValue P) {
+    /// Returns false after reporting "invalid order function".
+    bool partition(uint lo, uint up, LuaValue P, out uint position) {
         uint i = lo;
         uint j = up - 1;
         for (;;) {
@@ -157,20 +162,25 @@ private struct Sorter {
                 ai = get(++i);
                 if (!less(ai, P))
                     break;
-                if (i == up - 1)
-                    throw new LuaException("invalid order function for sorting");
+                if (i == up - 1) {
+                    raise(L, "invalid order function for sorting");
+                    return false;
+                }
             }
             while (true) {
                 aj = get(--j);
                 if (!less(P, aj))
                     break;
-                if (j < i)
-                    throw new LuaException("invalid order function for sorting");
+                if (j < i) {
+                    raise(L, "invalid order function for sorting");
+                    return false;
+                }
             }
             if (j < i) {
                 set(up - 1, ai);
                 set(i, P);
-                return i;
+                position = i;
+                return true;
             }
             set(i, aj);
             set(j, ai);
@@ -182,7 +192,8 @@ private struct Sorter {
         return rnd % (r4 * 2) + (lo + r4);
     }
 
-    void auxsort(uint lo, uint up, uint rnd) {
+    /// ditto
+    bool auxsort(uint lo, uint up, uint rnd) {
         while (lo < up) {
             uint p, n;
             auto vlo = get(lo);
@@ -192,7 +203,7 @@ private struct Sorter {
                 set(up, vlo);
             }
             if (up - lo == 1)
-                return;
+                return true;
             if (up - lo < 100u || rnd == 0)
                 p = (lo + up) / 2;
             else
@@ -210,18 +221,21 @@ private struct Sorter {
                 }
             }
             if (up - lo == 2)
-                return;
+                return true;
             auto P = get(p);
             auto vup1 = get(up - 1);
             set(p, vup1);
             set(up - 1, P);
-            p = partition(lo, up, P);
+            if (!partition(lo, up, P, p))
+                return false;
             if (p - lo < up - p) {
-                auxsort(lo, p - 1, rnd);
+                if (!auxsort(lo, p - 1, rnd))
+                    return false;
                 n = p - lo;
                 lo = p + 1;
             } else {
-                auxsort(p + 1, up, rnd);
+                if (!auxsort(p + 1, up, rnd))
+                    return false;
                 n = up - p;
                 up = p - 1;
             }
@@ -231,6 +245,7 @@ private struct Sorter {
                 rnd = cast(uint)(clock() + time(null));
             }
         }
+        return true;
     }
 }
 
@@ -238,7 +253,9 @@ void openTableLib(LuaState state) {
     auto tab = new LuaTable();
 
     tab.register("insert", (LuaState L, LuaValue[] a) {
-        long e = auxGetN(L, a, 1, TAB_RW);
+        long e;
+        if (!auxGetN(L, a, 1, TAB_RW, e))
+            return null;
         e = cast(long)(cast(ulong) e + 1);
         long pos;
         switch (a.length) {
@@ -246,9 +263,10 @@ void openTableLib(LuaState state) {
             pos = e;
             break;
         case 3: {
-                pos = checkInteger(L, a, 2);
+                if (!argInteger(L, a, 2, pos))
+                    return null;
                 if (!(cast(ulong) pos - 1u < cast(ulong) e))
-                    throw new ArgError(2, "position out of bounds");
+                    return argFail(L, 2, "position out of bounds");
                 if (shiftInsert(a[0], e, pos, a[2]))
                     return cast(LuaValue[])[];
                 for (long i = e; i > pos; i--)
@@ -256,17 +274,18 @@ void openTableLib(LuaState state) {
                 break;
             }
         default:
-            throw new LuaException("wrong number of arguments to 'insert'");
+            return raise(L, "wrong number of arguments to 'insert'");
         }
         seti(L, a[0], pos, a[a.length - 1]);
         return cast(LuaValue[])[];
     });
 
     tab.register("remove", (LuaState L, LuaValue[] a) {
-        long size = auxGetN(L, a, 1, TAB_RW);
-        long pos = optInteger(L, a, 2, size);
+        long size, pos;
+        if (!auxGetN(L, a, 1, TAB_RW, size) || !argOptInteger(L, a, 2, size, pos))
+            return null;
         if (pos != size && !(cast(ulong) pos - 1u <= cast(ulong) size))
-            throw new ArgError(2, "position out of bounds");
+            return argFail(L, 2, "position out of bounds");
         LuaValue shifted;
         if (shiftRemove(a[0], size, pos, shifted))
             return [shifted];
@@ -278,18 +297,18 @@ void openTableLib(LuaState state) {
     });
 
     tab.register("move", (LuaState L, LuaValue[] a) {
-        long f = checkInteger(L, a, 2);
-        long e = checkInteger(L, a, 3);
-        long t = checkInteger(L, a, 4);
+        long f, e, t;
+        if (!argInteger(L, a, 2, f) || !argInteger(L, a, 3, e) || !argInteger(L, a, 4, t))
+            return null;
         int tt = !isNoneOrNil(a, 5) ? 5 : 1;
-        checkTab(L, a, 1, TAB_R);
-        checkTab(L, a, tt, TAB_W);
+        if (!argTab(L, a, 1, TAB_R) || !argTab(L, a, tt, TAB_W))
+            return null;
         if (e >= f) {
             if (!(f > 0 || e < long.max + f))
-                throw new ArgError(3, "too many elements to move");
+                return argFail(L, 3, "too many elements to move");
             long n = e - f + 1;
             if (!(t <= long.max - n + 1))
-                throw new ArgError(4, "destination wrap around");
+                return argFail(L, 4, "destination wrap around");
             if (t > e || t <= f || (tt != 1 && !luaRawEqual(a[0], a[tt - 1]))) {
                 for (long i = 0; i < n; i++)
                     seti(L, a[tt - 1], t + i, geti(L, a[0], f + i));
@@ -302,25 +321,29 @@ void openTableLib(LuaState state) {
     });
 
     tab.register("concat", (LuaState L, LuaValue[] a) {
-        long last = auxGetN(L, a, 1, TAB_R);
-        string sep = optString(L, a, 2, "");
-        long i = optInteger(L, a, 3, 1);
-        last = optInteger(L, a, 4, last);
+        long last, i;
+        string sep;
+        if (!auxGetN(L, a, 1, TAB_R, last) || !argOptString(L, a, 2, "", sep) || !argOptInteger(L, a, 3, 1, i)
+            || !argOptInteger(L, a, 4, last, last))
+            return null;
         auto b = appender!string();
-        void addField(long idx) {
+        bool addField(long idx) {
             auto v = geti(L, a[0], idx);
-            if (!isString(v) && !isNumber(v))
-                throw new LuaException("invalid value (" ~ typeName(
-                    v) ~ ") at index " ~ idx.to!string ~ " in table for 'concat'");
+            if (!isString(v) && !isNumber(v)) {
+                raise(L, "invalid value (" ~ typeName(v) ~ ") at index " ~ idx.to!string ~ " in table for 'concat'");
+                return false;
+            }
             b.put(toLuaString(v));
+            return true;
         }
 
         for (; i < last; i++) {
-            addField(i);
+            if (!addField(i))
+                return null;
             b.put(sep);
         }
-        if (i == last)
-            addField(i);
+        if (i == last && !addField(i))
+            return null;
         return [LuaValue(b.data)];
     });
 
@@ -333,13 +356,16 @@ void openTableLib(LuaState state) {
     });
 
     tab.register("unpack", (LuaState L, LuaValue[] a) {
-        long i = optInteger(L, a, 2, 1);
-        long e = isNoneOrNil(a, 3) ? lenOf(L, argAt(a, 1)) : checkInteger(L, a, 3);
+        long i, e;
+        if (!argOptInteger(L, a, 2, 1, i))
+            return null;
+        if (isNoneOrNil(a, 3) ? !lenOf(L, argAt(a, 1), e) : !argInteger(L, a, 3, e))
+            return null;
         if (i > e)
             return cast(LuaValue[])[];
         ulong n = cast(ulong) e - cast(ulong) i;
         if (n >= 1_000_000 - L.currentThread().stackUse() - 40)
-            throw new LuaException("too many results to unpack");
+            return raise(L, "too many results to unpack");
         auto result = new LuaValue[cast(size_t) n + 1];
         foreach (k; 0 .. cast(size_t) n + 1)
             result[k] = geti(L, a[0], i + cast(long) k);
@@ -347,14 +373,19 @@ void openTableLib(LuaState state) {
     });
 
     tab.register("sort", (LuaState L, LuaValue[] a) {
-        long n = auxGetN(L, a, 1, TAB_RW);
+        long n;
+        if (!auxGetN(L, a, 1, TAB_RW, n))
+            return null;
         if (n > 1) {
             if (!(n < int.max))
-                throw new ArgError(1, "array too big");
-            if (!isNoneOrNil(a, 2) && !isFunction(a[1]))
-                typeError(L, a, 2, "function");
+                return argFail(L, 1, "array too big");
+            if (!isNoneOrNil(a, 2) && !isFunction(a[1])) {
+                typeFail(L, a, 2, "function");
+                return null;
+            }
             Sorter s = Sorter(L, a[0], argAt(a, 2), !isNoneOrNil(a, 2));
-            s.auxsort(1, cast(uint) n, 0);
+            if (!s.auxsort(1, cast(uint) n, 0))
+                return null;
         }
         return cast(LuaValue[])[];
     }, true);

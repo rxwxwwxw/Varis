@@ -206,7 +206,8 @@ LuaValue[] argFail(LuaState L, int n, string extra) {
     return raise(L, new ArgError(n, extra));
 }
 
-private bool typeFail(LuaState L, LuaValue[] a, int n, string expected) {
+/// Reports "EXPECTED expected, got ..." for argument `n`; always returns false.
+bool typeFail(LuaState L, LuaValue[] a, int n, string expected) {
     string actual = n > a.length ? "no value" : objectTypeName(L, a[n - 1]);
     raise(L, new ArgError(n, expected ~ " expected, got " ~ actual));
     return false;
@@ -231,6 +232,28 @@ bool argOptNumber(LuaState L, LuaValue[] a, int n, double def, out double result
         return true;
     }
     return argNumber(L, a, n, result);
+}
+
+bool argString(LuaState L, LuaValue[] a, int n, out string result) {
+    if (n <= a.length) {
+        if (isString(a[n - 1])) {
+            result = a[n - 1].asString;
+            return true;
+        }
+        if (isNumber(a[n - 1])) {
+            result = toLuaString(a[n - 1]);
+            return true;
+        }
+    }
+    return typeFail(L, a, n, "string");
+}
+
+bool argOptString(LuaState L, LuaValue[] a, int n, string def, out string result) {
+    if (isNoneOrNil(a, n)) {
+        result = def;
+        return true;
+    }
+    return argString(L, a, n, result);
 }
 
 bool argInteger(LuaState L, LuaValue[] a, int n, out long result) {
