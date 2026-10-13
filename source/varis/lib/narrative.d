@@ -29,10 +29,22 @@ import varis.logic.world;
 import varis.logic.model : RelTuple;
 import varis.exception : LuaException;
 
+private LuaValue[] fail(void* pointer, LuaException error) {
+    return raise(cast(LuaState) pointer, error);
+}
+
 private string symbolName(LuaValue value) {
-    if (!isSymbol(value))
-        throw new LuaException("narrative identifier must be a symbol");
     return value.match!((Symbol symbol) => symbol.name, _ => "");
+}
+
+/// The name of the symbol argument; reports the error and returns false when it is not one.
+private bool symbolArg(void* pointer, LuaValue value, out string name) {
+    if (!isSymbol(value)) {
+        raise(cast(LuaState) pointer, new LuaException("narrative identifier must be a symbol"));
+        return false;
+    }
+    name = symbolName(value);
+    return true;
 }
 
 void openNarrativeLib(LuaState state) {
@@ -47,24 +59,24 @@ void openNarrativeLib(LuaState state) {
     void addSceneRegistration(string registrationKind) {
         add(registrationKind, (void* pointer, LuaValue[] arguments) {
             if (arguments.length != 2 || !arguments[0].isSymbol)
-                throw new LuaException(registrationKind ~ " requires an identifier and a table");
+                return fail(pointer, new LuaException(registrationKind ~ " requires an identifier and a table"));
             auto registry = (cast(LuaState) pointer).narrativeRegistry;
             registry.requireOpen();
             auto id = nameOf(arguments[0]);
             LuaValue frozen;
             auto error = freeze(arguments[1], frozen);
             if (error.length)
-                throw new LuaException(registrationKind ~ " '" ~ id ~ "': " ~ error);
+                return fail(pointer, new LuaException(registrationKind ~ " '" ~ id ~ "': " ~ error));
             if (registrationKind == "character") {
                 if (registry.character(id) !is null)
-                    throw new LuaException("duplicate character '" ~ id ~ "'");
+                    return fail(pointer, new LuaException("duplicate character '" ~ id ~ "'"));
                 registry.characters ~= CharacterDefinition(id, frozen);
             } else {
                 if (registry.scene(id) !is null)
-                    throw new LuaException("duplicate scene '" ~ id ~ "'");
+                    return fail(pointer, new LuaException("duplicate scene '" ~ id ~ "'"));
                 auto beats = sequence(frozen).dup;
                 if (!beats.length)
-                    throw new LuaException("scene '" ~ id ~ "' requires beats");
+                    return fail(pointer, new LuaException("scene '" ~ id ~ "' requires beats"));
                 foreach (ref beat; beats) {
                     auto text = field(beat, "text");
                     if (text.isString)
@@ -82,20 +94,21 @@ void openNarrativeLib(LuaState state) {
     add("meta", (void* pointer, LuaValue[] arguments) {
         if (arguments.length < 2 || arguments.length > 3 || !arguments[0].isSymbol || (arguments.length == 3 && !arguments[1]
             .isSymbol))
-            throw new LuaException("narrative.meta requires a storylet symbol, an optional choice symbol and a table");
+            return fail(pointer, new LuaException(
+                "narrative.meta requires a storylet symbol, an optional choice symbol and a table"));
         auto registry = (cast(LuaState) pointer).narrativeRegistry;
         registry.requireOpen();
         auto key = nameOf(arguments[0]);
         if (arguments.length == 3)
             key ~= "." ~ nameOf(arguments[1]);
         if (key in registry.metadata)
-            throw new LuaException("duplicate narrative.meta for '" ~ key ~ "'");
+            return fail(pointer, new LuaException("duplicate narrative.meta for '" ~ key ~ "'"));
         if (!isTable(arguments[$ - 1]))
-            throw new LuaException("narrative.meta requires a table of fields");
+            return fail(pointer, new LuaException("narrative.meta requires a table of fields"));
         LuaValue frozen;
         auto error = freeze(arguments[$ - 1], frozen);
         if (error.length)
-            throw new LuaException("narrative.meta '" ~ key ~ "': " ~ error);
+            return fail(pointer, new LuaException("narrative.meta '" ~ key ~ "': " ~ error));
         registry.metadata[key] = frozen;
         return cast(LuaValue[])[];
     });
@@ -103,12 +116,12 @@ void openNarrativeLib(LuaState state) {
     // session methods, readable from an effect (they see its tentative state).
     add("visited", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !arguments[0].isSymbol)
-            throw new LuaException("visited requires a storylet symbol");
+            return fail(pointer, new LuaException("visited requires a storylet symbol"));
         return [LuaValue(cast(long) requireEffectSession().visitCount(nameOf(arguments[0])))];
     });
     add("last_chosen", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !arguments[0].isSymbol)
-            throw new LuaException("last_chosen requires a storylet symbol");
+            return fail(pointer, new LuaException("last_chosen requires a storylet symbol"));
         ulong turn;
         if (!requireEffectSession().lastChosen(nameOf(arguments[0]), turn))
             return [luaNil()];
@@ -118,12 +131,12 @@ void openNarrativeLib(LuaState state) {
     // fragment before the storylets and scenes that use it; it is expanded where it is used.
     add("fragment", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 2 || !arguments[0].isSymbol || !isString(arguments[1]))
-            throw new LuaException("narrative.fragment requires a name symbol and a text");
+            return fail(pointer, new LuaException("narrative.fragment requires a name symbol and a text"));
         auto registry = (cast(LuaState) pointer).narrativeRegistry;
         registry.requireOpen();
         auto name = nameOf(arguments[0]);
         if (name in registry.fragments)
-            throw new LuaException("duplicate template fragment '" ~ name ~ "'");
+            return fail(pointer, new LuaException("duplicate template fragment '" ~ name ~ "'"));
         registry.fragments[name] = registry.expandFragments(arguments[1].match!((string s) => s, _ => ""));
         return cast(LuaValue[])[];
     });
@@ -133,7 +146,7 @@ void openNarrativeLib(LuaState state) {
     add("var", (void* pointer, LuaValue[] arguments) {
         auto state = cast(LuaState) pointer;
         if (arguments.length != 2 || !arguments[0].isSymbol)
-            throw new LuaException("var requires a name and an initial value");
+            return fail(pointer, new LuaException("var requires a name and an initial value"));
         encodeValue(arguments[1], "var");
         auto world = state.globalWorld;
         auto relation = world.getRelation("var");
@@ -141,7 +154,7 @@ void openNarrativeLib(LuaState state) {
             relation = world.declareNamedRelation("var", ["name", "value"], ["name"]);
         auto name = arguments[0];
         if (RelTuple([name]) in relation.keyIndex)
-            throw new LuaException("duplicate story variable '" ~ nameOf(name) ~ "'");
+            return fail(pointer, new LuaException("duplicate story variable '" ~ nameOf(name) ~ "'"));
         relation.setFact(RelTuple([name, arguments[1]]));
         return cast(LuaValue[])[];
     });
@@ -149,7 +162,7 @@ void openNarrativeLib(LuaState state) {
     addSceneRegistration("character");
     add("play", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !arguments[0].isSymbol)
-            throw new LuaException("play requires a scene symbol");
+            return fail(pointer, new LuaException("play requires a scene symbol"));
         requireEffectSession().playScene(nameOf(arguments[0]));
         return cast(LuaValue[])[];
     });
@@ -157,22 +170,30 @@ void openNarrativeLib(LuaState state) {
     // setup whose moment names a scene that does not exist.
     add("has_scene", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !arguments[0].isSymbol)
-            throw new LuaException("has_scene requires a scene symbol");
+            return fail(pointer, new LuaException("has_scene requires a scene symbol"));
         auto registry = (cast(LuaState) pointer).narrativeRegistry;
         return [LuaValue(registry.scene(nameOf(arguments[0])) !is null)];
     });
     add("analyze", (void* pointer, LuaValue[] arguments) {
         if (arguments.length < 1 || arguments.length > 2)
-            throw new LuaException("analyze requires session and optional options table");
+            return fail(pointer, new LuaException("analyze requires session and optional options table"));
         AnalysisOptions options;
         if (arguments.length == 2) {
             auto fields = diagnosticBindings(arguments[1]);
+            // A `return` inside a foreach over an associative array is awkward for the compiler: record the problem.
+            string problem;
             foreach (name, value; fields) {
-                if (!isInteger(value))
-                    throw new LuaException("analysis option must be an integer: " ~ name);
+                if (problem !is null)
+                    break;
+                if (!isInteger(value)) {
+                    problem = "analysis option must be an integer: " ~ name;
+                    continue;
+                }
                 long count = value.match!((long n) => n, _ => -1L);
-                if (count < 0)
-                    throw new LuaException("analysis option must be nonnegative: " ~ name);
+                if (count < 0) {
+                    problem = "analysis option must be nonnegative: " ~ name;
+                    continue;
+                }
                 switch (name) {
                 case "depth":
                     options.depth = cast(size_t) count;
@@ -187,83 +208,96 @@ void openNarrativeLib(LuaState state) {
                     options.maxObjects = cast(size_t) count;
                     break;
                 default:
-                    throw new LuaException("unknown analysis option '" ~ name ~ "'");
+                    problem = "unknown analysis option '" ~ name ~ "'";
                 }
             }
+            if (problem !is null)
+                return fail(pointer, new LuaException(problem));
         }
         return [analyzeSession(unwrapSession(arguments[0]), options)];
     });
     add("explain", (void* pointer, LuaValue[] arguments) {
         if (arguments.length < 2 || arguments.length > 3)
-            throw new LuaException("explain requires session, content symbol and optional bindings");
+            return fail(pointer, new LuaException("explain requires session, content symbol and optional bindings"));
+        string content;
+        if (!symbolArg(pointer, arguments[1], content))
+            return null;
         return [
-            explainContent(unwrapSession(arguments[0]), symbolName(arguments[1]), diagnosticBindings(
+            explainContent(unwrapSession(arguments[0]), content, diagnosticBindings(
                 arguments.length > 2 ? arguments[2] : luaNil()))
         ];
     });
     add("observe", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 3)
-            throw new LuaException("observe requires world, relation name and callbacks");
+            return fail(pointer, new LuaException("observe requires world, relation name and callbacks"));
         string name;
         if (isSymbol(arguments[1]))
             name = symbolName(arguments[1]);
         else if (isString(arguments[1]))
             name = arguments[1].match!((string s) => s, _ => "");
         else
-            throw new LuaException("observed relation name must be a string or symbol");
+            return fail(pointer, new LuaException("observed relation name must be a string or symbol"));
         return [
             observeRelation(cast(LuaState) pointer, unwrapWorld(arguments[0]), name, arguments[2])
         ];
     });
     add("enqueue", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1)
-            throw new LuaException("enqueue requires a callback");
+            return fail(pointer, new LuaException("enqueue requires a callback"));
         enqueueObserverCommand(arguments[0]);
         return cast(LuaValue[])[];
     });
     add("flush", (void* pointer, LuaValue[] arguments) {
         if (arguments.length < 1 || arguments.length > 2)
-            throw new LuaException("flush requires a world and optional positive limit");
+            return fail(pointer, new LuaException("flush requires a world and optional positive limit"));
         long limit = 1000;
         if (arguments.length == 2) {
             if (!isInteger(arguments[1]))
-                throw new LuaException("observer queue limit must be an integer");
+                return fail(pointer, new LuaException("observer queue limit must be an integer"));
             limit = arguments[1].match!((long n) => n, _ => 0L);
         }
         if (limit <= 0)
-            throw new LuaException("observer queue limit must be positive");
+            return fail(pointer, new LuaException("observer queue limit must be positive"));
         flushObserverCommands(unwrapWorld(arguments[0]), cast(size_t) limit);
         return cast(LuaValue[])[];
     });
     add("program", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 2 || !isString(arguments[1]))
-            throw new LuaException("narrative.program requires a world and authored version string");
+            return fail(pointer, new LuaException("narrative.program requires a world and authored version string"));
         declareAuthoredProgram(unwrapWorld(arguments[0]), arguments[1].match!((string s) => s, _ => ""));
         return cast(LuaValue[])[];
     });
     // Cross-save data owned by the host (see varis.narrative.profile).
     auto profile = new Profile;
-    string profileKey(LuaValue value) {
-        if (!isString(value) || !value.match!((string s) => s.length != 0, _ => false))
-            throw new LuaException("profile key must be a non-empty string");
-        return value.match!((string s) => s, _ => "");
+    bool profileKey(LuaValue value, out string result) {
+        if (!isString(value) || !value.match!((string s) => s.length != 0, _ => false)) {
+            raise(state, new LuaException("profile key must be a non-empty string"));
+            return false;
+        }
+        result = value.match!((string s) => s, _ => "");
+        return true;
     }
 
-    void requireProfileRead() {
+    bool requireProfileRead() {
         import varis.fiber : isReadOnlyEvaluation;
 
-        if (currentTransaction() !is null || isReadOnlyEvaluation())
-            throw new LuaException("the profile is not readable during effects, rules or templates");
+        if (currentTransaction() !is null || isReadOnlyEvaluation()) {
+            raise(state, new LuaException("the profile is not readable during effects, rules or templates"));
+            return false;
+        }
+        return true;
     }
 
     add("profile_set", (void* pointer, LuaValue[] arguments) {
         import varis.fiber : isReadOnlyEvaluation;
 
         if (arguments.length != 2)
-            throw new LuaException("profile_set requires a key and a portable value (nil removes it)");
-        auto key = profileKey(arguments[0]);
+            return fail(pointer, new LuaException("profile_set requires a key and a portable value (nil removes it)"));
+        string key;
+        if (!profileKey(arguments[0], key))
+            return null;
         if (isReadOnlyEvaluation())
-            throw new LuaException("profile writes are prohibited during read-only evaluation");
+            return fail(pointer, new LuaException("profile writes are prohibited during read-only evaluation"));
         auto value = arguments[1];
         if (!isNil(value))
             encodeValue(value, "profile." ~ key);
@@ -282,42 +316,53 @@ void openNarrativeLib(LuaState state) {
     });
     add("profile_get", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1)
-            throw new LuaException("profile_get requires a key");
-        requireProfileRead();
-        auto found = profileKey(arguments[0]) in profile.values;
+            return fail(pointer, new LuaException("profile_get requires a key"));
+        string key;
+        if (!requireProfileRead() || !profileKey(arguments[0], key))
+            return null;
+        auto found = key in profile.values;
         return [found is null ? luaNil() : *found];
     });
     add("profile_keys", (void* pointer, LuaValue[] arguments) {
-        requireProfileRead();
+        if (!requireProfileRead())
+            return null;
         LuaValue[] names;
         foreach (name; profile.keys)
             names ~= LuaValue(name);
         return [immutableSequence(names)];
     });
     add("profile_save", (void* pointer, LuaValue[] arguments) {
-        requireProfileRead();
+        if (!requireProfileRead())
+            return null;
         return [LuaValue(profile.save())];
     });
     add("profile_load", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !isString(arguments[0]))
-            throw new LuaException("profile_load requires saved profile text");
-        requireProfileRead();
+            return fail(pointer, new LuaException("profile_load requires saved profile text"));
+        if (!requireProfileRead())
+            return null;
         profile.load(arguments[0].match!((string s) => s, _ => ""));
         return cast(LuaValue[])[];
     });
     // Save slots: one file per slot, `directory/name.json`, holding the save text.
-    string slotPath(LuaValue directory, LuaValue name) {
+    bool slotPath(LuaValue directory, LuaValue name, out string result) {
         import std.path : buildPath;
 
-        if (!isString(directory) || !isString(name))
-            throw new LuaException("a slot needs a directory and a name (strings)");
+        if (!isString(directory) || !isString(name)) {
+            raise(state, new LuaException("a slot needs a directory and a name (strings)"));
+            return false;
+        }
         auto slot = name.match!((string s) => s, _ => "");
-        if (!slot.length)
-            throw new LuaException("slot name must be letters, digits, '_' or '-'");
+        bool valid = slot.length != 0;
         foreach (c; slot)
             if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-'))
-                throw new LuaException("slot name must be letters, digits, '_' or '-'");
-        return buildPath(directory.match!((string s) => s, _ => ""), slot ~ ".json");
+                valid = false;
+        if (!valid) {
+            raise(state, new LuaException("slot name must be letters, digits, '_' or '-'"));
+            return false;
+        }
+        result = buildPath(directory.match!((string s) => s, _ => ""), slot ~ ".json");
+        return true;
     }
 
     add("save_slot", (void* pointer, LuaValue[] arguments) {
@@ -325,8 +370,11 @@ void openNarrativeLib(LuaState state) {
         import std.path : dirName;
 
         if (arguments.length < 3 || arguments.length > 4)
-            throw new LuaException("save_slot requires a session, a directory, a name and optional {label=, meta=}");
-        auto path = slotPath(arguments[1], arguments[2]);
+            return fail(pointer, new LuaException(
+                "save_slot requires a session, a directory, a name and optional {label=, meta=}"));
+        string path;
+        if (!slotPath(arguments[1], arguments[2], path))
+            return null;
         auto text = saveWithOptions(unwrapSession(arguments[0]), arguments.length == 4 ? arguments[3] : luaNil());
         mkdirRecurse(dirName(path));
         write(path, text);
@@ -336,10 +384,12 @@ void openNarrativeLib(LuaState state) {
         import std.file : exists, readText;
 
         if (arguments.length != 3)
-            throw new LuaException("load_slot requires a directory, a name and a world factory");
-        auto path = slotPath(arguments[0], arguments[1]);
+            return fail(pointer, new LuaException("load_slot requires a directory, a name and a world factory"));
+        string path;
+        if (!slotPath(arguments[0], arguments[1], path))
+            return null;
         if (!exists(path))
-            throw new LuaException("no such save slot");
+            return fail(pointer, new LuaException("no such save slot"));
         return [wrapSession(loadSession(cast(LuaState) pointer, readText(path), arguments[2]))];
     });
     add("list_slots", (void* pointer, LuaValue[] arguments) {
@@ -348,7 +398,7 @@ void openNarrativeLib(LuaState state) {
         import std.algorithm : sort;
 
         if (arguments.length != 1 || !isString(arguments[0]))
-            throw new LuaException("list_slots requires a directory");
+            return fail(pointer, new LuaException("list_slots requires a directory"));
         auto directory = arguments[0].match!((string s) => s, _ => "");
         LuaValue[] rows;
         if (exists(directory)) {
@@ -373,22 +423,24 @@ void openNarrativeLib(LuaState state) {
         import std.file : exists, remove;
 
         if (arguments.length != 2)
-            throw new LuaException("delete_slot requires a directory and a name");
-        auto path = slotPath(arguments[0], arguments[1]);
+            return fail(pointer, new LuaException("delete_slot requires a directory and a name"));
+        string path;
+        if (!slotPath(arguments[0], arguments[1], path))
+            return null;
         if (exists(path))
             remove(path);
         return cast(LuaValue[])[];
     });
     add("save_info", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !isString(arguments[0]))
-            throw new LuaException("save_info requires saved session text");
+            return fail(pointer, new LuaException("save_info requires saved session text"));
         return [saveInfo(arguments[0].match!((string s) => s, _ => ""))];
     });
     add("load", (void* pointer, LuaValue[] arguments) {
         if ((arguments.length != 2 && arguments.length != 3) || !isString(arguments[0]) || (arguments.length == 3 && !isFunction(
             arguments[2])))
-            throw new LuaException(
-                "narrative.load requires saved text, a world factory and optional migration function");
+            return fail(pointer, new LuaException(
+                "narrative.load requires saved text, a world factory and optional migration function"));
         auto state = cast(LuaState) pointer;
         auto saved = arguments[0].match!((string s) => s, _ => "");
         try {
@@ -397,14 +449,14 @@ void openNarrativeLib(LuaState state) {
             import std.string : indexOf;
 
             if (arguments.length != 3 || error.msg.indexOf("incompatible") < 0)
-                throw error;
+                return fail(pointer, error);
             auto target = immutableRecord([
                 "runtime": LuaValue(narrativeRuntimeVersion),
                 "content": LuaValue(state.narrativeRegistry.contentVersion)
             ]);
             auto migrated = VM.callValue(state, arguments[2], [arguments[0], target]);
             if (migrated.length != 1 || !isString(migrated[0]))
-                throw new LuaException("migration must return exactly one saved-text string");
+                return fail(pointer, new LuaException("migration must return exactly one saved-text string"));
             return [
                 wrapSession(loadSession(state, migrated[0].match!((string s) => s, _ => ""), arguments[1]))
             ];
@@ -412,13 +464,16 @@ void openNarrativeLib(LuaState state) {
     });
     add("new", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1)
-            throw new LuaException("narrative.new requires a world");
+            return fail(pointer, new LuaException("narrative.new requires a world"));
         return [wrapSession(new Session(cast(LuaState) pointer, unwrapWorld(arguments[0])))];
     });
     add("push_deck", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1)
-            throw new LuaException("push_deck requires a deck symbol");
-        requireEffectSession().pushDeck(symbolName(arguments[0]));
+            return fail(pointer, new LuaException("push_deck requires a deck symbol"));
+        string deck;
+        if (!symbolArg(pointer, arguments[0], deck))
+            return null;
+        requireEffectSession().pushDeck(deck);
         return cast(LuaValue[])[];
     });
     // narrative.helper(name, value): expose a function (or table of functions) from an engine
@@ -426,17 +481,17 @@ void openNarrativeLib(LuaState state) {
     // is trusted code: it is responsible for respecting the save and replay rules.
     add("helper", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 2 || !isString(arguments[0]) || !(isFunction(arguments[1]) || isTable(arguments[1])))
-            throw new LuaException("narrative.helper requires a name and a function or table");
+            return fail(pointer, new LuaException("narrative.helper requires a name and a function or table"));
         auto name = arguments[0].match!((string s) => s, _ => "");
         if (!name.length)
-            throw new LuaException("narrative.helper requires a name");
+            return fail(pointer, new LuaException("narrative.helper requires a name"));
         (cast(LuaState) pointer).narrativeRegistry.helpers[name] = arguments[1];
         return cast(LuaValue[])[];
     });
     // narrative.return_deck(): go back to the deck that led here (pop; an error at the root).
     add("return_deck", (void* pointer, LuaValue[] arguments) {
         if (arguments.length)
-            throw new LuaException("return_deck takes no arguments");
+            return fail(pointer, new LuaException("return_deck takes no arguments"));
         requireEffectSession().popDeck();
         return cast(LuaValue[])[];
     });
@@ -444,50 +499,60 @@ void openNarrativeLib(LuaState state) {
     // handler. Transaction-aware like every other effect write.
     add("set_period", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 2 || !arguments[0].isSymbol)
-            throw new LuaException("narrative.set_period requires a period symbol and a serializable value");
+            return fail(pointer, new LuaException(
+                "narrative.set_period requires a period symbol and a serializable value"));
         requireEffectSession().setPeriod(nameOf(arguments[0]), arguments[1]);
         return cast(LuaValue[])[];
     });
     // narrative.finish(:ending): record the ending of the session transactionally.
     add("finish", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !arguments[0].isSymbol)
-            throw new LuaException("narrative.finish requires an ending symbol");
+            return fail(pointer, new LuaException("narrative.finish requires an ending symbol"));
         requireEffectSession().finish(nameOf(arguments[0]));
         return cast(LuaValue[])[];
     });
     add("replace_deck", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1)
-            throw new LuaException("replace_deck requires a deck symbol");
-        requireEffectSession().replaceDeck(symbolName(arguments[0]));
+            return fail(pointer, new LuaException("replace_deck requires a deck symbol"));
+        string deck;
+        if (!symbolArg(pointer, arguments[0], deck))
+            return null;
+        requireEffectSession().replaceDeck(deck);
         return cast(LuaValue[])[];
     });
     add("pop_deck", (void* pointer, LuaValue[] arguments) {
         if (arguments.length)
-            throw new LuaException("pop_deck takes no arguments");
+            return fail(pointer, new LuaException("pop_deck takes no arguments"));
         requireEffectSession().popDeck();
         return cast(LuaValue[])[];
     });
     add("reset_deck", (void* pointer, LuaValue[] arguments) {
         if (arguments.length)
-            throw new LuaException("reset_deck takes no arguments");
+            return fail(pointer, new LuaException("reset_deck takes no arguments"));
         requireEffectSession().resetDeck();
         return cast(LuaValue[])[];
     });
     add("emit", (void* pointer, LuaValue[] arguments) {
         if (!arguments.length)
-            throw new LuaException("emit requires an event symbol");
-        requireEffectSession().emit(symbolName(arguments[0]), arguments[1 .. $]);
+            return fail(pointer, new LuaException("emit requires an event symbol"));
+        string event;
+        if (!symbolArg(pointer, arguments[0], event))
+            return null;
+        requireEffectSession().emit(event, arguments[1 .. $]);
         return cast(LuaValue[])[];
     });
     add("schedule", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 3 || !isInteger(arguments[2]))
-            throw new LuaException("schedule requires event, immutable arguments and integer delay");
-        requireEffectSession().schedule(symbolName(arguments[0]), arguments[1], arguments[2].match!((long n) => n, _ => 0L));
+            return fail(pointer, new LuaException("schedule requires event, immutable arguments and integer delay"));
+        string event;
+        if (!symbolArg(pointer, arguments[0], event))
+            return null;
+        requireEffectSession().schedule(event, arguments[1], arguments[2].match!((long n) => n, _ => 0L));
         return cast(LuaValue[])[];
     });
     add("defer", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !isFunction(arguments[0]))
-            throw new LuaException("defer requires a function");
+            return fail(pointer, new LuaException("defer requires a function"));
         auto session = requireEffectSession();
         auto callback = arguments[0];
         auto sessionWorld = session.world;
@@ -501,7 +566,7 @@ void openNarrativeLib(LuaState state) {
         string authoredVersion;
         if (arguments.length) {
             if (!isString(arguments[0]))
-                throw new LuaException("narrative content version must be a string");
+                return fail(pointer, new LuaException("narrative content version must be a string"));
             authoredVersion = arguments[0].match!((string value) => value, _ => "");
         }
         bool wasSealed = registry.sealed;
@@ -515,14 +580,17 @@ void openNarrativeLib(LuaState state) {
     });
     add("name", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 2 || !isString(arguments[1]))
-            throw new LuaException("narrative.name requires a symbol and a string");
-        (cast(LuaState) pointer).narrativeRegistry.registerName(symbolName(arguments[0]), arguments[1].match!(
+            return fail(pointer, new LuaException("narrative.name requires a symbol and a string"));
+        string identifier;
+        if (!symbolArg(pointer, arguments[0], identifier))
+            return null;
+        (cast(LuaState) pointer).narrativeRegistry.registerName(identifier, arguments[1].match!(
             (string value) => value, _ => ""));
         return cast(LuaValue[])[];
     });
     add("formatter", (void* pointer, LuaValue[] arguments) {
         if (arguments.length < 1 || arguments.length > 2)
-            throw new LuaException("narrative.formatter requires a function, or a key and a function");
+            return fail(pointer, new LuaException("narrative.formatter requires a function, or a key and a function"));
         auto registry = (cast(LuaState) pointer).narrativeRegistry;
         if (arguments.length == 1) {
             registry.registerFormatter("default", arguments[0]);
@@ -533,7 +601,7 @@ void openNarrativeLib(LuaState state) {
             else if (isString(arguments[0]))
                 key = arguments[0].match!((string s) => s, _ => "");
             else
-                throw new LuaException("narrative formatter key must be a symbol or string");
+                return fail(pointer, new LuaException("narrative formatter key must be a symbol or string"));
             registry.registerFormatter(key, arguments[1]);
         }
         return cast(LuaValue[])[];
@@ -542,14 +610,15 @@ void openNarrativeLib(LuaState state) {
     // a message that does not parse rejects the pack, and the error lists each key.
     add("translate", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 2 || !isString(arguments[0]) || !isTable(arguments[1]))
-            throw new LuaException("narrative.translate requires a language tag and a table of key = text");
+            return fail(pointer, new LuaException(
+                "narrative.translate requires a language tag and a table of key = text"));
         string[string] messages;
         auto table = arguments[1].asTable;
         LuaValue previous, key, value;
         while (table.next(previous, key, value)) {
             previous = key;
             if (!isString(key) || !isString(value))
-                throw new LuaException("narrative.translate: keys and texts must be strings");
+                return fail(pointer, new LuaException("narrative.translate: keys and texts must be strings"));
             messages[key.match!((string s) => s, _ => "")] = value.match!((string s) => s, _ => "");
         }
         auto problems = (cast(LuaState) pointer).narrativeRegistry.registerTranslations(
@@ -558,7 +627,7 @@ void openNarrativeLib(LuaState state) {
             string text = "language pack rejected:";
             foreach (problem; problems)
                 text ~= "\n  " ~ problem;
-            throw new LuaException(text);
+            return fail(pointer, new LuaException(text));
         }
         return cast(LuaValue[])[];
     });
@@ -570,7 +639,7 @@ void openNarrativeLib(LuaState state) {
         import std.json : parseJSON, JSONType, JSONException;
 
         if (arguments.length != 1 || !isString(arguments[0]))
-            throw new LuaException("narrative.load_pack requires a directory");
+            return fail(pointer, new LuaException("narrative.load_pack requires a directory"));
         string directory = arguments[0].match!((string s) => s, _ => "");
         string path = directory;
         try {
@@ -582,7 +651,7 @@ void openNarrativeLib(LuaState state) {
         try {
             text = readText(path);
         } catch (Exception) {
-            throw new LuaException("language pack rejected: cannot read " ~ path);
+            return fail(pointer, new LuaException("language pack rejected: cannot read " ~ path));
         }
         string locale;
         string[string] messages;
@@ -591,24 +660,32 @@ void openNarrativeLib(LuaState state) {
             if (document.type != JSONType.object || "locale" !in document || document["locale"].type != JSONType
                 .string
                 || "messages" !in document || document["messages"].type != JSONType.object)
-                throw new LuaException("language pack rejected: " ~ path ~ " is not a language pack");
+                return fail(pointer, new LuaException("language pack rejected: " ~ path ~ " is not a language pack"));
             if ("format" in document && document["format"].type == JSONType.integer && document["format"].integer != 1)
-                throw new LuaException("language pack rejected: " ~ path ~ " has an unknown format version");
+                return fail(pointer, new LuaException(
+                    "language pack rejected: " ~ path ~ " has an unknown format version"));
             locale = document["locale"].str;
+            string badKey;
             foreach (key, value; document["messages"].object) {
-                if (value.type != JSONType.string)
-                    throw new LuaException("language pack rejected: " ~ locale ~ " " ~ key ~ ": the text is not a string");
+                if (value.type != JSONType.string) {
+                    if (badKey is null)
+                        badKey = key;
+                    continue;
+                }
                 messages[key] = value.str;
             }
+            if (badKey !is null)
+                return fail(pointer, new LuaException(
+                    "language pack rejected: " ~ locale ~ " " ~ badKey ~ ": the text is not a string"));
         } catch (JSONException) {
-            throw new LuaException("language pack rejected: " ~ path ~ " is not valid JSON");
+            return fail(pointer, new LuaException("language pack rejected: " ~ path ~ " is not valid JSON"));
         }
         auto problems = (cast(LuaState) pointer).narrativeRegistry.registerTranslations(locale, messages);
         if (problems.length) {
             string message = "language pack rejected:";
             foreach (problem; problems)
                 message ~= "\n  " ~ problem;
-            throw new LuaException(message);
+            return fail(pointer, new LuaException(message));
         }
         return [LuaValue(locale)];
     });
@@ -616,7 +693,7 @@ void openNarrativeLib(LuaState state) {
     // rules apply to `{#plural}` in source templates. Default "en".
     add("source_language", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !isString(arguments[0]))
-            throw new LuaException("narrative.source_language requires a language tag");
+            return fail(pointer, new LuaException("narrative.source_language requires a language tag"));
         (cast(LuaState) pointer).narrativeRegistry.sourceLanguage = arguments[0].match!((string s) => s, _ => "en");
         return cast(LuaValue[])[];
     });
@@ -629,7 +706,8 @@ void openNarrativeLib(LuaState state) {
         import varis.narrative.text : koreanParticle;
 
         if (arguments.length != 2 || !isString(arguments[0]) || !isString(arguments[1]))
-            throw new LuaException("narrative.particle requires a word and a pair of forms such as \"은/는\"");
+            return fail(pointer, new LuaException(
+                "narrative.particle requires a word and a pair of forms such as \"은/는\""));
         return [
             LuaValue(koreanParticle(arguments[0].match!((string s) => s, _ => ""), arguments[1].match!((string s) => s,
                 _ => "")))
@@ -639,7 +717,7 @@ void openNarrativeLib(LuaState state) {
         import varis.narrative.text : graphemeBoundaries;
 
         if (arguments.length != 1 || !isString(arguments[0]))
-            throw new LuaException("narrative.graphemes requires a string");
+            return fail(pointer, new LuaException("narrative.graphemes requires a string"));
         return [
             LuaValue(cast(long) graphemeBoundaries(arguments[0].match!((string s) => s, _ => "")).length - 1)
         ];
@@ -648,7 +726,7 @@ void openNarrativeLib(LuaState state) {
         import varis.narrative.text : graphemeBoundaries;
 
         if (arguments.length != 2 || !isString(arguments[0]) || !isInteger(arguments[1]))
-            throw new LuaException("narrative.truncate requires a string and a count");
+            return fail(pointer, new LuaException("narrative.truncate requires a string and a count"));
         auto text = arguments[0].match!((string s) => s, _ => "");
         long count = arguments[1].match!((long n) => n, _ => 0L);
         auto bounds = graphemeBoundaries(text);
@@ -661,7 +739,7 @@ void openNarrativeLib(LuaState state) {
         import varis.narrative.text : lineBreakOpportunities;
 
         if (arguments.length != 1 || !isString(arguments[0]))
-            throw new LuaException("narrative.line_breaks requires a string");
+            return fail(pointer, new LuaException("narrative.line_breaks requires a string"));
         LuaValue[] positions;
         foreach (offset; lineBreakOpportunities(arguments[0].match!((string s) => s, _ => "")))
             positions ~= LuaValue(cast(long) offset + 1);
@@ -671,7 +749,7 @@ void openNarrativeLib(LuaState state) {
         import varis.narrative.text : rubySpans;
 
         if (arguments.length != 1 || !isString(arguments[0]))
-            throw new LuaException("narrative.ruby requires a string");
+            return fail(pointer, new LuaException("narrative.ruby requires a string"));
         LuaValue[] spans;
         foreach (span; rubySpans(arguments[0].match!((string s) => s, _ => ""))) {
             LuaValue[string] record = ["text": LuaValue(span.text)];
@@ -685,7 +763,7 @@ void openNarrativeLib(LuaState state) {
     // breaks) as an immutable sequence of span records; hosts never interpret markup themselves.
     add("spans", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !isString(arguments[0]))
-            throw new LuaException("narrative.spans requires a string");
+            return fail(pointer, new LuaException("narrative.spans requires a string"));
         LuaValue[] spans;
         foreach (span; markupSpans(arguments[0].match!((string s) => s, _ => ""))) {
             LuaValue[string] record;
@@ -705,7 +783,7 @@ void openNarrativeLib(LuaState state) {
     });
     add("escape_markup", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1 || !isString(arguments[0]))
-            throw new LuaException("narrative.escape_markup requires a string");
+            return fail(pointer, new LuaException("narrative.escape_markup requires a string"));
         return [LuaValue(escapeMarkup(arguments[0].match!((string s) => s, _ => "")))];
     });
     add("languages", (void* pointer, LuaValue[] arguments) {
@@ -721,8 +799,11 @@ void openNarrativeLib(LuaState state) {
     });
     add("on", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 2)
-            throw new LuaException("narrative.on requires a symbol and a handler");
-        (cast(LuaState) pointer).narrativeRegistry.registerHandler(symbolName(arguments[0]), arguments[1]);
+            return fail(pointer, new LuaException("narrative.on requires a symbol and a handler"));
+        string event;
+        if (!symbolArg(pointer, arguments[0], event))
+            return null;
+        (cast(LuaState) pointer).narrativeRegistry.registerHandler(event, arguments[1]);
         return cast(LuaValue[])[];
     });
     add("sequence", (void* pointer, LuaValue[] arguments) {
@@ -733,10 +814,10 @@ void openNarrativeLib(LuaState state) {
     add("template", (void* pointer, LuaValue[] arguments) {
         auto state = cast(LuaState) pointer;
         if (arguments.length < 2 || !isString(arguments[0]))
-            throw new LuaException("narrative.template requires text and bindings");
+            return fail(pointer, new LuaException("narrative.template requires text and bindings"));
         auto bindings = diagnosticBindings(arguments[1]);
         if (bindings is null && !isTable(arguments[1]) && arguments[1].typeOf() != LuaType.UserData)
-            throw new LuaException("template bindings must be a table or record");
+            return fail(pointer, new LuaException("template bindings must be a table or record"));
         World world = (arguments.length > 2 && !isNil(arguments[2])) ? unwrapWorld(arguments[2]) : state.globalWorld;
         size_t[] selections;
         if (arguments.length > 3 && !isNil(arguments[3])) {

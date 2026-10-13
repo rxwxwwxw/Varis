@@ -106,35 +106,49 @@ string skipFilePrefix(string content) {
 
 /// Loads the chunk of a source file read from disk, as the project's tiers require: a content
 /// file is vetted and runs in the restricted environment the tier hook returns.
-LuaFunction loadSourceFile(LuaState state, string filename, string content, string chunkName, string mode) {
+/// Returns false with the error object (the message) in `error` when the file cannot be loaded.
+bool loadSourceFile(LuaState state, string filename, string content, string chunkName, string mode,
+        out LuaFunction fn, out LuaValue error) {
     LuaValue environment;
     if (state.fileTierHook !is null) {
         auto problem = state.fileTierHook(filename, content, environment);
-        if (problem.length)
-            throw new LuaException(problem);
+        if (problem.length) {
+            error = LuaValue(problem);
+            return false;
+        }
     }
-    auto fn = loadChunk(state, skipFilePrefix(content), chunkName, mode);
+    if (!loadChunk(state, skipFilePrefix(content), chunkName, mode, fn, error))
+        return false;
     if (!isNil(environment)) {
         auto closure = cast(LuaClosure) fn;
         if (closure !is null && closure.upvalues.length)
             closure.upvalues[0].set(environment);
     }
-    return fn;
+    return true;
 }
 
-/// Loads a chunk of text or binary code. Returns the function or throws LuaException.
-LuaFunction loadChunk(LuaState state, string code, string chunkName, string mode) {
+/// Loads a chunk of text or binary code. Returns false with the error object in `error` on failure.
+/// The frontend and the undumper report by throwing; this is where that stops.
+bool loadChunk(LuaState state, string code, string chunkName, string mode, out LuaFunction fn, out LuaValue error) {
     import std.string : indexOf;
 
     bool binary = code.length && code[0] == '\x1b';
-    if (mode.indexOf(binary ? 'b' : 't') < 0)
-        throw new LuaException("attempt to load a " ~ (binary ? "binary" : "text") ~ " chunk (mode is '" ~ mode ~ "')");
-    if (binary) {
-        import varis.dump : undumpFunction;
-
-        return undumpFunction(state, code, chunkName);
+    if (mode.indexOf(binary ? 'b' : 't') < 0) {
+        error = LuaValue("attempt to load a " ~ (binary ? "binary" : "text") ~ " chunk (mode is '" ~ mode ~ "')");
+        return false;
     }
-    return state.loadString(code, chunkName);
+    try {
+        if (binary) {
+            import varis.dump : undumpFunction;
+
+            fn = undumpFunction(state, code, chunkName);
+        } else
+            fn = state.loadString(code, chunkName);
+    } catch (LuaException failure) {
+        error = failure.errorObject;
+        return false;
+    }
+    return true;
 }
 
 private string shortChunkId(string chunkName) {
@@ -143,17 +157,21 @@ private string shortChunkId(string chunkName) {
     return shortSourceName(chunkName);
 }
 
-/// Computes the textual form used by tostring/print (luaL_tolstring).
-string tostringValue(LuaState state, LuaValue value) {
+/// Computes the textual form used by tostring/print (luaL_tolstring). Returns false with `error`
+/// set when `__tostring` does not return a string (an error raised by `__tostring` still throws).
+bool tostringValue(LuaState state, LuaValue value, out string text, out LuaException error) {
     auto mt = state.getMetatable(value);
     if (mt !is null) {
         auto meta = mt.rawget(LuaValue("__tostring"));
         if (!isNil(meta)) {
             auto results = VM.callValue(state, meta, [value]);
             auto result = results.length ? results[0] : luaNil();
-            if (!isString(result) && !isNumber(result))
-                throw new LuaException("'__tostring' must return a string");
-            return toLuaString(result);
+            if (!isString(result) && !isNumber(result)) {
+                error = new LuaException("'__tostring' must return a string");
+                return false;
+            }
+            text = toLuaString(result);
+            return true;
         }
     }
     if (isTable(value) || value.typeOf() == LuaType.UserData) {
@@ -163,14 +181,15 @@ string tostringValue(LuaState state, LuaValue value) {
             if (isString(name))
                 tag = toLuaString(name);
         }
-        auto text = toLuaString(value);
-        auto colon = text.length ? text.length : 0;
+        auto plain = toLuaString(value);
         import std.string : indexOf;
 
-        auto at = text.indexOf(": ");
-        return at >= 0 ? tag ~ text[at .. $] : text;
+        auto at = plain.indexOf(": ");
+        text = at >= 0 ? tag ~ plain[at .. $] : plain;
+        return true;
     }
-    return toLuaString(value);
+    text = toLuaString(value);
+    return true;
 }
 
 private bool str2int(string s, int base, out long result) {
@@ -315,7 +334,10 @@ void openBaseLib(LuaState state) {
         import core.stdc.stdio : fwrite, stdout, fflush;
 
         foreach (size_t i, arg; a) {
-            auto text = tostringValue(s, arg);
+            string text;
+            LuaException problem;
+            if (!tostringValue(s, arg, text, problem))
+                return raise(s, problem);
             if (i > 0)
                 fwrite("\t".ptr, 1, 1, stdout);
             fwrite(text.ptr, 1, text.length, stdout);
@@ -352,7 +374,11 @@ void openBaseLib(LuaState state) {
     G.register("tostring", (LuaState s, LuaValue[] a) {
         if (!argAny(s, a, 1))
             return null;
-        return [LuaValue(tostringValue(s, a[0]))];
+        string text;
+        LuaException problem;
+        if (!tostringValue(s, a[0], text, problem))
+            return raise(s, problem);
+        return [LuaValue(text)];
     });
 
     G.register("tonumber", (LuaState s, LuaValue[] a) {
@@ -661,17 +687,16 @@ void openBaseLib(LuaState state) {
             }
             code = source.data;
         }
-        try {
-            auto fn = loadChunk(s, code, chunkName, mode);
-            if (a.length > 3) {
-                auto closure = cast(LuaClosure) fn;
-                if (closure !is null && closure.upvalues.length)
-                    closure.upvalues[0].set(a[3]);
-            }
-            return [LuaValue(fn)];
-        } catch (LuaException e) {
-            return [luaNil(), e.errorObject];
+        LuaFunction fn;
+        LuaValue loadError;
+        if (!loadChunk(s, code, chunkName, mode, fn, loadError))
+            return [luaNil(), loadError];
+        if (a.length > 3) {
+            auto closure = cast(LuaClosure) fn;
+            if (closure !is null && closure.upvalues.length)
+                closure.upvalues[0].set(a[3]);
         }
+        return [LuaValue(fn)];
     });
 
     G.registerDelegate("loadfile", (LuaState s, LuaValue[] a) {
@@ -697,17 +722,18 @@ void openBaseLib(LuaState state) {
                 return [luaNil(), LuaValue("cannot open " ~ filename ~ ": " ~ error)];
             chunkName = "@" ~ resolved;
         }
-        try {
-            auto fn = filename is null ? loadChunk(s, skipFilePrefix(content), chunkName, mode) : loadSourceFile(s, resolved, content, chunkName, mode);
-            if (a.length > 2) {
-                auto closure = cast(LuaClosure) fn;
-                if (closure !is null && closure.upvalues.length)
-                    closure.upvalues[0].set(a[2]);
-            }
-            return [LuaValue(fn)];
-        } catch (LuaException e) {
-            return [luaNil(), e.errorObject];
+        LuaFunction fn;
+        LuaValue loadError;
+        bool loaded = filename is null ? loadChunk(s, skipFilePrefix(content), chunkName, mode, fn, loadError)
+            : loadSourceFile(s, resolved, content, chunkName, mode, fn, loadError);
+        if (!loaded)
+            return [luaNil(), loadError];
+        if (a.length > 2) {
+            auto closure = cast(LuaClosure) fn;
+            if (closure !is null && closure.upvalues.length)
+                closure.upvalues[0].set(a[2]);
         }
+        return [LuaValue(fn)];
     });
 
     G.registerDelegate("dofile", (LuaState s, LuaValue[] a) {
@@ -729,7 +755,12 @@ void openBaseLib(LuaState state) {
                 all.put(line);
             content = all.data;
         }
-        auto fn = filename is null ? loadChunk(s, skipFilePrefix(content), chunkName, "bt") : loadSourceFile(s, resolved, content, chunkName, "bt");
+        LuaFunction fn;
+        LuaValue loadError;
+        bool loaded = filename is null ? loadChunk(s, skipFilePrefix(content), chunkName, "bt", fn, loadError)
+            : loadSourceFile(s, resolved, content, chunkName, "bt", fn, loadError);
+        if (!loaded)
+            return raise(s, new LuaException(loadError));
         return VM.callValue(s, LuaValue(fn), []);
     });
 }

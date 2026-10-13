@@ -49,10 +49,11 @@ void openLogicLib(LuaState state) {
     // logic.add(world, name, ...)
     logicTable.rawset(LuaValue("add"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {
                 if (args.length < 2)
-                    throw new LuaException("bad arguments to 'logic.add'");
+                    return raise(cast(LuaState) sPtr, new LuaException("bad arguments to 'logic.add'"));
                 auto w = unwrapWorld(args[0]);
                 if (!isString(args[1]))
-                    throw new LuaException("bad argument #2 to 'logic.add' (string expected)");
+                    return raise(cast(LuaState) sPtr, new LuaException(
+                    "bad argument #2 to 'logic.add' (string expected)"));
                 string name = args[1].match!((string s) => s, _ => "");
                 LuaValue[] tupleVals = (args.length > 2) ? args[2 .. $] : [];
                 w.addFact(name, RelTuple(tupleVals));
@@ -62,10 +63,11 @@ void openLogicLib(LuaState state) {
     // logic.retract(world, name, ...)
     logicTable.rawset(LuaValue("retract"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {
                 if (args.length < 2)
-                    throw new LuaException("bad arguments to 'logic.retract'");
+                    return raise(cast(LuaState) sPtr, new LuaException("bad arguments to 'logic.retract'"));
                 auto w = unwrapWorld(args[0]);
                 if (!isString(args[1]))
-                    throw new LuaException("bad argument #2 to 'logic.retract' (string expected)");
+                    return raise(cast(LuaState) sPtr, new LuaException(
+                    "bad argument #2 to 'logic.retract' (string expected)"));
                 string name = args[1].match!((string s) => s, _ => "");
                 LuaValue[] tupleVals = (args.length > 2) ? args[2 .. $] : [];
                 w.retractFact(name, RelTuple(tupleVals));
@@ -75,7 +77,7 @@ void openLogicLib(LuaState state) {
     // Helper for symbol construction
     auto symbolFn = new LuaNativeFunction((void* sPtr, LuaValue[] args) {
         if (args.length == 0)
-            throw new LuaException("bad argument #1 to 'symbol' (value expected)");
+            return raise(cast(LuaState) sPtr, new LuaException("bad argument #1 to 'symbol' (value expected)"));
         auto s = cast(LuaState) sPtr;
         auto arg = args[0];
         if (isSymbol(arg)) {
@@ -85,7 +87,8 @@ void openLogicLib(LuaState state) {
             string name = arg.match!((string str) => str, _ => "");
             return [s.getSymbol(name)];
         }
-        throw new LuaException(format("bad argument #1 to 'symbol' (string expected, got %s)", typeName(arg)));
+        return raise(cast(LuaState) sPtr, new LuaException(
+            format("bad argument #1 to 'symbol' (string expected, got %s)", typeName(arg))));
     }, "symbol");
 
     // logic.symbol(name)
@@ -97,8 +100,8 @@ void openLogicLib(LuaState state) {
     // logic.symbolname(val)
     logicTable.rawset(LuaValue("symbolname"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {
                 if (args.length == 0 || !isSymbol(args[0])) {
-                    throw new LuaException(format("bad argument #1 to 'symbolname' (symbol expected, got %s)", args
-                    .length > 0 ? typeName(args[0]) : "no value"));
+                    return raise(cast(LuaState) sPtr, new LuaException(format("bad argument #1 to 'symbolname' (symbol expected, got %s)", args
+                    .length > 0 ? typeName(args[0]) : "no value")));
                 }
                 auto sym = args[0].match!((Symbol s) => s, _ => Symbol.init);
                 return [LuaValue(sym.name)];
@@ -108,14 +111,15 @@ void openLogicLib(LuaState state) {
     // are several. (Query results are unordered, so there is no "first".)
     logicTable.rawset(LuaValue("one"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {
                 if (args.length != 1 || !isFunction(args[0]) && args[0].typeOf() != LuaType.UserData)
-                    throw new LuaException("bad argument #1 to 'logic.one' (query expected)");
+                    return raise(cast(LuaState) sPtr, new LuaException(
+                    "bad argument #1 to 'logic.one' (query expected)"));
                 auto s = cast(LuaState) sPtr;
                 auto first = VM.callValue(s, args[0], []);
                 if (!first.length || isNil(first[0]))
                     return [luaNil()];
                 auto second = VM.callValue(s, args[0], []);
                 if (second.length && !isNil(second[0]))
-                    throw new LuaException("logic.one: the query has more than one match");
+                    return raise(cast(LuaState) sPtr, new LuaException("logic.one: the query has more than one match"));
                 return [first[0]];
             }, "one")));
 
@@ -127,8 +131,8 @@ void openLogicLib(LuaState state) {
 
                 // Like the profile: story logic must not be able to depend on these numbers.
                 if (currentTransaction() !is null || isReadOnlyEvaluation())
-                    throw new LuaException(
-                    "logic.counters is not available inside a transaction or read-only narrative evaluation");
+                    return raise(cast(LuaState) sPtr, new LuaException(
+                    "logic.counters is not available inside a transaction or read-only narrative evaluation"));
                 auto result = new LuaTable;
                 void put(string name, ulong value) {
                     result.rawset(LuaValue(name), LuaValue(cast(long) value));
@@ -148,7 +152,7 @@ void openLogicLib(LuaState state) {
     // logic.hasbinding(record, name)
     logicTable.rawset(LuaValue("hasbinding"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {
                 if (args.length < 2)
-                    throw new LuaException("bad arguments to 'logic.hasbinding'");
+                    return raise(cast(LuaState) sPtr, new LuaException("bad arguments to 'logic.hasbinding'"));
                 auto rec = unwrapBindingRecord(args[0]);
                 string name = args[1].match!((string s) => s, _ => toLuaString(args[1]));
                 return [luaValue(rec.hasBinding(name))];
@@ -157,7 +161,7 @@ void openLogicLib(LuaState state) {
     // logic.binding(record, name)
     logicTable.rawset(LuaValue("binding"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {
                 if (args.length < 2)
-                    throw new LuaException("bad arguments to 'logic.binding'");
+                    return raise(cast(LuaState) sPtr, new LuaException("bad arguments to 'logic.binding'"));
                 auto rec = unwrapBindingRecord(args[0]);
                 string name = args[1].match!((string s) => s, _ => toLuaString(args[1]));
                 return [rec.getBinding(name)];

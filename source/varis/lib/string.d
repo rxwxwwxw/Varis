@@ -430,7 +430,10 @@ private LuaValue[] strFormat(LuaState L, LuaValue[] a) {
                 break;
             }
         case 's': {
-                string s = tostringValue(L, a[arg - 1]);
+                string s;
+                LuaException problem;
+                if (!tostringValue(L, a[arg - 1], s, problem))
+                    return raise(L, problem);
                 if (form.length == 2)
                     b.put(s);
                 else {

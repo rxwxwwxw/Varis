@@ -176,12 +176,13 @@ private LuaFunction loadFile(LuaState state, string name, out string error) {
         }
         chunkName = "@" ~ resolved;
     }
-    try {
-        return loadChunk(state, skipFilePrefix(content), chunkName, "bt");
-    } catch (LuaException failure) {
-        error = toLuaString(failure.errorObject);
+    LuaFunction fn;
+    LuaValue loadError;
+    if (!loadChunk(state, skipFilePrefix(content), chunkName, "bt", fn, loadError)) {
+        error = toLuaString(loadError);
         return null;
     }
+    return fn;
 }
 
 private bool dofile(LuaState state, string name) {
@@ -365,7 +366,11 @@ private string getPrompt(LuaState state, bool firstline) {
     auto v = state.getGlobal(firstline ? "_PROMPT" : "_PROMPT2");
     if (isNil(v))
         return firstline ? "> " : ">> ";
-    return tostringValue(state, v);
+    string text;
+    LuaException problem;
+    if (!tostringValue(state, v, text, problem))
+        return firstline ? "> " : ">> ";
+    return text;
 }
 
 private bool pushLine(LuaState state, bool firstline, out string line) {

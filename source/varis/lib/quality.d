@@ -37,10 +37,13 @@ void configureQualityWorld(LuaState state, World world) {
     relation.clampTuple = &state.narrativeRegistry.clampQualityTuple;
 }
 
-private string qualityName(LuaValue value) {
-    if (!isSymbol(value))
-        throw new LuaException("quality name must be a symbol");
-    return value.match!((Symbol s) => s.name, _ => "");
+private bool qualityName(LuaState state, LuaValue value, out string result) {
+    if (!isSymbol(value)) {
+        raise(state, new LuaException("quality name must be a symbol"));
+        return false;
+    }
+    result = value.match!((Symbol s) => s.name, _ => "");
+    return true;
 }
 
 void openQualityLib(LuaState state) {
@@ -52,31 +55,32 @@ void openQualityLib(LuaState state) {
     }
 
     add("define", (void* pointer, LuaValue[] args) {
-        if (args.length != 2 || !isTable(args[1]))
-            throw new LuaException("quality.define requires a symbol and metadata table");
         auto state = cast(LuaState) pointer;
+        if (args.length != 2 || !isTable(args[1]))
+            return raise(state, new LuaException("quality.define requires a symbol and metadata table"));
         auto definition = new QualityDefinition();
-        definition.id = qualityName(args[0]);
+        if (!qualityName(state, args[0], definition.id))
+            return null;
         auto metadata = args[1].match!((LuaTable t) => t, _ => null);
         LuaValue previous, key, value;
         while (metadata.next(previous, key, value)) {
             previous = key;
             if (!isString(key))
-                throw new LuaException("quality metadata keys must be strings");
+                return raise(cast(LuaState) pointer, new LuaException("quality metadata keys must be strings"));
             auto name = key.match!((string s) => s, _ => "");
             if (name != "initial" && name != "minimum" && name != "maximum" && name != "visible" && name != "label")
-                throw new LuaException("unknown quality metadata field '" ~ name ~ "'");
+                return raise(cast(LuaState) pointer, new LuaException("unknown quality metadata field '" ~ name ~ "'"));
         }
         definition.initial = metadata.rawget(LuaValue("initial"));
         definition.minimum = metadata.rawget(LuaValue("minimum"));
         definition.maximum = metadata.rawget(LuaValue("maximum"));
         auto visible = metadata.rawget(LuaValue("visible"));
         if (!isNil(visible) && !isBoolean(visible))
-            throw new LuaException("quality visible must be Boolean");
+            return raise(cast(LuaState) pointer, new LuaException("quality visible must be Boolean"));
         definition.visible = isNil(visible) || visible.match!((bool b) => b, _ => true);
         auto label = metadata.rawget(LuaValue("label"));
         if (!isNil(label) && !isString(label))
-            throw new LuaException("quality label must be a string");
+            return raise(cast(LuaState) pointer, new LuaException("quality label must be a string"));
         definition.label = isNil(label) ? definition.id : label.match!((string s) => s, _ => "");
         state.narrativeRegistry.registerQuality(definition);
         return cast(LuaValue[])[];
@@ -93,19 +97,22 @@ void openQualityLib(LuaState state) {
                 while (options.next(previous, optionKey, optionValue)) {
                     previous = optionKey;
                     if (!isString(optionKey) || optionKey.match!((string s) => s, _ => "") != "clamp")
-                        throw new LuaException("unknown quality.add option");
+                        return raise(cast(LuaState) pointer, new LuaException("unknown quality.add option"));
                     if (!isBoolean(optionValue))
-                        throw new LuaException("quality.add clamp option must be Boolean");
+                        return raise(cast(LuaState) pointer, new LuaException(
+                            "quality.add clamp option must be Boolean"));
                     clamp = optionValue.match!((bool b) => b, _ => false);
                 }
                 args = args[0 .. required] ~ args[required + 1 .. $];
             }
             if (args.length < required || args.length > required + 1)
-                throw new LuaException("bad arguments to quality." ~ name);
-            auto id = qualityName(args[1]);
+                return raise(cast(LuaState) pointer, new LuaException("bad arguments to quality." ~ name));
+            string id;
+            if (!qualityName(state, args[1], id))
+                return null;
             auto definition = state.narrativeRegistry.quality(id);
             if (definition is null)
-                throw new LuaException("unknown quality '" ~ id ~ "'");
+                return raise(cast(LuaState) pointer, new LuaException("unknown quality '" ~ id ~ "'"));
             auto effect = currentEffectSession();
             auto world = args.length > required ? unwrapWorld(args[required]) : (effect is null ? state.globalWorld
                 : (state.callWorld !is null ? state.callWorld : effect.world));
@@ -119,7 +126,7 @@ void openQualityLib(LuaState state) {
             if (relation.columns != ["entity", "name", "value"] || relation.keyColumns != [
                 cast(size_t) 0, 1
             ])
-                throw new LuaException("invalid quality relation schema");
+                return raise(cast(LuaState) pointer, new LuaException("invalid quality relation schema"));
             // Foreign authored worlds must receive the same metadata validator.
             relation.validateTuple = &state.narrativeRegistry.validateQualityTuple;
             relation.clampTuple = &state.narrativeRegistry.clampQualityTuple;
@@ -143,11 +150,13 @@ void openQualityLib(LuaState state) {
     add("metadata", (void* pointer, LuaValue[] args) {
         auto state = cast(LuaState) pointer;
         if (args.length != 1)
-            throw new LuaException("quality.metadata requires a quality symbol");
-        auto id = qualityName(args[0]);
+            return raise(cast(LuaState) pointer, new LuaException("quality.metadata requires a quality symbol"));
+        string id;
+        if (!qualityName(state, args[0], id))
+            return null;
         auto definition = state.narrativeRegistry.quality(id);
         if (definition is null)
-            throw new LuaException("unknown quality '" ~ id ~ "'");
+            return raise(cast(LuaState) pointer, new LuaException("unknown quality '" ~ id ~ "'"));
         // Fields that are absent stay absent (nil), so `minimum == nil` means unbounded below.
         return [
             immutableRecord([

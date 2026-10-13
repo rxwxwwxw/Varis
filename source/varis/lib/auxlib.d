@@ -42,10 +42,6 @@ void register(LuaTable table, string name, LuaValue[]delegate(LuaState, LuaValue
 
 alias registerDelegate = register;
 
-void argError(int arg, string extra) {
-    throw new ArgError(arg, extra);
-}
-
 string objectTypeName(LuaState state, LuaValue v) {
     if (isTable(v) || v.typeOf() == LuaType.UserData) {
         auto mt = state is null ? null : state.getMetatable(v);
@@ -60,11 +56,6 @@ string objectTypeName(LuaState state, LuaValue v) {
     return typeName(v);
 }
 
-void typeError(LuaState state, LuaValue[] a, int n, string expected) {
-    string actual = n > a.length ? "no value" : objectTypeName(state, a[n - 1]);
-    throw new ArgError(n, expected ~ " expected, got " ~ actual);
-}
-
 bool isNone(LuaValue[] a, int n) {
     return n > a.length;
 }
@@ -75,19 +66,6 @@ bool isNoneOrNil(LuaValue[] a, int n) {
 
 LuaValue argAt(LuaValue[] a, int n) {
     return n > a.length ? luaNil() : a[n - 1];
-}
-
-void checkAny(LuaValue[] a, int n) {
-    if (n > a.length)
-        throw new ArgError(n, "value expected");
-}
-
-LuaTable checkTable(LuaState L, LuaValue[] a, int n) {
-    if (n <= a.length)
-        if (auto t = a[n - 1].match!((LuaTable t) => t, _ => cast(LuaTable) null))
-            return t;
-    typeError(L, a, n, "table");
-    assert(0);
 }
 
 /// Converts the value at `n` to an integer following lua_tointegerx (strings allowed).
@@ -125,74 +103,8 @@ bool toNumberArg(LuaValue v, out double result) {
     return false;
 }
 
-long checkInteger(LuaState L, LuaValue[] a, int n) {
-    long result;
-    if (n <= a.length && toIntegerArg(a[n - 1], result))
-        return result;
-    double ignored;
-    if (n <= a.length && toNumberArg(a[n - 1], ignored))
-        throw new ArgError(n, "number has no integer representation");
-    typeError(L, a, n, "number");
-    assert(0);
-}
-
-long optInteger(LuaState L, LuaValue[] a, int n, long def) {
-    return isNoneOrNil(a, n) ? def : checkInteger(L, a, n);
-}
-
-double checkNumber(LuaState L, LuaValue[] a, int n) {
-    double result;
-    if (n <= a.length && toNumberArg(a[n - 1], result))
-        return result;
-    typeError(L, a, n, "number");
-    assert(0);
-}
-
-double optNumber(LuaState L, LuaValue[] a, int n, double def) {
-    return isNoneOrNil(a, n) ? def : checkNumber(L, a, n);
-}
-
-/// Returns the argument as a number value (integer or float), converting strings.
-LuaValue checkNumberValue(LuaState L, LuaValue[] a, int n) {
-    if (n <= a.length) {
-        if (isNumber(a[n - 1]))
-            return a[n - 1];
-        if (isString(a[n - 1])) {
-            LuaValue number;
-            if (parseLuaNumber(a[n - 1].match!((string s) => s, _ => ""), number))
-                return number;
-        }
-    }
-    typeError(L, a, n, "number");
-    assert(0);
-}
-
-string checkString(LuaState L, LuaValue[] a, int n) {
-    if (n <= a.length) {
-        if (isString(a[n - 1]))
-            return a[n - 1].match!((string s) => s, _ => "");
-        if (isNumber(a[n - 1]))
-            return toLuaString(a[n - 1]);
-    }
-    typeError(L, a, n, "string");
-    assert(0);
-}
-
-string optString(LuaState L, LuaValue[] a, int n, string def) {
-    return isNoneOrNil(a, n) ? def : checkString(L, a, n);
-}
-
-int checkOption(LuaState L, LuaValue[] a, int n, string def, const(string)[] options) {
-    string name = def !is null ? optString(L, a, n, def) : checkString(L, a, n);
-    foreach (i, option; options)
-        if (option == name)
-            return cast(int) i;
-    throw new ArgError(n, "invalid option '" ~ name ~ "'");
-}
-
 // ---------------------------------------------------------------------------------------
-// Errors as values (performance plan, stage L1). The functions below are the status forms of
-// the checks above: they do not throw. An `arg*` function returns false after reporting the
+// Errors as values (performance plan, stage L1). An `arg*` function returns false after reporting the
 // error in the state's error slot, and the native then returns at once:
 //
 //     double x;
@@ -200,7 +112,7 @@ int checkOption(LuaState L, LuaValue[] a, int n, string def, const(string)[] opt
 //         return null;
 //
 // `argFail` reports a bad argument directly: `return argFail(L, 2, "zero");`.
-// A module converted to this form contains no `throw` and calls none of the `check*` functions.
+// A converted module contains no `throw`; the throwing `check*`/`opt*` forms no longer exist.
 
 LuaValue[] argFail(LuaState L, int n, string extra) {
     return raise(L, new ArgError(n, extra));

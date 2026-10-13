@@ -104,10 +104,10 @@ meaning and ratchet policy are in the [benchmark guide](README.md#targets).
 
 **L1 is authorized and in progress.** Lua-frame errors return without unwinding.
 `raise(state, error)` / `state.raisedError` provide the native error channel;
-`lib/math.d`, `lib/table.d`, `lib/string.d` and the natives of `lib/base.d` use it
-(also `utf8`, `os` and `pack`; string's pattern engine and `tostringValue` still throw). Base's shared
-`loadSourceFile`, `loadChunk` and `tostringValue` helpers still throw, as do other
-libraries, VM helpers and deep-frame/coroutine boundaries.
+every native library in `lib/` uses it, and base's `loadSourceFile`, `loadChunk` and
+`tostringValue` return statuses. Still throwing: `os.exit`'s `ExitRequest`, the
+`coroutine.wrap` fast-call hook, the pattern engine, VM out-of-line helpers and the
+deep-frame/coroutine boundaries (item 2 below).
 
 Continue in this dependency order:
 

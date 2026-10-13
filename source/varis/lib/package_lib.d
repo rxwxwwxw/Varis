@@ -216,11 +216,9 @@ void openPackageLib(LuaState state) {
                 if (!readWholeFile(filename, content, readError))
                     failed = readError;
                 else {
-                    // loadSourceFile (lib/base) still reports by throwing.
-                    try
-                        fn = loadSourceFile(L, filename, content, "@" ~ filename, "bt");
-                    catch (LuaException failure)
-                        failed = toLuaString(failure.errorObject);
+                    LuaValue loadError;
+                    if (!loadSourceFile(L, filename, content, "@" ~ filename, "bt", fn, loadError))
+                        failed = toLuaString(loadError);
                 }
                 if (failed !is null) {
                     raise(L, new LuaException(
