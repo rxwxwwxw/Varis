@@ -55,25 +55,35 @@ private void setAllFields(LuaTable t, ref tm stm) {
         t.rawset(LuaValue("isdst"), LuaValue(stm.tm_isdst != 0));
 }
 
-private int getField(LuaTable t, string key, int d, int delta) {
+private bool failText(LuaState L, string message) {
+    raise(L, new LuaException(message));
+    return false;
+}
+
+private bool getField(LuaState L, LuaTable t, string key, int d, int delta, out int result) {
     auto v = t.rawget(LuaValue(key));
     long res;
     if (!toIntegerArg(v, res)) {
         if (!isNil(v))
-            throw new LuaException("field '" ~ key ~ "' is not an integer");
+            return failText(L, "field '" ~ key ~ "' is not an integer");
         if (d < 0)
-            throw new LuaException("field '" ~ key ~ "' missing in date table");
+            return failText(L, "field '" ~ key ~ "' missing in date table");
         res = d;
     } else {
         if (!(res >= 0 ? res - delta <= int.max : int.min + delta <= res))
-            throw new LuaException("field '" ~ key ~ "' is out-of-bound");
+            return failText(L, "field '" ~ key ~ "' is out-of-bound");
         res -= delta;
     }
-    return cast(int) res;
+    result = cast(int) res;
+    return true;
 }
 
-private time_t checkTime(LuaState L, LuaValue[] a, int n) {
-    return cast(time_t) checkInteger(L, a, n);
+private bool argTime(LuaState L, LuaValue[] a, int n, out time_t result) {
+    long value;
+    if (!argInteger(L, a, n, value))
+        return false;
+    result = cast(time_t) value;
+    return true;
 }
 
 void openOsLib(LuaState state) {
@@ -84,15 +94,23 @@ void openOsLib(LuaState state) {
     ]);
 
     osTable.register("date", (LuaState L, LuaValue[] a) {
-        string s = optString(L, a, 1, "%c");
-        time_t t = isNoneOrNil(a, 2) ? time(null) : checkTime(L, a, 2);
+        string s;
+        time_t t;
+        if (!argOptString(L, a, 1, "%c", s))
+            return null;
+        if (isNoneOrNil(a, 2))
+            t = time(null);
+        else if (!argTime(L, a, 2, t))
+            return null;
         bool utc = s.length && s[0] == '!';
         if (utc)
             s = s[1 .. $];
         tm stm;
         tm* result = utc ? gmtime_r(&t, &stm) : localtime_r(&t, &stm);
-        if (result is null)
-            throw new LuaException("date result cannot be represented in this installation");
+        if (result is null) {
+            failText(L, "date result cannot be represented in this installation");
+            return null;
+        }
         if (s == "*t") {
             auto table = new LuaTable();
             setAllFields(table, stm);
@@ -122,7 +140,7 @@ void openOsLib(LuaState state) {
                     o += oplen;
             }
             if (found is null)
-                throw new ArgError(1, "invalid conversion specifier '%" ~ conv ~ "'");
+                return argFail(L, 1, "invalid conversion specifier '%" ~ conv ~ "'");
             i += found.length;
             char[256] buffer;
             auto len = strftime(buffer.ptr, buffer.length, ("%" ~ found).toStringz, &stm);
@@ -136,32 +154,41 @@ void openOsLib(LuaState state) {
         if (isNoneOrNil(a, 1))
             t = time(null);
         else {
-            auto table = checkTable(L, a, 1);
+            LuaTable table;
+            if (!argTable(L, a, 1, table))
+                return null;
             tm ts;
-            ts.tm_year = getField(table, "year", -1, 1900);
-            ts.tm_mon = getField(table, "month", -1, 1);
-            ts.tm_mday = getField(table, "day", -1, 0);
-            ts.tm_hour = getField(table, "hour", 12, 0);
-            ts.tm_min = getField(table, "min", 0, 0);
-            ts.tm_sec = getField(table, "sec", 0, 0);
+            if (!getField(L, table, "year", -1, 1900, ts.tm_year)
+                || !getField(L, table, "month", -1, 1, ts.tm_mon)
+                || !getField(L, table, "day", -1, 0, ts.tm_mday)
+                || !getField(L, table, "hour", 12, 0, ts.tm_hour)
+                || !getField(L, table, "min", 0, 0, ts.tm_min)
+                || !getField(L, table, "sec", 0, 0, ts.tm_sec))
+                return null;
             auto dst = table.rawget(LuaValue("isdst"));
             ts.tm_isdst = isNil(dst) ? -1 : (isTruthy(dst) ? 1 : 0);
             t = mktime(&ts);
             setAllFields(table, ts);
         }
-        if (t == cast(time_t)-1)
-            throw new LuaException("time result cannot be represented in this installation");
+        if (t == cast(time_t)-1) {
+            failText(L, "time result cannot be represented in this installation");
+            return null;
+        }
         return [LuaValue(cast(long) t)];
     });
 
     osTable.register("difftime", (LuaState L, LuaValue[] a) {
-        time_t t1 = checkTime(L, a, 1);
-        time_t t2 = checkTime(L, a, 2);
+        time_t t1, t2;
+        if (!argTime(L, a, 1, t1) || !argTime(L, a, 2, t2))
+            return null;
         return [LuaValue(difftime(t1, t2))];
     });
 
     osTable.register("getenv", (LuaState L, LuaValue[] a) {
-        auto value = getenv(checkString(L, a, 1).toStringz);
+        string name;
+        if (!argString(L, a, 1, name))
+            return null;
+        auto value = getenv(name.toStringz);
         if (value is null)
             return [luaNil()];
         return [LuaValue((cast(string) value.fromStringz).idup)];
@@ -171,7 +198,9 @@ void openOsLib(LuaState state) {
         import core.sys.posix.sys.wait : WIFEXITED, WEXITSTATUS, WIFSIGNALED, WTERMSIG;
         import core.stdc.stdio : fflush;
 
-        string cmd = optString(L, a, 1, null);
+        string cmd;
+        if (!argOptString(L, a, 1, null, cmd))
+            return null;
         errno = 0;
         fflush(null);
         int stat = system(cmd is null ? null : cmd.toStringz);
@@ -192,14 +221,17 @@ void openOsLib(LuaState state) {
     });
 
     osTable.register("remove", (LuaState L, LuaValue[] a) {
-        string filename = checkString(L, a, 1);
+        string filename;
+        if (!argString(L, a, 1, filename))
+            return null;
         errno = 0;
         return fileResult(remove(filename.toStringz) == 0, filename);
     });
 
     osTable.register("rename", (LuaState L, LuaValue[] a) {
-        string from = checkString(L, a, 1);
-        string to = checkString(L, a, 2);
+        string from, to;
+        if (!argString(L, a, 1, from) || !argString(L, a, 2, to))
+            return null;
         errno = 0;
         return fileResult(rename(from.toStringz, to.toStringz) == 0);
     });
@@ -210,8 +242,10 @@ void openOsLib(LuaState state) {
 
         char[] pattern = "/tmp/lua_XXXXXX\0".dup;
         int fd = mkstemp(pattern.ptr);
-        if (fd == -1)
-            throw new LuaException("unable to generate a unique filename");
+        if (fd == -1) {
+            failText(L, "unable to generate a unique filename");
+            return null;
+        }
         close(fd);
         return [LuaValue(pattern[0 .. $ - 1].idup)];
     });
@@ -219,8 +253,10 @@ void openOsLib(LuaState state) {
     osTable.register("setlocale", (LuaState L, LuaValue[] a) {
         static immutable names = ["all", "collate", "ctype", "monetary", "numeric", "time"];
         static immutable cats = [LC_ALL, LC_COLLATE, LC_CTYPE, LC_MONETARY, LC_NUMERIC, LC_TIME];
-        string locale = optString(L, a, 1, null);
-        int op = checkOption(L, a, 2, "all", names);
+        string locale;
+        int op;
+        if (!argOptString(L, a, 1, null, locale) || !argOption(L, a, 2, "all", names, op))
+            return null;
         auto res = setlocale(cats[op], locale is null ? null : locale.toStringz);
         if (res is null)
             return [luaNil()];
@@ -233,8 +269,12 @@ void openOsLib(LuaState state) {
         int status;
         if (a.length && isBoolean(a[0]))
             status = isTruthy(a[0]) ? 0 : 1;
-        else
-            status = cast(int) optInteger(L, a, 1, 0);
+        else {
+            long code;
+            if (!argOptInteger(L, a, 1, 0, code))
+                return null;
+            status = cast(int) code;
+        }
         if (a.length > 1 && isTruthy(a[1]))
             throw new ExitRequest(status);
         fflush(null);

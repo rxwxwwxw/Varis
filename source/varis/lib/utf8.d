@@ -22,24 +22,33 @@ private bool continuation(string source, size_t index) {
     return index < source.length && (cast(ubyte) source[index] & 0xc0) == 0x80;
 }
 
-private long integerArgument(LuaValue[] args, size_t index, long fallback, bool optional = true) {
-    if (optional && (index >= args.length || isNil(args[index])))
-        return fallback;
-    LuaValue number;
-    if (index >= args.length || !VM.toCoercedNumber(args[index], number))
-        throw new LuaException("number expected");
-    if (isInteger(number))
-        return number.match!((long value) => value, _ => 0L);
-    long value;
-    if (!floatToInteger(number.match!((double value) => value, _ => double.nan), value))
-        throw new LuaException("number has no integer representation");
-    return value;
+private bool fail(void* s, string message) {
+    raise(cast(LuaState) s, new LuaException(message));
+    return false;
 }
 
-private string stringArgument(LuaValue[] args) {
+private bool integerArgument(void* s, LuaValue[] args, size_t index, long fallback, bool optional, out long result) {
+    if (optional && (index >= args.length || isNil(args[index]))) {
+        result = fallback;
+        return true;
+    }
+    LuaValue number;
+    if (index >= args.length || !VM.toCoercedNumber(args[index], number))
+        return fail(s, "number expected");
+    if (isInteger(number)) {
+        result = number.match!((long value) => value, _ => 0L);
+        return true;
+    }
+    if (!floatToInteger(number.match!((double value) => value, _ => double.nan), result))
+        return fail(s, "number has no integer representation");
+    return true;
+}
+
+private bool stringArgument(void* s, LuaValue[] args, out string result) {
     if (!args.length || (!isString(args[0]) && !isNumber(args[0])))
-        throw new LuaException("string expected");
-    return toLuaString(args[0]);
+        return fail(s, "string expected");
+    result = toLuaString(args[0]);
+    return true;
 }
 
 private long relative(long position, size_t length) {
@@ -85,9 +94,13 @@ void openUtf8Lib(LuaState state) {
     library.rawset(LuaValue("char"), LuaValue(new LuaNativeFunction((void* s, LuaValue[] args) {
                 char[] result;
                 foreach (index, arg; args) {
-                    long value = integerArgument(args, index, 0, false);
-                    if (value < 0 || value > 0x7fffffff)
-                        throw new LuaException("value out of range");
+                    long value;
+                    if (!integerArgument(s, args, index, 0, false, value))
+                        return null;
+                    if (value < 0 || value > 0x7fffffff) {
+                        fail(s, "value out of range");
+                        return null;
+                    }
                     uint code = cast(uint) value;
                     if (code < 0x80) {
                         result ~= cast(char) code;
@@ -109,13 +122,22 @@ void openUtf8Lib(LuaState state) {
             }, "utf8_char")));
 
     library.rawset(LuaValue("len"), LuaValue(new LuaNativeFunction((void* s, LuaValue[] args) {
-                string source = stringArgument(args);
-                long first = relative(integerArgument(args, 1, 1), source.length);
-                long last = relative(integerArgument(args, 2, -1), source.length);
-                if (first < 1 || first - 1 > source.length)
-                    throw new LuaException("initial position out of bounds");
-                if (last > source.length)
-                    throw new LuaException("final position out of bounds");
+                string source;
+                long first, last;
+                if (!stringArgument(s, args, source) || !integerArgument(s, args, 1, 1, true, first))
+                    return null;
+                first = relative(first, source.length);
+                if (!integerArgument(s, args, 2, -1, true, last))
+                    return null;
+                last = relative(last, source.length);
+                if (first < 1 || first - 1 > source.length) {
+                    fail(s, "initial position out of bounds");
+                    return null;
+                }
+                if (last > source.length) {
+                    fail(s, "final position out of bounds");
+                    return null;
+                }
                 bool strict = args.length < 4 || !isTruthy(args[3]);
                 size_t index = cast(size_t)(first - 1);
                 long count;
@@ -131,19 +153,28 @@ void openUtf8Lib(LuaState state) {
             }, "utf8_len")));
 
     library.rawset(LuaValue("codepoint"), LuaValue(new LuaNativeFunction((void* s, LuaValue[] args) {
-                string source = stringArgument(args);
-                long first = relative(integerArgument(args, 1, 1), source.length);
-                long last = relative(integerArgument(args, 2, first), source.length);
-                if (first < 1 || last > source.length)
-                    throw new LuaException("out of bounds");
+                string source;
+                long first, last;
+                if (!stringArgument(s, args, source) || !integerArgument(s, args, 1, 1, true, first))
+                    return null;
+                first = relative(first, source.length);
+                if (!integerArgument(s, args, 2, first, true, last))
+                    return null;
+                last = relative(last, source.length);
+                if (first < 1 || last > source.length) {
+                    fail(s, "out of bounds");
+                    return null;
+                }
                 bool strict = args.length < 4 || !isTruthy(args[3]);
                 LuaValue[] result;
                 size_t index = cast(size_t)(first - 1);
                 while (cast(long) index < last) {
                     uint code;
                     size_t next;
-                    if (!decodeCode(source, index, strict, code, next))
-                        throw new LuaException("invalid UTF-8 code");
+                    if (!decodeCode(source, index, strict, code, next)) {
+                        fail(s, "invalid UTF-8 code");
+                        return null;
+                    }
                     result ~= LuaValue(cast(long) code);
                     index = next;
                 }
@@ -151,19 +182,25 @@ void openUtf8Lib(LuaState state) {
             }, "utf8_codepoint")));
 
     library.rawset(LuaValue("offset"), LuaValue(new LuaNativeFunction((void* s, LuaValue[] args) {
-                string source = stringArgument(args);
-                long n = integerArgument(args, 1, 0, false);
-                long position = relative(integerArgument(args, 2, n >= 0 ? 1 : cast(long) source.length + 1), source
-                .length);
-                if (position < 1 || position - 1 > source.length)
-                    throw new LuaException("position out of bounds");
+                string source;
+                long n, position;
+                if (!stringArgument(s, args, source) || !integerArgument(s, args, 1, 0, false, n)
+                    || !integerArgument(s, args, 2, n >= 0 ? 1 : cast(long) source.length + 1, true, position))
+                    return null;
+                position = relative(position, source.length);
+                if (position < 1 || position - 1 > source.length) {
+                    fail(s, "position out of bounds");
+                    return null;
+                }
                 size_t index = cast(size_t)(position - 1);
                 if (n == 0) {
                     while (index > 0 && continuation(source, index))
                         --index;
                 } else {
-                    if (continuation(source, index))
-                        throw new LuaException("initial position is a continuation byte");
+                    if (continuation(source, index)) {
+                        fail(s, "initial position is a continuation byte");
+                        return null;
+                    }
                     if (n < 0) {
                         while (n < 0 && index > 0) {
                             do {
@@ -188,8 +225,10 @@ void openUtf8Lib(LuaState state) {
 
     LuaValue iterator(bool strict) {
         return LuaValue(new LuaNativeFunction((void* s, LuaValue[] args) {
-                string source = stringArgument(args);
-                long control = integerArgument(args, 1, 0);
+                string source;
+                long control;
+                if (!stringArgument(s, args, source) || !integerArgument(s, args, 1, 0, true, control))
+                    return null;
                 if (control < 0 || cast(ulong) control >= source.length)
                     return cast(LuaValue[])[];
                 size_t index = cast(size_t) control;
@@ -199,8 +238,10 @@ void openUtf8Lib(LuaState state) {
                     return cast(LuaValue[])[];
                 uint code;
                 size_t next;
-                if (!decodeCode(source, index, strict, code, next) || continuation(source, next))
-                    throw new LuaException("invalid UTF-8 code");
+                if (!decodeCode(source, index, strict, code, next) || continuation(source, next)) {
+                    fail(s, "invalid UTF-8 code");
+                    return null;
+                }
                 return [LuaValue(cast(long) index + 1), LuaValue(cast(long) code)];
             }, "utf8_codes_iterator"));
     }
@@ -208,9 +249,13 @@ void openUtf8Lib(LuaState state) {
     auto strictIterator = iterator(true);
     auto laxIterator = iterator(false);
     library.rawset(LuaValue("codes"), LuaValue(new LuaNativeFunction((void* s, LuaValue[] args) {
-                string source = stringArgument(args);
-                if (continuation(source, 0))
-                    throw new LuaException("invalid UTF-8 code");
+                string source;
+                if (!stringArgument(s, args, source))
+                    return null;
+                if (continuation(source, 0)) {
+                    fail(s, "invalid UTF-8 code");
+                    return null;
+                }
                 return [
                     args.length > 1 && isTruthy(args[1]) ? laxIterator : strictIterator, args[0],
                     LuaValue(0L)
