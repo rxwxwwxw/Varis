@@ -1,7 +1,7 @@
 # Performance plan: a fast Lua core and a fast world model
 
 Status: **partially implemented plan**, audited October 12, 2026. S0 (complete since
-October 13, 2026), the S1 boundary/shared handlers, W0–W4 and W5(a),
+October 13, 2026), stage S1 (complete since October 13, 2026), W0–W4 and W5(a),
 the first L1 step, the main L2 step and initial X1 caches are implemented. Turn-boundary
 collection and an initial SDL3 scene-host slice also exist. Remaining stage exit criteria
 are not complete; status notes below give the details. This replaces the
@@ -279,9 +279,71 @@ on it. It may be done after track W.
 Goal: the Lua core stops knowing about the world model, with **no behaviour change**. Saves and
 fingerprints stay byte-identical (the S0 golden test proves it).
 
+**Status: done October 13, 2026.** Items 1–3 landed on that day (4 and 5 on October 11):
+
+- *Item 2, world off the call path.* The swap of `state.callWorld` at Lua-to-Lua calls is gone
+  from both executors (and with it the saved world of parked frames and the restore in every
+  error handler). The one reader, `lib/quality.d`, reads the world set where a **native** is
+  called (`VM.doCall`), which is what the manual defines: "lexical call-world metadata: the
+  session world in the effect body, an enclosed world block, or an ordinary helper's captured
+  world". What the swap added on top was not lexical: a quality native invoked as a metamethod
+  or iterator function *itself* (no Lua frame of its own) saw the world of whichever Lua call
+  enclosed it. Suite case `quality_call_world` pins the lexical rule for plain calls, tail
+  calls, `pcall`, methods, metamethods, iterators, coroutines, sort callbacks and frames past the
+  native recursion depth; it passed before and after.
+- *Item 3, transactions.* `prepareForExecution` appends one execution-only `ExitTransaction`
+  instruction per jump whose target lies outside its innermost transaction block and retargets
+  that jump in `execCode`; the instruction commits the blocks left (closing their to-be-closed
+  values first) and continues at the original target. `BeginTransaction` no longer raises
+  `vmAttention`, the counter `openFrameTransactions` is gone, and the per-instruction range
+  check became an assertion in the instrumented loop. Errors are attributed as before (the frame
+  is at the jump's target while committing); the analysis budget is charged in the same order;
+  hook traces are identical. Suite case `transaction_block_exits`.
+- *Item 1, fast and instrumented loops.* The dispatch loop of each executor is one text
+  (`frameLoopBody`, `deepFrameLoopBody`) expanded twice in its function. The fast loop has no
+  per-instruction test at all; it looks at `vmAttention` at safepoints: after every instruction
+  that is not known to be free of calls out of the loop, and on every backward jump. Handlers
+  opt out of the safepoint with `continue` on their call-free paths (moves, loads, upvalues,
+  inline arithmetic and comparisons, array and hinted-field table access, forward jumps). The
+  instrumented loop is the previous loop with the attention path taken unconditionally. Slow
+  mode is no longer sticky: it ends when no thread has a hook, no analysis runs and no debugger
+  request is pending, so a process that once used a hook or `narrative.analyze` returns to the
+  fast loop. Suite case `hooks_installed_mid_frame` installs a hook through fourteen kinds of
+  call-out at three depths and requires the same line trace each time (it fails when one
+  safepoint is removed).
+
+Measured on the same machine in one session, before and after items 1–3 (the three rows marked
+* take their "before" from the L4 exit account written earlier the same day, because the
+baseline run of this session did not include them):
+
+| Workload | Before | After |
+| --- | ---: | ---: |
+| `core.numeric_loop` | 1.40× | 1.16× |
+| `core.array_access` | 1.50× | 1.17× |
+| `core.sieve` | 1.16× | 1.06× |
+| `core.fib` | 2.24× | 1.93× |
+| `core.closures` | 1.87× | 1.71× |
+| `core.method_dispatch` | 1.58× | 1.48× |
+| `core.deep_recursion` * | 2.47× | 2.08× |
+| `programs.mandel` | 1.76× | 1.43× |
+| `programs.matmul` | 1.38× | 1.18× |
+| `programs.oop` * | 1.58× | 1.45× |
+| `regression.deepframes` * | 1.76× | 1.09× |
+
+Items 2 and 3 alone changed nothing measurable, as predicted below; the gain is the fast loop.
+The measurement that led to it: compiling the attention test out of `executeFrame` gave
+`numeric_loop` 1.18× and `fib` 1.92×, so "one flag load per instruction" was a third of the
+distance to C Lua on loops. Gates were tightened to the new numbers.
+
+Not done, by decision recorded here: `Call`, `TailCall` and `Return` remain written once per
+executor. They are what differs between native recursion and parked frames; stage L1 measures a
+single record-based executor against native recursion and deletes the loser, which removes the
+duplication either way.
+
 1. **One executor source.** *(First step done October 11, 2026: the 40 handlers that were
    identical in both executors are now `sharedOpcodeCases*` string mixins in `vm.d`; `Call`,
-   `TailCall`, `Return` and frame entry/exit remain per executor. No measurable speed change.)*
+   `TailCall`, `Return` and frame entry/exit remain per executor. No measurable speed change.
+   The fast and instrumented variants followed on October 13, 2026: see the status above.)*
    Generate `executeFrame` and `executeDeepFrame` from one set of opcode
    handlers (a mixin template or a compile-time loop over a handler table). Add a compile-time
    parameter for an **instrumented** variant; in this stage it only needs to carry what the
@@ -305,8 +367,7 @@ fingerprints stay byte-identical (the S0 golden test proves it).
 5. **Module boundary.** *(Done October 11, 2026: no core module imports the upper layers; the
    executor reaches them through `declarativeOpHook`, `worldOfValueHook` and
    `beginFrameScopeHook`, installed by `narrative/vmops.d`; `make check-sources` enforces the
-   layering. Items 2 and 3 of this stage, removing the per-call world swap and the
-   per-instruction transaction check, are still open; they were measured as worth about 2 %.)*
+   layering. Items 2 and 3 of this stage were finished on October 13, 2026.)*
    After this stage no core module (the list is in AGENTS §4.1) imports
    `varis.logic` or `varis.narrative`. Today these do: `vm.d` (6 imports), `state.d` (3),
    `fiber.d` (2), `compiler.d`, `opcode.d`, `ast.d`, `parser.d` and `lib/coroutine.d` (1 each).

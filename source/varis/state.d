@@ -200,11 +200,43 @@ class AnalysisBudget {
 /// flag per instruction and does the detailed checks only when it is set.
 __gshared bool vmAttention;
 
-/// Sticky: some hook or instruction budget may be active, so the detailed checks stay on.
+/// Some hook or instruction budget may be active, so the instrumented loop stays on. It is set
+/// by `enterSlowMode` and cleared by `leaveSlowModeIfIdle` once nothing asks for it any more.
 __gshared bool vmSlowMode;
 
-/// Frame transactions currently open in any frame; while nonzero the loop checks their ranges.
-__gshared uint openFrameTransactions;
+/// What keeps slow mode on: threads that have a hook mask (counted once each, see
+/// `syncThreadHook`), analyses in progress, and a debugger request made from another thread that
+/// the executing thread has not consumed yet.
+__gshared int vmHookedThreads;
+/// ditto
+__gshared int vmActiveAnalyses;
+/// ditto
+__gshared bool vmDebuggerHold;
+
+void enterSlowMode() @nogc nothrow {
+    vmSlowMode = true;
+    vmAttention = true;
+}
+
+/// Running frames notice at their next instruction and go back to the fast loop.
+void leaveSlowModeIfIdle() @nogc nothrow {
+    if (vmHookedThreads == 0 && vmActiveAnalyses == 0 && !vmDebuggerHold)
+        vmSlowMode = false;
+}
+
+/// Call after changing a thread's hook mask (from the thread that runs the interpreter). A
+/// thread collected while it still has a mask stays counted, which only keeps slow mode on.
+void syncThreadHook(LuaThread thread) @nogc nothrow {
+    bool hooked = thread.hookMask != 0;
+    if (hooked != thread.hookCounted) {
+        vmHookedThreads += hooked ? 1 : -1;
+        thread.hookCounted = hooked;
+    }
+    if (hooked)
+        enterSlowMode();
+    else
+        leaveSlowModeIfIdle();
+}
 
 /// Central runtime state for Lua execution
 /// The tier policy of a project (milestone 26), installed by a host that read its manifest. Called

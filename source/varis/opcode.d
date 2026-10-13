@@ -96,7 +96,10 @@ enum OpCode {
     DefineDeck,
     RegRule, // a, bx         : register rule template bx using world R[a]
     MakeQuery, // a, bx         : R[a] = create query iterator from query template bx
-    AdjustClamp // like AdjustKey; the result saturates at the declared quality bounds
+    AdjustClamp, // like AdjustKey; the result saturates at the declared quality bounds
+    // Execution only: never in `Prototype.code`, never dumped or fingerprinted. A jump that leaves
+    // a transaction block is pointed at one of these in `execCode` (VM.prepareForExecution).
+    ExitTransaction // b: target pc. Commits the frame transactions the target lies outside of, then jumps
 }
 
 import varis.relterms : CompareOp, TermKind, GoalKind, PlanHolder;

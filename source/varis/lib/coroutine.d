@@ -87,11 +87,10 @@ private LuaThread newThread(LuaState L, LuaFunction fn) {
         th.hookMask = parent.hookMask;
         th.hookCount = parent.hookCount;
         th.hookRemaining = parent.hookCount;
-        if (th.hookMask != 0) {
-            import varis.state : vmAttention, vmSlowMode;
+        {
+            import varis.state : syncThreadHook;
 
-            vmSlowMode = true;
-            vmAttention = true;
+            syncThreadHook(th);
         }
     }
     auto fib = new VarisFiber(fn, cast(void*) L);

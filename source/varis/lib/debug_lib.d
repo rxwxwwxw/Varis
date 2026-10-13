@@ -237,6 +237,11 @@ void openDebugLib(LuaState state) {
                     thread.hookMask = 0;
                     thread.hookCount = 0;
                     thread.hookRemaining = 0;
+                    {
+                        import varis.state : syncThreadHook;
+
+                        syncThreadHook(thread);
+                    }
                     return cast(LuaValue[])[];
                 }
                 if (args.length <= offset + 1 || (!isString(args[offset + 1]) && !isNumber(args[offset + 1])))
@@ -253,11 +258,10 @@ void openDebugLib(LuaState state) {
                 mask.indexOf('l') >= 0 ? 4 : 0) | (count > 0 ? 8 : 0);
                 thread.hookCount = count;
                 thread.hookRemaining = count;
-                if (thread.hookMask != 0) {
-                    import varis.state : vmAttention, vmSlowMode;
+                {
+                    import varis.state : syncThreadHook;
 
-                    vmSlowMode = true;
-                    vmAttention = true;
+                    syncThreadHook(thread);
                 }
                 return cast(LuaValue[])[];
             }, "sethook")));

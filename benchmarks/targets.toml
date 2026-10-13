@@ -7,12 +7,12 @@
 
 [workload."core.array_access"]
 goal.clua = 1.0
-gate.clua = 2.14
+gate.clua = 2.02
 gate.time = 0.031
 
 [workload."core.closures"]
 goal.clua = 1.0
-gate.clua = 2.25
+gate.clua = 1.98
 gate.time = 0.15
 
 [workload."core.coroutine_switch"]
@@ -22,12 +22,12 @@ gate.time = 0.081
 
 [workload."core.deep_recursion"]
 goal.clua = 1.0
-gate.clua = 2.9
+gate.clua = 2.39
 gate.time = 0.081
 
 [workload."core.fib"]
 goal.clua = 1.0
-gate.clua = 2.5
+gate.clua = 2.22
 gate.time = 0.16
 
 [workload."core.gc_churn"]
@@ -42,12 +42,12 @@ gate.time = 0.031
 
 [workload."core.method_dispatch"]
 goal.clua = 1.0
-gate.clua = 1.75
+gate.clua = 1.73
 gate.time = 0.28
 
 [workload."core.numeric_loop"]
 goal.clua = 1.0
-gate.clua = 1.77
+gate.clua = 1.38
 gate.time = 0.081
 
 [workload."core.pcall_error"]
@@ -145,7 +145,7 @@ gate.time = 0.22
 
 [workload."programs.closures"]
 goal.clua = 1.0
-gate.clua = 2.6
+gate.clua = 2.32
 gate.time = 0.24
 
 [workload."programs.coro"]
@@ -155,7 +155,7 @@ gate.time = 0.089
 
 [workload."programs.mandel"]
 goal.clua = 1.0
-gate.clua = 2.0
+gate.clua = 1.82
 gate.time = 0.047
 
 [workload."programs.matmul"]
@@ -165,7 +165,7 @@ gate.time = 0.02
 
 [workload."programs.oop"]
 goal.clua = 1.0
-gate.clua = 2.12
+gate.clua = 1.84
 gate.time = 0.54
 
 [workload."programs.pairs"]
@@ -200,7 +200,7 @@ gate.time = 0.02
 
 [workload."regression.deepframes"]
 goal.clua = 1.0
-gate.clua = 1.63
+gate.clua = 1.41
 gate.time = 0.077
 
 [workload."regression.errors"]

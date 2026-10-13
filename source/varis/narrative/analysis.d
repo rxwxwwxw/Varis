@@ -49,10 +49,9 @@ private class AnalysisClone {
         openLibs(state);
         state.analysisBudget = budget;
         {
-            import varis.state : vmAttention, vmSlowMode;
+            import varis.state : enterSlowMode;
 
-            vmSlowMode = true;
-            vmAttention = true;
+            enterSlowMode();
         }
         values[LuaValue(source.globals)] = LuaValue(state.globals);
         source.narrativeRegistry.copyForAnalysis(state.narrativeRegistry, &cloneValue, &cloneDefinition);
@@ -383,6 +382,17 @@ LuaValue analyzeSession(Session original, AnalysisOptions options) {
                 "analysis requires depth 0..32 and positive bounded node/step/object limits (nodes <= 10000)");
     auto budget = new AnalysisBudget(options.maxSteps);
     budget.remainingObjects = options.maxObjects;
+    {
+        import varis.state : vmActiveAnalyses;
+
+        ++vmActiveAnalyses;
+    }
+    scope (exit) {
+        import varis.state : leaveSlowModeIfIdle, vmActiveAnalyses;
+
+        --vmActiveAnalyses;
+        leaveSlowModeIfIdle();
+    }
     AnalysisNode[] pending;
     LuaValue[] errors, cycles, deadEnds, frontier;
     bool[string] reached;

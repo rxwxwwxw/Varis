@@ -1353,6 +1353,7 @@ private void requestFinished() {
         pendingLock.unlock();
     if (--activeRequests == 0 && topSerial >= stopSerial) {
         debugger.pauseRequested = false;
+        vmDebuggerHold = false;
         vmInterrupt = false;
     }
 }
@@ -1373,6 +1374,9 @@ private bool answeredAsynchronously(ref Request request) {
         return false;
     stopSerial = activeRequests > 0 ? topSerial : requestSerial + 1;
     if (pause) {
+        // Not the interpreter's thread: the hook is not counted here (syncThreadHook), the hold
+        // keeps slow mode on until the line hook has consumed the request.
+        vmDebuggerHold = true;
         debugger.pauseRequested = true;
         debugger.thread.hookFunction = debugger.hook;
         debugger.thread.hookMask = 4;
@@ -1512,12 +1516,11 @@ private void syncHook(LuaState state) {
     if (wanted) {
         thread.hookFunction = debugger.hook;
         thread.hookMask = 4; // line events
-        vmSlowMode = true;
-        vmAttention = true;
     } else if (thread.hookFunction is debugger.hook) {
         thread.hookFunction = null;
         thread.hookMask = 0;
     }
+    syncThreadHook(thread);
 }
 
 private string stoppedJson() {
@@ -1604,6 +1607,7 @@ private LuaValue[] debuggerHook(LuaState state, long line) {
     // A pause waits for author code: the workbench's own prelude is not something to stop in.
     if (debugger.pauseRequested && file != "workbench") {
         debugger.pauseRequested = false;
+        vmDebuggerHold = false;
         stop = true;
     }
     if (!stop)
@@ -2153,6 +2157,7 @@ private Disposition handle(ref LuaState state, int socket, ref Request request, 
                 ? StepMode.out_ : StepMode.run;
             debugger.stepDepth = debugger.stoppedDepth;
             debugger.pauseRequested = false;
+            vmDebuggerHold = false;
             debugger.stopped = false;
             debugger.resultSocket = socket; // answered when execution stops again or finishes
             return Disposition.deferred;

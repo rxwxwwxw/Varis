@@ -1042,6 +1042,7 @@ class LuaThread {
     int hookCount;
     int hookRemaining;
     bool hookActive;
+    bool hookCounted; // this thread is included in vmHookedThreads (varis.state.syncThreadHook)
     // Bounded reusable register buffers, indexed by active VM depth. Active
     // buffers are removed from the cache and returned only after upvalue close.
     LuaValue[][] registerBuffers;

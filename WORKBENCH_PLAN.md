@@ -78,7 +78,9 @@ Language selection is retained on reload without a new presentation or random dr
   an uncaught error stop where it was raised, with frames, locals and frame expressions available
   and `reason`/`message` in the stop; errors that a `pcall`/`xpcall` or a coroutine will catch do
   not stop. The editor header has a "stop on errors" switch and the stop line names the error.
-  The separate fast/instrumented executor (S1) is still open. Asynchronous Pause and Stop,
+  The fast and instrumented loops of stage S1 exist since October 13, 2026: breakpoints and
+  stepping run on the instrumented loop, and slow mode ends when the debugger's hook is
+  removed, so a program runs at full speed again after a debugging session. Asynchronous Pause and Stop,
   explanations of a selected choice and bounded analysis in the UI are done.
 - **Scene-beat playtesting** is connected to the scene host: the story panel plays scenes
   (`/api/play`, `/api/advance`), shows beats, stage and locals, and Reload/Rewind replay them.
@@ -217,8 +219,8 @@ The target implementation: stage S1 of [benchmarks/PERFORMANCE_PLAN.md](benchmar
 generates two executors from one handler source. The **fast** executor contains no debugging
 code. The **instrumented** executor checks, per instruction, a per-function table of breakpoint
 positions and the stepping state. A function runs on the instrumented executor when a debugger is
-attached. The current debugger uses the per-line slow path; fully separate fast/instrumented
-executors and status-returning errors are not complete. Once errors are values (ROADMAP D7), "stop where the error happened" is a status
+attached. The current debugger uses a line hook on the instrumented loop (a per-function
+breakpoint table is not built); status-returning errors are not complete. Once errors are values (ROADMAP D7), "stop where the error happened" is a status
 check, not an exception filter.
 
 Stopping inside an effect means stopping inside an open transaction. While stopped, the workspace
@@ -271,7 +273,7 @@ tests are a separate, smaller layer.
 | Running typed commands | The REPL in `source/varis/cli.d` (`doREPL`): incomplete-statement detection and expression echo. |
 | Source positions | AST nodes carry line and column (`ast.d`). |
 | Explanations, change sets, analysis, replay | `narrative/diagnostics.d`, `observe.d`, `analysis.d`, `persistence.d`. |
-| Per-instruction slow path | The `vmSlowMode` / `vmAttention` mechanism in `state.d` and `vm.d`, which becomes the instrumented executor in stage S1. |
+| Per-instruction slow path | The `vmSlowMode` / `vmAttention` mechanism in `state.d` and the instrumented loop in `vm.d` (stage S1, done). |
 | A scripted playthrough to test against | `sample-game/tools/check.lua`. |
 
 ## 9. Open choices (owner)
