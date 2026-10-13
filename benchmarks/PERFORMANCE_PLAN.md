@@ -509,6 +509,11 @@ These are things C Lua's design does not do. Each is its own change with its own
   constant's cached hash; string library calls borrow their argument slice. `core.method_dispatch`
   1.71× → 1.63×, `programs.oop` 1.70× → 1.58×, `core.string_ops` 2.13× → 1.72×. A method found
   through an `__index` chain is still looked up every time.
+  *Second step, October 13, 2026:* the probe on the receiver (a miss for every method call)
+  uses the constant's cached hash (`findStringHintedHashed`) instead of rehashing the key string;
+  `core.method_dispatch` 1.65× → 1.61×, gate 1.98 → 1.75. X3 constant folding is not done in the
+  canonical bytecode (it would change fingerprints, rule 7); X4 has no LTO runtime libraries or
+  `llvm-profdata` on this toolchain, and the build is already one whole-program invocation.
 - **X1 — Inline caches.** Field reads and writes with constant string keys remember the slot they
   hit; method calls remember the result of the `__index` chain walk, guarded by a version on the
   metatable; global reads remember their node. `findStringHinted` is the existing start of this.

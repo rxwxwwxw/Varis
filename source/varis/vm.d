@@ -127,7 +127,7 @@ private static immutable size_t newindexNameHash = hashOf("__newindex");
 /// path must run (function handlers, deep chains).
 private int lookupFieldFast(LuaTable table, string key, size_t hash, ref int hint, out LuaValue* found) {
     auto current = table;
-    auto slot = current.findStringHinted(key, hint);
+    auto slot = current.findStringHintedHashed(key, hash, hint);
     for (int depth = 0;; ++depth) {
         if (slot !is null && !slot.isNil) {
             found = slot;

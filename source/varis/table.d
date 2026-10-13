@@ -270,6 +270,27 @@ class LuaTable {
         return null;
     }
 
+    /// `findStringHinted` for a key whose `hashOf` is known: a miss on the hint probes with the
+    /// cached hash instead of hashing the string again, and records the node it finds.
+    pragma(inline, true)
+    LuaValue* findStringHintedHashed(string key, size_t hash, ref int hint) @trusted {
+        size_t h = cast(size_t) hint;
+        if (h < nodeCount) {
+            auto node = &nodes[h];
+            if (node.key.isString) {
+                auto stored = node.key.asString;
+                if (stored.length == key.length && (stored.ptr is key.ptr || stored == key))
+                    return &node.value;
+            }
+        }
+        auto slot = findStringHashed(key, hash);
+        if (slot !is null) {
+            auto node = cast(Node*)(cast(ubyte*) slot - Node.value.offsetof);
+            hint = cast(int)(node - nodes.ptr);
+        }
+        return slot;
+    }
+
     LuaValue* findStringHinted(string key, ref int hint) {
         size_t h = cast(size_t) hint;
         if (h < nodeCount) {

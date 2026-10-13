@@ -42,7 +42,7 @@ gate.time = 0.031
 
 [workload."core.method_dispatch"]
 goal.clua = 1.0
-gate.clua = 1.98
+gate.clua = 1.75
 gate.time = 0.28
 
 [workload."core.numeric_loop"]
