@@ -256,6 +256,28 @@ bool argOptString(LuaState L, LuaValue[] a, int n, string def, out string result
     return argString(L, a, n, result);
 }
 
+bool argTable(LuaState L, LuaValue[] a, int n, out LuaTable result) {
+    if (n <= a.length && a[n - 1].isTable) {
+        result = a[n - 1].asTable;
+        return true;
+    }
+    return typeFail(L, a, n, "table");
+}
+
+/// Index of the option named by argument `n` (or by `def` when it is absent and `def` is not null).
+bool argOption(LuaState L, LuaValue[] a, int n, string def, const(string)[] options, out int result) {
+    string name;
+    if (def !is null ? !argOptString(L, a, n, def, name) : !argString(L, a, n, name))
+        return false;
+    foreach (i, option; options)
+        if (option == name) {
+            result = cast(int) i;
+            return true;
+        }
+    raise(L, new ArgError(n, "invalid option '" ~ name ~ "'"));
+    return false;
+}
+
 bool argInteger(LuaState L, LuaValue[] a, int n, out long result) {
     if (n <= a.length && toIntegerArg(a[n - 1], result))
         return true;

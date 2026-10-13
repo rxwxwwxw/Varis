@@ -523,6 +523,13 @@ exists and one module uses it:
   through the recursion as a status). Suite case `native_errors_as_values` pins messages,
   positions, tracebacks and cleanup; it passes unchanged on the build before the conversion, and
   a 152-line dump of every table function's error cases is byte-identical before and after.
+- `lib/base.d`: every native is converted (`assert`, `error`, `tonumber`, `select`,
+  `setmetatable`, `load`, `collectgarbage` and the rest). Its three helpers that other modules
+  call, `loadSourceFile`, `loadChunk` and `tostringValue`, still throw. A 371-line dump of the
+  base functions' error cases is identical before and after. A failing `assert` caught by
+  `pcall` costs 0.5 µs instead of 17 µs. The mechanical part of a conversion (statement-form
+  checks and throws inside native bodies) was done by a script; expression-form checks, helper
+  functions and anything that assigns through an `out` parameter into live state need a person.
 - Measured: an argument error raised by a math function called from Lua code and caught by
   `pcall` costs 0.45 µs (was 16.5 µs; C Lua 0.57 µs). `pcall(math.floor, "x")` costs 5.6 µs
   (was 19.7 µs; C Lua 1.1 µs); what is left there is not a throw but the search of

@@ -185,7 +185,9 @@ void openBaseLib(LuaState state) {
             "stop", "restart", "collect", "count", "step", "setpause", "setstepmul",
             "isrunning", "generational", "incremental"
         ];
-        immutable choice = checkOption(s, a, 1, "collect", options);
+        int choice;
+        if (!argOption(s, a, 1, "collect", options, choice))
+            return null;
         // Mode and tuning calls (lua.c issues one at startup) do not observe collection; only
         // calls that do enable the per-call dead-stack scrub, which is costly for every Lua call.
         if (options[choice] != "generational" && options[choice] != "incremental" &&
@@ -218,7 +220,9 @@ void openBaseLib(LuaState state) {
         case "step": {
                 // Emulates an incremental collector: a cycle completes after an amount of work
                 // proportional to the heap; larger steps finish it sooner.
-                long stepSize = optInteger(s, a, 2, 0);
+                long stepSize;
+                if (!argOptInteger(s, a, 2, 0, stepSize))
+                    return null;
                 if (s.inFinalizer)
                     return [luaNil()];
                 if (gcMode == "generational") {
@@ -237,12 +241,18 @@ void openBaseLib(LuaState state) {
             }
         case "setpause": {
                 auto old = gcPause;
-                gcPause = optInteger(s, a, 2, 0);
+                long requested;
+                if (!argOptInteger(s, a, 2, 0, requested))
+                    return null;
+                gcPause = requested;
                 return [LuaValue(old)];
             }
         case "setstepmul": {
                 auto old = gcStepMul;
-                gcStepMul = optInteger(s, a, 2, 0);
+                long requested;
+                if (!argOptInteger(s, a, 2, 0, requested))
+                    return null;
+                gcStepMul = requested;
                 return [LuaValue(old)];
             }
         case "generational": {
@@ -275,21 +285,32 @@ void openBaseLib(LuaState state) {
     });
 
     G.registerDelegate("warn", (LuaState s, LuaValue[] a) {
-        checkString(s, a, 1);
-        foreach (i; 2 .. a.length + 1)
-            checkString(s, a, cast(int) i);
-        foreach (i; 1 .. a.length + 1)
-            s.warning(checkString(s, a, cast(int) i), i < a.length);
+        string first;
+        if (!argString(s, a, 1, first))
+            return null;
+        foreach (i; 2 .. a.length + 1) {
+            string ignored;
+            if (!argString(s, a, cast(int) i, ignored))
+                return null;
+        }
+        foreach (i; 1 .. a.length + 1) {
+            string piece;
+            if (!argString(s, a, cast(int) i, piece))
+                return null;
+            s.warning(piece, i < a.length);
+        }
         return cast(LuaValue[])[];
     });
 
     G.register("type", (LuaState s, LuaValue[] a) {
-        checkAny(a, 1);
+        if (!argAny(s, a, 1))
+            return null;
         return [LuaValue(typeName(a[0]))];
     });
 
     G.register("tostring", (LuaState s, LuaValue[] a) {
-        checkAny(a, 1);
+        if (!argAny(s, a, 1))
+            return null;
         return [LuaValue(tostringValue(s, a[0]))];
     });
 
@@ -302,13 +323,18 @@ void openBaseLib(LuaState state) {
                 if (parseLuaNumber(a[0].match!((string text) => text, _ => ""), number))
                     return [number];
             }
-            checkAny(a, 1);
+            if (!argAny(s, a, 1))
+                return null;
         } else {
-            long base = checkInteger(s, a, 2);
-            if (a.length < 1 || !isString(a[0]))
-                typeError(s, a, 1, "string");
+            long base;
+            if (!argInteger(s, a, 2, base))
+                return null;
+            if (a.length < 1 || !isString(a[0])) {
+                typeFail(s, a, 1, "string");
+                return null;
+            }
             if (!(2 <= base && base <= 36))
-                argError(2, "base out of range");
+                return argFail(s, 2, "base out of range");
             long n;
             if (str2int(a[0].match!((string text) => text, _ => ""), cast(int) base, n))
                 return [LuaValue(n)];
@@ -319,21 +345,24 @@ void openBaseLib(LuaState state) {
     G.register("assert", delegate LuaValue[](LuaState s, LuaValue[] a) {
         if (a.length && isTruthy(a[0]))
             return a;
-        checkAny(a, 1);
+        if (!argAny(s, a, 1))
+            return null;
         LuaValue message = a.length > 1 ? a[1] : LuaValue("assertion failed!");
         if (isString(message))
             message = LuaValue(s.locationPrefix(1) ~ toLuaString(message));
-        throw new LuaException(message);
+        return raise(s, new LuaException(message));
     });
 
     G.register("error", delegate LuaValue[](LuaState s, LuaValue[] a) {
         LuaValue errObj = a.length ? a[0] : luaNil();
-        long level = optInteger(s, a, 2, 1);
+        long level;
+        if (!argOptInteger(s, a, 2, 1, level))
+            return null;
         if (isString(errObj) && level > 0)
             errObj = LuaValue(s.locationPrefix(cast(int) level) ~ toLuaString(errObj));
         auto failure = new LuaException(errObj);
         failure.needsLocation = false;
-        throw failure;
+        return raise(s, failure);
     });
 
     state.errorFunction = G.rawget(LuaValue("error")).asFunction;
@@ -345,7 +374,8 @@ void openBaseLib(LuaState state) {
         scope (exit)
             if (fiber !is null)
                 fiber.protectedDepth--;
-        checkAny(a, 1);
+        if (!argAny(s, a, 1))
+            return null;
         auto thread = s.currentThread();
         if (thread !is null)
             thread.pushBoundary(false);
@@ -388,8 +418,10 @@ void openBaseLib(LuaState state) {
         scope (exit)
             if (fiber !is null)
                 fiber.protectedDepth--;
-        if (a.length < 2 || !isFunction(a[1]))
-            typeError(s, a, 2, "function");
+        if (a.length < 2 || !isFunction(a[1])) {
+            typeFail(s, a, 2, "function");
+            return null;
+        }
         auto thread = s.currentThread();
         if (thread !is null)
             thread.pushBoundary(true, a[1]);
@@ -415,7 +447,9 @@ void openBaseLib(LuaState state) {
     });
 
     G.register("next", (LuaState s, LuaValue[] a) {
-        auto t = checkTable(s, a, 1);
+        LuaTable t;
+        if (!argTable(s, a, 1, t))
+            return null;
         LuaValue nextK, nextV;
         if (t.next(argAt(a, 2), nextK, nextV))
             return [nextK, nextV];
@@ -425,7 +459,8 @@ void openBaseLib(LuaState state) {
     state.fastNext = nextFunction.asFunction;
 
     G.registerDelegate("pairs", (LuaState s, LuaValue[] a) {
-        checkAny(a, 1);
+        if (!argAny(s, a, 1))
+            return null;
         auto mt = s.getMetatable(a[0]);
         auto meta = mt is null ? luaNil() : mt.rawget(LuaValue("__pairs"));
         if (isNil(meta))
@@ -438,7 +473,9 @@ void openBaseLib(LuaState state) {
 
     auto ipairsIterator = LuaValue(new LuaNativeFunction((void* sp, LuaValue[] a) {
             auto s = cast(LuaState) sp;
-            long i = checkInteger(s, a, 2);
+            long i;
+            if (!argInteger(s, a, 2, i))
+                return null;
             i = cast(long)(cast(ulong) i + 1);
             auto item = VM.getTable(s, argAt(a, 1), LuaValue(i));
             if (isNil(item))
@@ -447,7 +484,8 @@ void openBaseLib(LuaState state) {
         }, "ipairs_aux"));
     state.fastIpairsIter = ipairsIterator.asFunction;
     G.register("ipairs", (LuaState s, LuaValue[] a) {
-        checkAny(a, 1);
+        if (!argAny(s, a, 1))
+            return null;
         return [ipairsIterator, a[0], LuaValue(0L)];
     });
 
@@ -455,32 +493,43 @@ void openBaseLib(LuaState state) {
         long n = cast(long) a.length;
         if (a.length && isString(a[0]) && a[0].match!((string t) => t.length && t[0] == '#', _ => false))
             return [LuaValue(n - 1)];
-        long i = checkInteger(s, a, 1);
+        long i;
+        if (!argInteger(s, a, 1, i))
+            return null;
         if (i < 0)
             i = n + i;
         else if (i > n)
             i = n;
         if (!(1 <= i))
-            argError(1, "index out of range");
+            return argFail(s, 1, "index out of range");
         return a[cast(size_t) i .. $];
     });
 
     G.register("rawequal", (LuaState s, LuaValue[] a) {
-        checkAny(a, 1);
-        checkAny(a, 2);
+        if (!argAny(s, a, 1))
+            return null;
+        if (!argAny(s, a, 2))
+            return null;
         return [LuaValue(luaRawEqual(a[0], a[1]))];
     });
 
     G.register("rawget", (LuaState s, LuaValue[] a) {
-        auto t = checkTable(s, a, 1);
-        checkAny(a, 2);
+        LuaTable t;
+        if (!argTable(s, a, 1, t))
+            return null;
+        if (!argAny(s, a, 2))
+            return null;
         return [t.rawget(a[1])];
     });
 
     G.register("rawset", (LuaState s, LuaValue[] a) {
-        auto t = checkTable(s, a, 1);
-        checkAny(a, 2);
-        checkAny(a, 3);
+        LuaTable t;
+        if (!argTable(s, a, 1, t))
+            return null;
+        if (!argAny(s, a, 2))
+            return null;
+        if (!argAny(s, a, 3))
+            return null;
         t.rawset(a[1], a[2]);
         return [a[0]];
     });
@@ -490,12 +539,16 @@ void openBaseLib(LuaState state) {
             return [LuaValue(a[0].match!((LuaTable t) => t, _ => null).rawLen())];
         if (a.length && isString(a[0]))
             return [LuaValue(cast(long) a[0].match!((string t) => t.length, _ => 0UL))];
-        typeError(s, a, 1, "table or string");
+        {
+            typeFail(s, a, 1, "table or string");
+            return null;
+        }
         return [];
     });
 
     G.register("getmetatable", (LuaState s, LuaValue[] a) {
-        checkAny(a, 1);
+        if (!argAny(s, a, 1))
+            return null;
         auto mt = s.getMetatable(a[0]);
         if (mt is null)
             return [luaNil()];
@@ -506,11 +559,15 @@ void openBaseLib(LuaState state) {
     });
 
     G.register("setmetatable", (LuaState s, LuaValue[] a) {
-        auto t = checkTable(s, a, 1);
-        if (a.length < 2 || !(isNil(a[1]) || isTable(a[1])))
-            typeError(s, a, 2, "nil or table");
+        LuaTable t;
+        if (!argTable(s, a, 1, t))
+            return null;
+        if (a.length < 2 || !(isNil(a[1]) || isTable(a[1]))) {
+            typeFail(s, a, 2, "nil or table");
+            return null;
+        }
         if (t.metatable !is null && !isNil(t.metatable.rawget(LuaValue("__metatable"))))
-            throw new LuaException("cannot change a protected metatable");
+            return raise(s, new LuaException("cannot change a protected metatable"));
         t.metatable = isNil(a[1]) ? null : a[1].match!((LuaTable tbl) => tbl, _ => null);
         if (t.metatable !is null && !isNil(t.metatable.rawget(LuaValue("__gc"))))
             s.markForFinalization(a[0]);
@@ -528,15 +585,21 @@ void openBaseLib(LuaState state) {
     }
 
     G.registerDelegate("load", (LuaState s, LuaValue[] a) {
-        string mode = optString(s, a, 3, "bt");
+        string mode;
+        if (!argOptString(s, a, 3, "bt", mode))
+            return null;
         string code, chunkName;
         if (a.length && (isString(a[0]) || isNumber(a[0]))) {
             code = toLuaString(a[0]);
-            chunkName = optString(s, a, 2, code);
+            if (!argOptString(s, a, 2, code, chunkName))
+                return null;
         } else {
-            chunkName = optString(s, a, 2, "=(load)");
-            if (a.length < 1 || !isFunction(a[0]))
-                typeError(s, a, 1, "function");
+            if (!argOptString(s, a, 2, "=(load)", chunkName))
+                return null;
+            if (a.length < 1 || !isFunction(a[0])) {
+                typeFail(s, a, 1, "function");
+                return null;
+            }
             import std.array : appender;
 
             auto source = appender!string();
@@ -571,8 +634,12 @@ void openBaseLib(LuaState state) {
     });
 
     G.registerDelegate("loadfile", (LuaState s, LuaValue[] a) {
-        string filename = optString(s, a, 1, null);
-        string mode = optString(s, a, 2, "bt");
+        string filename;
+        if (!argOptString(s, a, 1, null, filename))
+            return null;
+        string mode;
+        if (!argOptString(s, a, 2, "bt", mode))
+            return null;
         string content, error;
         string chunkName;
         if (filename is null) {
@@ -603,12 +670,14 @@ void openBaseLib(LuaState state) {
     });
 
     G.registerDelegate("dofile", (LuaState s, LuaValue[] a) {
-        string filename = optString(s, a, 1, null);
+        string filename;
+        if (!argOptString(s, a, 1, null, filename))
+            return null;
         string content, error;
         string chunkName = "=stdin";
         if (filename !is null) {
             if (!readWholeFile(filename, content, error))
-                throw new LuaException("cannot open " ~ filename ~ ": " ~ error);
+                return raise(s, new LuaException("cannot open " ~ filename ~ ": " ~ error));
             chunkName = "@" ~ filename;
         } else {
             import std.stdio : stdin, KeepTerminator;

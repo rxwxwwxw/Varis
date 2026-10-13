@@ -91,4 +91,28 @@ assert(msg(table.sort, {3, 1, 2}, function() error("from the comparator", 0) end
 local t = {5, 3, 9}
 table.sort(t, function(a, b) return a > b end)
 assert(table.concat(t, ",") == "9,5,3" and table.remove(t) == 3 and select("#", table.unpack(t)) == 2)
+
+-- the base library: assert, error and the argument checks of the rest
+assert(msg(function() assert(false, "asserted") end) == "@: asserted")
+assert(msg(function() assert(nil) end) == "@: assertion failed!")
+assert(msg(assert) == "bad argument #1 to 'assert' (value expected)")
+assert(msg(function() error("raised") end) == "@: raised")
+assert(msg(error, "plain") == "plain" and msg(error, "x", {}) == "bad argument #2 to 'error' (number expected, got table)")
+local payload = {}
+assert(select(2, pcall(function() assert(false, payload) end)) == payload)
+assert(msg(setmetatable, 1, {}) == "bad argument #1 to 'setmetatable' (table expected, got number)")
+assert(msg(setmetatable, {}, 5) == "bad argument #2 to 'setmetatable' (nil or table expected, got number)")
+assert(msg(setmetatable, setmetatable({}, {__metatable = 1}), {}) == "cannot change a protected metatable")
+assert(msg(tonumber, "ff", 99) == "bad argument #2 to 'tonumber' (base out of range)")
+assert(msg(select, 0) == "bad argument #1 to 'select' (index out of range)")
+assert(msg(collectgarbage, "bogus") == "bad argument #1 to 'collectgarbage' (invalid option 'bogus')")
+assert(msg(rawlen, 5) == "bad argument #1 to 'rawlen' (table or string expected, got number)")
+assert(msg(dofile, "/nonexistent/file.lua"):find("cannot open /nonexistent/file.lua", 1, true))
+do
+    local closedWith2
+    assert(msg(function()
+        local guard <close> = setmetatable({}, {__close = function(_, err) closedWith2 = err end})
+        assert(false, "closing")
+    end) == "@: closing" and tostring(closedWith2):find("closing", 1, true))
+end
 print("ok")
