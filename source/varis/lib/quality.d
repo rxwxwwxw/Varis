@@ -22,7 +22,8 @@ import varis.narrative.session : currentEffectSession;
 import varis.exception : LuaException;
 
 /// Install the reserved extensional schema; validators survive snapshots/savepoints.
-void configureQualityWorld(LuaState state, World world) {
+/// Returns null, or the reason the world cannot hold qualities.
+string configureQualityWorld(LuaState state, World world) {
     auto relation = world.getRelation("quality");
     if (relation is null)
         relation = world.declareNamedRelation("quality", ["entity", "name", "value"], [
@@ -30,11 +31,12 @@ void configureQualityWorld(LuaState state, World world) {
     ]);
     if (relation.columns != ["entity", "name", "value"] || relation.keyColumns != [cast(size_t) 0, 1] || relation
             .rules.length)
-        throw new LuaException("quality requires schema quality(entity, name, value) key(entity, name)");
+        return "quality requires schema quality(entity, name, value) key(entity, name)";
     foreach (tuple; relation.baseFacts.keys)
         state.narrativeRegistry.validateQualityTuple(tuple);
     relation.validateTuple = &state.narrativeRegistry.validateQualityTuple;
     relation.clampTuple = &state.narrativeRegistry.clampQualityTuple;
+    return null;
 }
 
 private bool qualityName(LuaState state, LuaValue value, out string result) {
@@ -47,8 +49,8 @@ private bool qualityName(LuaState state, LuaValue value, out string result) {
 }
 
 void openQualityLib(LuaState state) {
-    state.configureWorld = (World world) { configureQualityWorld(state, world); };
-    configureWorld(state)(state.globalWorld);
+    state.configureWorld = (World world) { return configureQualityWorld(state, world); };
+    configureWorld(state)(state.globalWorld); // a fresh global world always accepts the schema
     auto library = new LuaTable();
     void add(string name, LuaNativeFunction.NativeDelegate callback) {
         library.rawset(LuaValue(name), LuaValue(new LuaNativeFunction(callback, "quality." ~ name)));
@@ -120,7 +122,9 @@ void openQualityLib(LuaState state) {
             if (relation is null) {
                 if (name == "get")
                     return [luaNil()];
-                configureQualityWorld(state, world);
+                auto problem = configureQualityWorld(state, world);
+                if (problem !is null)
+                    return raise(state, new LuaException(problem));
                 relation = world.getRelation("quality");
             }
             if (relation.columns != ["entity", "name", "value"] || relation.keyColumns != [

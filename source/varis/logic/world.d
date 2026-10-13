@@ -47,8 +47,9 @@ void callWorld(LuaState state, World world) {
     state.callWorldObject = world;
 }
 
-/// Hook that prepares a newly created world (set by the quality library).
-ref void delegate(World) configureWorld(LuaState state) {
+/// Hook that prepares a newly created world (set by the quality library). Returns null, or the
+/// message of the problem that makes the world unusable.
+ref string delegate(World) configureWorld(LuaState state) {
     auto holder = cast(WorldConfiguration) cast(void*) state.worldConfigurationObject;
     if (holder is null) {
         holder = new WorldConfiguration;
@@ -58,7 +59,7 @@ ref void delegate(World) configureWorld(LuaState state) {
 }
 
 private final class WorldConfiguration {
-    void delegate(World) configure;
+    string delegate(World) configure;
 }
 
 shared static this() {

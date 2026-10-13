@@ -105,6 +105,10 @@ private LuaThread newThread(LuaState L, LuaFunction fn) {
 private final class WrapFunction : LuaNativeFunction {
     LuaThread thread;
     VarisFiber fiber;
+    /// A resume the fast path ran and that failed: the generic call that follows reports it.
+    bool failurePending;
+    LuaValue pendingError;
+    bool pendingRanAndFailed;
     this(NativeDelegate fn, string name) {
         super(fn, name);
     }
@@ -143,13 +147,12 @@ private int fastWrapCall(void* sp, LuaValue[] r, int base, int n) {
     LuaValue error;
     bool ranAndFailed;
     if (!resumeThread(S, th, r[base + 1 .. base + 1 + n], results, error, ranAndFailed)) {
-        // The coroutine ran (and failed): report it as the generic path would, attributed to a
-        // native frame for the call.
-        S.pushCall(w, "[C]", -1);
-        scope (exit)
-            S.popCall();
-        // The fast-call hook cannot return an error value, so this path still throws.
-        throw wrapFailure(S, th, fib, error, ranAndFailed);
+        // The coroutine ran (and failed). Decline: the generic call that follows takes the failure
+        // from the function and reports it from a native frame, as it always did.
+        w.failurePending = true;
+        w.pendingError = error;
+        w.pendingRanAndFailed = ranAndFailed;
+        return -1;
     }
     if (base + results.length > r.length) {
         S.stashedResults = results;
@@ -253,8 +256,15 @@ void openCoroutineLib(LuaState state) {
         }
         auto th = newThread(L, a[0].match!((LuaFunction f) => f, _ => null));
         auto fib = cast(VarisFiber) th.fiber;
-        auto wrapFn = new WrapFunction((void* st, LuaValue[] callArgs) {
+        WrapFunction wrapFn;
+        wrapFn = new WrapFunction((void* st, LuaValue[] callArgs) {
             auto S = cast(LuaState) st;
+            if (wrapFn.failurePending) {
+                wrapFn.failurePending = false;
+                auto pending = wrapFn.pendingError;
+                wrapFn.pendingError = luaNil();
+                return raise(S, wrapFailure(S, th, fib, pending, wrapFn.pendingRanAndFailed));
+            }
             LuaValue[] results;
             LuaValue error;
             bool ranAndFailed;

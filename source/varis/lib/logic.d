@@ -41,8 +41,11 @@ void openLogicLib(LuaState state) {
     logicTable.rawset(LuaValue("emptyworld"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {
                 auto state = cast(LuaState) sPtr;
                 auto world = new World();
-                if (state.configureWorld !is null)
-                    configureWorld(state)(world);
+                if (state.configureWorld !is null) {
+                    auto problem = configureWorld(state)(world);
+                    if (problem !is null)
+                        return raise(state, new LuaException(problem));
+                }
                 return [wrapWorld(world)];
             }, "emptyworld")));
 

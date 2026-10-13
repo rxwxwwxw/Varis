@@ -105,9 +105,9 @@ meaning and ratchet policy are in the [benchmark guide](README.md#targets).
 **L1 is authorized and in progress.** Lua-frame errors return without unwinding.
 `raise(state, error)` / `state.raisedError` provide the native error channel;
 every native library in `lib/` uses it, and base's `loadSourceFile`, `loadChunk` and
-`tostringValue` return statuses. Still throwing: `os.exit`'s `ExitRequest`, the
-`coroutine.wrap` fast-call hook, the pattern engine, VM out-of-line helpers and the
-deep-frame/coroutine boundaries (item 2 below).
+`tostringValue` return statuses. Still throwing: `os.exit(code, true)`'s
+`ExitRequest` (a control path, not a language error), the pattern engine, VM out-of-line
+helpers and the deep-frame/coroutine boundaries (item 2 below).
 
 Continue in this dependency order:
 

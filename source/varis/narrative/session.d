@@ -388,8 +388,11 @@ class Session : TransactionParticipant {
         this.state = state;
         this.world = world;
         this.registry = state.narrativeRegistry;
-        if (state.configureWorld !is null)
-            configureWorld(state)(world);
+        if (state.configureWorld !is null) {
+            auto problem = configureWorld(state)(world);
+            if (problem !is null)
+                throw new LuaException(problem);
+        }
         registry.seal();
         eventRelation = world.getRelation("narrative_event");
         if (eventRelation !is null && (!eventRelation.protectedRelation || eventRelation.arity != 4))
