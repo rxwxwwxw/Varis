@@ -157,6 +157,8 @@ string presentationRevision(ContentRegistry registry) {
     import std.digest.sha : sha256Of;
     import std.digest : toHexString;
 
+    if (registry.sealed && registry.presentationDigest.length)
+        return registry.presentationDigest;
     string[] parts;
     void collect(ContentDefinition definition, string prefix) {
         foreach (field; ["title", "text"]) {
@@ -191,7 +193,10 @@ string presentationRevision(ContentRegistry registry) {
     string joined;
     foreach (part; parts)
         joined ~= part.length.to!string ~ ":" ~ part;
-    return joined.sha256Of.toHexString.idup;
+    auto digest = joined.sha256Of.toHexString.idup;
+    if (registry.sealed)
+        registry.presentationDigest = digest;
+    return digest;
 }
 
 /// Portable code identity includes supported captures; authored versions opt into
@@ -264,6 +269,20 @@ string portableRegistryFingerprint(ContentRegistry registry, bool legacy = false
                 .explicitContentVersion, "formatter." ~ key);
     foreach (id; registry.nameIds())
         entries ~= legacy ? "name." ~ id ~ ":" ~ registry.name(id) : "name." ~ id;
+    // Most saves find the same entries, in the same order, as the previous one: then neither the
+    // sort nor the hash is repeated.
+    static bool sameEntries(string[] a, string[] b) {
+        if (a.length != b.length)
+            return false;
+        foreach (i, entry; a)
+            if (entry.length != b[i].length || (entry.ptr !is b[i].ptr && entry != b[i]))
+                return false;
+        return true;
+    }
+
+    if (!legacy && registry.fingerprintDigest.length != 0 && sameEntries(entries, registry.fingerprintCollected))
+        return registry.fingerprintDigest;
+    auto collected = legacy ? null : entries.dup;
     entries.sort;
     // Hashing the concatenated text dominates a save. The entries are mostly cached strings, so
     // when they equal the previous call's (usually by pointer) the previous digest is reused.
@@ -279,14 +298,28 @@ string portableRegistryFingerprint(ContentRegistry registry, bool legacy = false
         auto previous = registry.fingerprintEntries[i];
         unchanged = previous.length == entries[i].length && (previous.ptr is entries[i].ptr || previous == entries[i]);
     }
-    if (unchanged)
+    if (unchanged) {
+        registry.fingerprintCollected = collected;
         return registry.fingerprintDigest;
+    }
     string result;
     foreach (entry; entries)
         result ~= entry.length.to!string ~ ":" ~ entry;
     registry.fingerprintEntries = entries;
+    registry.fingerprintCollected = collected;
     registry.fingerprintDigest = result.sha256Of.toHexString.idup;
     return registry.fingerprintDigest;
+}
+
+/// Computes the digests a save needs while content is being loaded, so that the first save is
+/// as cheap as every later one. A registry whose identity cannot be computed (a capture a save
+/// would reject) is left alone: the save reports that, as before.
+void warmSaveIdentity(ContentRegistry registry) {
+    try {
+        portableRegistryFingerprint(registry);
+        presentationRevision(registry);
+    } catch (Exception) {
+    }
 }
 
 string portableProgramFingerprint(varis.logic.world.World world, bool authored = false) {

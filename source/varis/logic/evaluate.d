@@ -873,6 +873,7 @@ struct Evaluator {
 
         Executor executor;
         executor.state = state;
+        engineCounters.queries++;
 
         // Base facts are shared tables. A relation that some rule derives into gets an open table
         // that starts with its base facts.
@@ -884,6 +885,7 @@ struct Evaluator {
             if (id in isHead) {
                 auto open = new FactTable(relation.arity);
                 open.rows = base.rows.dup;
+                engineCounters.factsCopied += base.rows.length;
                 executor.tables[id] = open;
             } else
                 executor.tables[id] = base;
@@ -938,6 +940,7 @@ struct Evaluator {
                 foreach (i, id; headIds)
                     executor.tables[id] = cached[i];
                 derivedReady = true;
+                engineCounters.derivedCacheHits++;
             }
         }
 
@@ -1068,8 +1071,10 @@ struct Evaluator {
                     emit(candidates.at(c));
             }
             // Inserted only now: the join above must not see a table change under it.
+            engineCounters.ruleFirings++;
             foreach (tuple; pending)
-                table.insert(tuple);
+                if (table.insert(tuple))
+                    engineCounters.tuplesDerived++;
         }
 
         size_t[size_t] roundStart;

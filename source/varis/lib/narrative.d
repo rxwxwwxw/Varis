@@ -504,7 +504,13 @@ void openNarrativeLib(LuaState state) {
                 throw new LuaException("narrative content version must be a string");
             authoredVersion = arguments[0].match!((string value) => value, _ => "");
         }
+        bool wasSealed = registry.sealed;
         registry.seal(authoredVersion);
+        if (!wasSealed) {
+            import varis.narrative.fingerprint : warmSaveIdentity;
+
+            warmSaveIdentity(registry);
+        }
         return [LuaValue(registry.contentVersion)];
     });
     add("name", (void* pointer, LuaValue[] arguments) {

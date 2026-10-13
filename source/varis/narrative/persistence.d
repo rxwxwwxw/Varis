@@ -38,27 +38,79 @@ enum narrativeRuntimeVersion = "varis-narrative-1/xorshift64star-tier-1";
 
 /// Deterministic JSON independent of associative-array iteration order.
 string canonicalJSON(JSONValue value) {
+    import std.array : appender;
+
+    auto sink = appender!string;
+    writeCanonicalJSON(sink, value);
+    return sink[];
+}
+
+/// One buffer for the whole value: a save is a few hundred kilobytes, and building it by
+/// concatenating the text of every nested value copied each byte once per nesting level.
+/// `rawName`, when given, names a member of the outermost object whose value is `rawText`,
+/// already canonical.
+private void writeCanonicalJSON(Sink)(ref Sink sink, JSONValue value, string rawName = null, string rawText = null) {
+    // The text std.json gives a string, without going through it when nothing needs escaping.
+    static void writeString(ref Sink sink, string text) {
+        foreach (char c; text)
+            if (c < 0x20 || c > 0x7e || c == '"' || c == '\\' || c == '/') {
+                sink.put(JSONValue(text).toString);
+                return;
+            }
+        sink.put('"');
+        sink.put(text);
+        sink.put('"');
+    }
+
     if (value.type == JSONType.object) {
         auto names = value.object.keys;
+        if (rawName.length)
+            names ~= rawName;
         names.sort;
-        string result = "{";
+        sink.put('{');
         foreach (i, name; names) {
             if (i)
-                result ~= ",";
-            result ~= JSONValue(name).toString ~ ":" ~ canonicalJSON(value.object[name]);
+                sink.put(',');
+            writeString(sink, name);
+            sink.put(':');
+            if (rawName.length && name == rawName)
+                sink.put(rawText);
+            else
+                writeCanonicalJSON(sink, value.object[name]);
         }
-        return result ~ "}";
+        sink.put('}');
+        return;
     }
     if (value.type == JSONType.array) {
-        string result = "[";
+        sink.put('[');
         foreach (i, element; value.array) {
             if (i)
-                result ~= ",";
-            result ~= canonicalJSON(element);
+                sink.put(',');
+            writeCanonicalJSON(sink, element);
         }
-        return result ~ "]";
+        sink.put(']');
+        return;
     }
-    return value.toString;
+    if (value.type == JSONType.string)
+        writeString(sink, value.str);
+    else
+        sink.put(value.toString);
+}
+
+/// The canonical text of a replay input. Inputs are immutable records, so each is encoded once
+/// and later saves reuse the text.
+private string replayInputText(LuaValue record) {
+    auto userdata = record.typeOf() == LuaType.UserData ? record.asUserData : null;
+    auto immutableRecord = userdata is null ? null : cast(ImmutableRecord) userdata.payload;
+    if (immutableRecord !is null && immutableRecord.savedText.length)
+        return immutableRecord.savedText;
+    import std.array : appender;
+
+    auto direct = appender!string;
+    auto text = writeEncodedText(direct, record) ? direct[] : canonicalJSON(encodeValue(record, "replay input"));
+    if (immutableRecord !is null)
+        immutableRecord.savedText = text;
+    return text;
 }
 
 private JSONValue counter(ulong value) {
@@ -185,14 +237,26 @@ string saveSession(Session session, string label = null, LuaValue meta = LuaValu
         names.sort;
         foreach (name; names) {
             auto relation = session.world.relations[name];
-            JSONValue[] tuples;
+            // Facts are written in the order of their canonical text; the text is made once per
+            // fact, not once per comparison.
+            static struct Keyed {
+                string key;
+                JSONValue value;
+            }
+
+            Keyed[] keyed;
+            keyed.reserve(relation.baseFacts.length);
             foreach (tuple; relation.baseFacts.keys) {
                 JSONValue[] values;
                 foreach (i, value; tuple.values)
                     values ~= encodeValue(value, "relation." ~ name ~ "[" ~ i.to!string ~ "]");
-                tuples ~= JSONValue(values);
+                auto encodedTuple = JSONValue(values);
+                keyed ~= Keyed(canonicalJSON(encodedTuple), encodedTuple);
             }
-            tuples.sort!((a, b) => canonicalJSON(a) < canonicalJSON(b));
+            keyed.sort!((a, b) => a.key < b.key);
+            auto tuples = new JSONValue[keyed.length];
+            foreach (i, ref entry; keyed)
+                tuples[i] = entry.value;
             auto entry = schema(relation);
             entry.object["facts"] = JSONValue(tuples);
             entry.object["version"] = counter(relation.version_);
@@ -242,9 +306,16 @@ string saveSession(Session session, string label = null, LuaValue meta = LuaValu
         tokenIds.sort;
         foreach (identity; tokenIds)
             consumed ~= counter(identity);
-        JSONValue[] inputs;
-        foreach (record; data.replayInputs)
-            inputs ~= encodeValue(record, "replay input");
+        import std.array : appender;
+
+        auto inputs = appender!string;
+        inputs.put('[');
+        foreach (i, record; data.replayInputs) {
+            if (i)
+                inputs.put(',');
+            inputs.put(replayInputText(record));
+        }
+        inputs.put(']');
         auto encoded = JSONValue([
             "format": JSONValue(data.scene is null ? saveFormat2 : saveFormat3),
             "runtime": JSONValue(narrativeRuntimeVersion),
@@ -272,7 +343,6 @@ string saveSession(Session session, string label = null, LuaValue meta = LuaValu
             "events": JSONValue(events),
             "scheduled": JSONValue(scheduled),
             "consumed_tokens": JSONValue(consumed),
-            "inputs": JSONValue(inputs),
             "action_limit": counter(session.actionLimit),
             "event_limit": counter(session.eventLimit)
         ]);
@@ -288,7 +358,9 @@ string saveSession(Session session, string label = null, LuaValue meta = LuaValu
             encoded.object["label"] = JSONValue(label);
         if (!isNil(meta))
             encoded.object["meta"] = encodeValue(meta, "save metadata");
-        return canonicalJSON(encoded);
+        auto text = appender!string;
+        writeCanonicalJSON(text, encoded, "inputs", inputs[]);
+        return text[];
     } catch (LuaException error) {
         throw error;
     } catch (Exception error) {

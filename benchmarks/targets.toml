@@ -129,8 +129,11 @@ gate.time = 0.02
 [workload."narrative_e2e.sample_game_check"]
 gate.time = 0.41
 
+# The script itself asserts the stand-in budgets of PERFORMANCE_PLAN 3.1 (turn p95 5 ms, load
+# 100 ms, save 5 ms, no collection inside a turn); rss_mb is the plan's 64 MB.
 [workload."narrative_scale.reference_game"]
-gate.time = 0.14
+gate.time = 0.95
+gate.rss_mb = 64
 
 [workload."narrative_scale.wide_game"]
 gate.time = 0.14

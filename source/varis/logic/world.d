@@ -14,7 +14,7 @@ import varis.types;
 import varis.table;
 import varis.exception : LuaException;
 import varis.logic.model;
-import varis.logic.store : FactTable;
+import varis.logic.store : FactTable, engineCounters;
 import std.format : format;
 import std.conv : to;
 import core.thread : Fiber;
@@ -291,8 +291,10 @@ class Relation {
             return frozenTable;
         // Every write goes through ownFacts/adoptFacts/clearFacts, which drop the table. The length
         // test is a second line of defence for code that fills `baseFacts` directly after clearFacts.
-        if (cachedTable is null || cachedTable.rows.length != baseFacts.length)
+        if (cachedTable is null || cachedTable.rows.length != baseFacts.length) {
             cachedTable = FactTable.frozenFrom(baseFacts.keys, arity);
+            engineCounters.tableRows += cachedTable.rows.length;
+        }
         return cachedTable;
     }
 
@@ -315,6 +317,7 @@ class Relation {
     /// Called before every write to `baseFacts` or `keyIndex`.
     private void ownFacts() {
         if (factsShared) {
+            engineCounters.factsCopied += baseFacts.length;
             baseFacts = baseFacts.dup;
             keyIndex = keyIndex.dup;
             factsShared = false;

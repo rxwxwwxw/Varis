@@ -102,17 +102,18 @@ runs = 5
 description = "scripted sample-game walkthrough end to end"
 cases = [{ id = "sample_game_check", path = "sample-game/tools/check.lua", cwd = "sample-game" }]
 
-# Reference-scale synthetic game (PERFORMANCE_PLAN.md §3.1, stage S0): 100 rooms, 1000 storylets,
-# 50 items and a recursive reachable/2. One fresh process per sample: content load, world setup,
-# five present/choose turns and one save. The budget starts at today's cost and ratchets down.
+# The reference game (PERFORMANCE_PLAN.md §3.1, stage S0): 100 rooms, 1000 storylets, 50 items,
+# a recursive reachable/2 and an aggregate, played for 500 turns in a fresh process per sample.
+# reference_game checks each section 3.1 measure against its stand-in budget and fails on a miss;
+# wide_game is the older forty-turn run without recursion, kept as a second time budget.
 [[group]]
 id = "narrative_scale"
 kind = "process"
 comparable = false
 runs = 3
-description = "reference-scale synthetic game: load, five turns, save"
+description = "the reference game of PERFORMANCE_PLAN 3.1 (500 turns, budgets asserted) and a wide game"
 cases = [
-  { id = "reference_game", path = "benchmarks/experiments/synthetic_game.lua", args = ["10", "1000", "1", "5", "50"] },
+  { id = "reference_game", path = "benchmarks/workloads/narrative_scale/reference_game.lua" },
   { id = "wide_game", path = "benchmarks/experiments/synthetic_game.lua", args = ["10", "1000", "0", "40", "50"] },
 ]
 

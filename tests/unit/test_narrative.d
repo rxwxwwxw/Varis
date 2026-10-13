@@ -55,6 +55,34 @@ void rejects(void delegate() operation, string message) {
     auto sequence = VM.getTable(state, decoded, LuaValue("values"));
     assert(luaRawEqual(VM.getTable(state, sequence, LuaValue(3L)), LuaValue(long.max)));
     rejects({ VM.setTable(state, decoded, LuaValue("values"), luaNil()); }, "immutable");
+    // The direct writer a save uses for replay records gives the canonical text of the JSON tree.
+    import std.array : appender;
+
+    auto deep = immutableRecord([
+        "b\0key": nested,
+        "a/slash \"quoted\"": LuaValue("line\nbreak"),
+        "z": immutableSequence([]),
+        "é": LuaValue(-7L),
+        "": LuaValue(false),
+        "f": LuaValue(-0.0),
+        "g": LuaValue(1e300)
+    ]);
+    foreach (value; values ~ [nested, deep, immutableSequence([deep, nested])]) {
+        auto direct = appender!string;
+        assert(writeEncodedText(direct, value));
+        assert(direct[] == canonicalJSON(encodeValue(value)), direct[]);
+    }
+    foreach (value; [
+        LuaValue(double.nan), LuaValue(new LuaTable()),
+        immutableSequence([LuaValue(double.infinity)])
+    ]) {
+        auto direct = appender!string;
+        assert(!writeEncodedText(direct, value));
+    }
+    // Strings that need escaping and strings that do not are written as std.json writes them.
+    foreach (text; ["plain", "", "sl/ash", "qu\"ote", "back\\slash", "tab\t", "é", "\x7f", "a b~"])
+        assert(canonicalJSON(JSONValue([text: JSONValue(text)])) == "{" ~ JSONValue(text)
+                .toString ~ ":" ~ JSONValue(text).toString ~ "}");
     writeln("  [PASS] canonical scalar identities and portable immutable codec");
 }
 
@@ -620,6 +648,8 @@ private string stringValueForTest(JSONValue value) {
     second.doString(authored);
     auto restored = loadSession(second, saved, second.getGlobal("make_world"));
     assert(saved == saveSession(restored), "cross-state canonical roundtrip");
+    assert(saved == canonicalJSON(parseJSON(saved)), "a save is canonical JSON, replay records included");
+    assert(saved == saveSession(session), "a second save reuses cached text and is identical");
     auto factory = state.getGlobal("make_world");
     auto pristine = unwrapWorld(VM.callValue(state, factory, [])[0]);
     auto unchanged = pristine.version_;

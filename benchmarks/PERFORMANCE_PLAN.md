@@ -1,7 +1,7 @@
 # Performance plan: a fast Lua core and a fast world model
 
-Status: **partially implemented plan**, audited October 12, 2026. S0 (except its
-remaining reference-game coverage), the S1 boundary/shared handlers, W0–W4 and W5(a),
+Status: **partially implemented plan**, audited October 12, 2026. S0 (complete since
+October 13, 2026), the S1 boundary/shared handlers, W0–W4 and W5(a),
 the first L1 step, the main L2 step and initial X1 caches are implemented. Turn-boundary
 collection and an initial SDL3 scene-host slice also exist. Remaining stage exit criteria
 are not complete; status notes below give the details. This replaces the
@@ -144,8 +144,9 @@ reference machine (ROADMAP open decision 3).
 Distance at the pre-restructuring baseline: the recursive 100-room game is about 170× over the turn budget; the
 1000-storylet game without recursion is about 3× over; `save()` is about 12× over; RSS is 1.5–3.7×
 over. Track W and turn-boundary collection subsequently brought presentation and memory
-inside the stand-in budgets in the recorded experiments (§5). Separate per-metric gates,
-the complete reference workload and real low-end hardware validation remain unfinished.
+inside the stand-in budgets in the recorded experiments (§5). The complete reference workload
+with a check per measure exists since October 13, 2026 (stage S0 status); real low-end hardware
+validation remains unfinished.
 
 ### 3.2 Lua core
 
@@ -201,12 +202,50 @@ exit test and all of §7 pass.
 
 ### Stage S0 — Safety net and measurement (milestone 34)
 
-**Status: done October 11, 2026, except item 4.** The `sample-game` test suite (fast tier) runs
+**Status: done.** October 11, 2026: the `sample-game` test suite (fast tier) runs
 `tools/check.lua` and compares `tools/golden.lua` with `tests/sample_game/golden.expected`; the
-`narrative_scale` benchmark group has `reference_game` (4.3 s for load, five turns and a save)
-and `wide_game` (0.75 s for forty turns without recursion) with `gate.time` budgets; the baseline
-is `benchmarks/baselines/2026-10-11-pre-restructure.json`. The reference game does not yet use an
-aggregate, and engine counters (item 4) are left to the first W stage that needs them.
+`narrative_scale` benchmark group exists; the baseline is
+`benchmarks/baselines/2026-10-11-pre-restructure.json`.
+
+**Completed October 13, 2026.** `narrative_scale.reference_game` is now the reference game of
+§3.1 in full (`benchmarks/workloads/narrative_scale/reference_game.lua`): 100 rooms, 1000
+storylets, 50 items, the recursive `reachable/2`, an aggregate (`burden/2` counts what the player
+carries, read by a storylet) and a 500-turn scripted session played the way the reference host
+plays it (present, `session:idle()`, choose). The script checks every measure of §3.1 against the
+stand-in budget and fails the benchmark on a miss; peak RSS is the new absolute gate
+`gate.rss_mb = 64`. Item 4 exists as `logic.counters()` (`EngineCounters` in `logic/store.d`:
+queries, rule firings, tuples derived, facts copied, table rows, derived-cache hits, plus the
+collector's collection count and allocated bytes; suite case `engine_counters`).
+
+Measured on the M1, release build:
+
+| Measure | Stand-in budget | Measured |
+| --- | ---: | ---: |
+| Turn (`choose()` plus the next `present()`), p95 | 5 ms | 1.0 ms (p50 0.38, max 1.3–2.2) |
+| Content load (compile, seal, world, session) | 100 ms | 54–65 ms |
+| `save()` after 500 turns, first call | 5 ms | 2.5 ms (420 KB) |
+| Peak RSS | 64 MB | 49.8 MB |
+| Collections inside a turn | 0 | 0 |
+
+Per turn: 28 queries, no rule firing and no fact copied (derived relations come from the cache),
+about 545 KB allocated. The full workload showed two misses that the five-turn run had hidden,
+both in `save()`: 27 ms for the first save and 13.7 ms for each later one, and the garbage of
+those saves put peak RSS at 69 MB. What changed (the saved bytes are identical; the golden save
+and `testCodec`/`testPersistence` pin that):
+
+- canonical JSON is written into one buffer instead of concatenating every nested value, and
+  strings that need no escaping bypass `std.json`;
+- a relation's facts are sorted by a canonical text made once per fact, not once per comparison;
+- replay inputs are immutable records: each is written once by a direct writer
+  (`writeEncodedText`) and its text is kept on the record for later saves;
+- the wording digest of a sealed registry is cached, and the content fingerprint is reused
+  without re-sorting when the collected entries are unchanged;
+- `narrative.seal` computes both digests (`warmSaveIdentity`), so the SHA-256 over the whole
+  fingerprint text is paid while content loads (about 15 ms of the load figure above), not by
+  the first save.
+
+Still a stand-in: the budgets assume the low-end machine is ten times slower than the M1
+(ROADMAP open decision 3); stage M replaces them with measurements on real hardware.
 
 Do this before changing any runtime code. It is what makes the later stages safe.
 

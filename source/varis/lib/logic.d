@@ -119,6 +119,32 @@ void openLogicLib(LuaState state) {
                 return [first[0]];
             }, "one")));
 
+    // logic.counters(): how much work the world model and the collector have done so far.
+    logicTable.rawset(LuaValue("counters"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {
+                import core.memory : GC;
+                import varis.logic.store : engineCounters;
+                import varis.logic.world : currentTransaction, isReadOnlyEvaluation;
+
+                // Like the profile: story logic must not be able to depend on these numbers.
+                if (currentTransaction() !is null || isReadOnlyEvaluation())
+                    throw new LuaException(
+                    "logic.counters is not available inside a transaction or read-only narrative evaluation");
+                auto result = new LuaTable;
+                void put(string name, ulong value) {
+                    result.rawset(LuaValue(name), LuaValue(cast(long) value));
+                }
+
+                put("queries", engineCounters.queries);
+                put("rule_firings", engineCounters.ruleFirings);
+                put("tuples_derived", engineCounters.tuplesDerived);
+                put("facts_copied", engineCounters.factsCopied);
+                put("table_rows", engineCounters.tableRows);
+                put("derived_cache_hits", engineCounters.derivedCacheHits);
+                put("collections", GC.profileStats().numCollections);
+                put("allocated_bytes", GC.stats().allocatedInCurrentThread);
+                return [LuaValue(result)];
+            }, "counters")));
+
     // logic.hasbinding(record, name)
     logicTable.rawset(LuaValue("hasbinding"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {
                 if (args.length < 2)

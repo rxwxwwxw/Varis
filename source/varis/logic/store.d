@@ -19,6 +19,20 @@ module varis.logic.store;
 import varis.types;
 import varis.logic.model : RelTuple;
 
+/// Counts of the work the world model did, for tests and benchmarks (performance plan, stage S0
+/// item 4). They only ever grow; a reader takes the difference between two readings. One
+/// process-wide set: a state is single-threaded and the counts are diagnostics, not behaviour.
+struct EngineCounters {
+    ulong queries; /// query evaluations (one per iterator first advanced, storylet check, ...)
+    ulong ruleFirings; /// runs of one rule's plan (full or delta) inside a fixed point
+    ulong tuplesDerived; /// tuples added to derived relations
+    ulong factsCopied; /// base facts copied (a shared fact set written to, a head with base facts)
+    ulong tableRows; /// rows frozen into a new immutable table after a write
+    ulong derivedCacheHits; /// query evaluations that reused cached derived relations
+}
+
+__gshared EngineCounters engineCounters;
+
 /// Positions `1 << column` that take part in an index key. Columns past 31 are never indexed;
 /// the caller always re-checks every bound column, so that only costs speed.
 alias ColumnMask = uint;

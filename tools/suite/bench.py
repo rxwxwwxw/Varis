@@ -307,6 +307,13 @@ def evaluate(rec, target):
                     findings.append({"kind": "gate", "label": "time", "value": cand, "limit": limit,
                                      "ok": cand <= limit})
                 continue
+            if label == "rss_mb":  # absolute peak-RSS budget of the candidate, in megabytes (10^6 bytes)
+                rss_kb = rec.get("binaries", {}).get("candidate", {}).get("rss_kb")
+                if kind == "gate" and rss_kb is not None:
+                    mb = rss_kb * 1024 / 1e6
+                    findings.append({"kind": "gate", "label": "rss_mb", "value": mb, "limit": limit,
+                                     "ok": mb <= limit})
+                continue
             r = rec["ratios"].get(label)
             if r is None:
                 findings.append({"kind": kind, "label": label, "value": None, "limit": limit, "ok": None})
@@ -336,6 +343,7 @@ def needed_labels(w, target):
     for kind in ("goal", "gate", "floor", "memory"):
         labels |= set(target.get(kind, {}))
     labels.discard("time")
+    labels.discard("rss_mb")
     if not labels and w["comparable"]:
         labels.add(w.get("comparator", "clua"))
     return labels

@@ -10,12 +10,12 @@ One suite, one driver: `python3 tools/suite bench` (Make: `make bench`, `make be
    `gate.clua` regression ratchet (enforced). Most workloads are behind the goal today; the plan's
    L and X stages are how they get there.
 2. **World model: a turn within a budget on low-end hardware.** The reference game that measures
-   turn latency, content load time and memory is in the `narrative_scale` group, using
-   `experiments/synthetic_game.lua` (reference and wide games). Process CPU time and peak RSS
-   are measured; the program also prints load/present/choose/save timings. The enforced
-   process-time gates are regression limits, not separate gates for every provisional
-   low-end budget. The reference scenario still lacks an aggregate; real low-end hardware
-   and a 500-turn run remain unfinished.
+   turn latency, content load time and memory is `narrative_scale.reference_game`
+   (`workloads/narrative_scale/reference_game.lua`: recursive rule, aggregate, 500 turns). The
+   script checks turn p95, load, save and collections inside a turn against the stand-in
+   budgets of the plan's §3.1 and exits with an error on a miss; `gate.rss_mb` bounds peak RSS
+   and `gate.time` the whole process. `wide_game` (`experiments/synthetic_game.lua`) is a
+   second process-time budget. Real low-end hardware remains unmeasured.
 Design and rationale: [CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md) §4.
 
 ## What is measured
@@ -31,7 +31,7 @@ Design and rationale: [CONSOLIDATION_PLAN.md](../CONSOLIDATION_PLAN.md) §4.
 | `datalog_comp` | fresh process, paired `.lua`/`.dl` programs | `workloads/datalog_comp/*` | Soufflé (normalized output must match) |
 | `narrative` | in-process kernels on the sample game | `workloads/narrative/*.lua` | none (absolute budget only) |
 | `narrative_e2e` | fresh process | `sample-game/tools/check.lua` | none (absolute budget only) |
-| `narrative_scale` | fresh process, CPU time and peak RSS | `experiments/synthetic_game.lua` | none (absolute budget only) |
+| `narrative_scale` | fresh process, CPU time and peak RSS; the reference game also asserts its per-measure budgets | `workloads/narrative_scale/reference_game.lua`, `experiments/synthetic_game.lua` | none (absolute budgets only) |
 | `td_native` | fresh process; the script also asserts the per-measure budgets | `workloads/td_native/battle_scale.lua` | none (absolute budget only) |
 
 Every sample is interleaved across interpreters (alternating order); ratios are paired per
@@ -60,6 +60,7 @@ slower and cost more than 80 % of the run time. The mechanism for `ref = "<git r
 * `gate.<comparator>` – regression ratchet; exceeding it fails `make bench-check`
   (confirmed by two re-runs before failing).
 * `gate.time` – absolute budget in candidate CPU seconds (per repetition for in-process kernels).
+* `gate.rss_mb` – absolute budget for the candidate's peak RSS, in megabytes (10^6 bytes).
   It catches gross regressions without any comparator; `gate.clua` is the sharp,
   machine-independent check.
 * `floor.<comparator>` – minimum speedup over a named comparator (none is defined at present).

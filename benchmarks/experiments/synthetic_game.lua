@@ -1,6 +1,7 @@
--- Synthetic narrative game for scale measurements (prototype of ROADMAP milestone 34).
--- Not part of `tools/suite bench`; it is the reproducible source of the numbers in
--- benchmarks/PERFORMANCE_PLAN.md.
+-- Synthetic narrative game for scale measurements (prototype of ROADMAP milestone 34): the
+-- reproducible source of the track W numbers in benchmarks/PERFORMANCE_PLAN.md, and the
+-- `narrative_scale.wide_game` benchmark. The reference game with its budgets is
+-- benchmarks/workloads/narrative_scale/reference_game.lua.
 --
 --   bin/varis benchmarks/experiments/synthetic_game.lua SIDE STORYLETS REACH TURNS ITEMS
 --

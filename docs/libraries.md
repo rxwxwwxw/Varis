@@ -284,6 +284,19 @@ Takes a query iterator and returns its sole binding record, `nil` when the query
 no match, and raises an error when it has more than one. Results are unordered, so
 there is no "first". See also the `exists { goals }` expression (section 4.8a).
 
+#### `logic.counters()`
+
+Returns a new table of integers that only grow: how much work the world model and the
+collector have done in this process. A test or benchmark reads it twice and subtracts.
+`queries` (query evaluations), `rule_firings` (runs of one rule inside a fixed point),
+`tuples_derived`, `facts_copied` (base facts copied because a shared fact set was
+written to), `table_rows` (rows frozen into a new read table after a write),
+`derived_cache_hits` (evaluations that reused derived relations), `collections`
+(collector runs) and `allocated_bytes`. The numbers are diagnostics: they are not
+part of any save and they depend on the implementation, so story logic must not read
+them: the call is an error inside a transaction (an effect) and during read-only
+narrative evaluation (storylet conditions, templates).
+
 #### `logic.hasbinding(record, name)` · `logic.binding(record, name)`
 
 Tests binding presence or returns its value in a query record. Nil is a present

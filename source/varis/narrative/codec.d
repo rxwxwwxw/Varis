@@ -28,6 +28,9 @@ class ImmutableSequence {
 
 class ImmutableRecord {
     LuaValue[string] fields;
+    /// Canonical save text of this record, made on the first save that writes it (a record and
+    /// everything a save accepts inside it are immutable, so the text cannot go stale).
+    string savedText;
     this(LuaValue[string] fields) {
         this.fields = fields.dup;
     }
@@ -203,6 +206,96 @@ JSONValue encodeValue(LuaValue value, string path = "value") {
         }
     }
     throw new LuaException("unsupported save value at " ~ path ~ ": " ~ typeName(value));
+}
+
+/// Writes exactly the canonical JSON text of `encodeValue(value)` (object members in sorted
+/// order) without building the JSON tree. Returns false, having possibly written part of it,
+/// for a value `encodeValue` would reject; the caller then takes the ordinary path, which
+/// raises the error with its path.
+bool writeEncodedText(Sink)(ref Sink sink, LuaValue value) {
+    static immutable digits = "0123456789abcdef";
+    void hex(string prefix, string bytes) {
+        sink.put('"');
+        sink.put(prefix);
+        foreach (b; cast(const(ubyte)[]) bytes) {
+            sink.put(digits[b >> 4]);
+            sink.put(digits[b & 15]);
+        }
+        sink.put('"');
+    }
+
+    if (isFloat(value)) {
+        union Bits {
+            double number;
+            ulong bits;
+        }
+
+        Bits bits;
+        bits.number = value.asFloat;
+        if (!isFinite(bits.number))
+            return false;
+        char[18] text = void;
+        text[0] = '"';
+        text[1] = 'f';
+        foreach (i; 0 .. 16)
+            text[2 + i] = digits[(bits.bits >> (60 - 4 * i)) & 15];
+        sink.put(text[]);
+        sink.put('"');
+        return true;
+    }
+    if (isNil(value)) {
+        sink.put(`"n"`);
+        return true;
+    }
+    if (isBoolean(value)) {
+        sink.put(value.isTruthy() ? `"b1"` : `"b0"`);
+        return true;
+    }
+    if (isInteger(value)) {
+        sink.put(`"i`);
+        sink.put(value.asInteger.to!string);
+        sink.put('"');
+        return true;
+    }
+    if (isString(value)) {
+        hex("s", value.asString);
+        return true;
+    }
+    if (isSymbol(value)) {
+        hex("y", value.match!((Symbol symbol) => symbol.name, _ => ""));
+        return true;
+    }
+    if (value.typeOf() != LuaType.UserData)
+        return false;
+    auto payload = value.asUserData.payload;
+    if (auto sequence = cast(ImmutableSequence) payload) {
+        sink.put(`{"sequence":[`);
+        foreach (i, element; sequence.values) {
+            if (i)
+                sink.put(',');
+            if (!writeEncodedText(sink, element))
+                return false;
+        }
+        sink.put("]}");
+        return true;
+    }
+    if (auto record = cast(ImmutableRecord) payload) {
+        // Member names are the hexadecimal of the field names, which sorts as the names do.
+        auto names = record.fields.keys;
+        names.sort;
+        sink.put(`{"record":{`);
+        foreach (i, name; names) {
+            if (i)
+                sink.put(',');
+            hex("", name);
+            sink.put(':');
+            if (!writeEncodedText(sink, record.fields[name]))
+                return false;
+        }
+        sink.put("}}");
+        return true;
+    }
+    return false;
 }
 
 LuaValue decodeValue(JSONValue encoded) {

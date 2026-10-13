@@ -201,6 +201,10 @@ class ContentRegistry {
     // Last result of portableRegistryFingerprint and the entries it was computed from.
     string[] fingerprintEntries;
     string fingerprintDigest;
+    // The entries in collection order, before sorting: equal lists skip the sort as well.
+    string[] fingerprintCollected;
+    // presentationRevision of a sealed registry (wording is frozen at registration).
+    string presentationDigest;
 
     this(LuaState state) {
         this.state = state;
