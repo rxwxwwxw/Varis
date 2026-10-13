@@ -533,7 +533,7 @@ private final class Server {
     }
 
     static bool isSourcePath(string path) {
-        return path.length > 4 && path[$ - 4 .. $] == ".lua";
+        return path.length > 4 && (path[$ - 4 .. $] == ".lua" || path.length > 6 && path[$ - 6 .. $] == ".varis");
     }
 }
 

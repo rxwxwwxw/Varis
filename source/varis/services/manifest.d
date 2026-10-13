@@ -17,9 +17,11 @@ import varis.ast;
 import varis.exception : LuaException;
 import varis.parser : Parser;
 import varis.services.diagnostic;
-import varis.workbench.server : jsonQuote, readFile, listFiles, sortStrings;
+import varis.workbench.server : jsonQuote, readFile, listFiles, sortStrings, isSourceName;
 
 enum manifestName = "project.lua";
+/// The manifest may instead be written in the Varis source extension; it wins when both exist.
+enum manifestNameVaris = "project.varis";
 
 struct Manifest {
     bool present;
@@ -29,6 +31,8 @@ struct Manifest {
     string entry; // module that loads and seals the content
     string session; // "module.function": function(seed) -> session
     string afterChoose; // "module.function": function(session), the host's step after a choice
+    // The battle bridge (TOWER_DEFENSE_PLAN.md §5.1): "module.function" names, resolved like afterChoose.
+    string battleRequest, battleSetup, battleSync, battleResult;
     string finished; // "module.function": function(session) -> boolean
     string load; // "module.function": function(saveText) -> session
     string[] content; // file patterns held to the content tier
@@ -78,17 +82,23 @@ Manifest loadManifest(string directory) {
     Manifest manifest;
     manifest.path = manifestName;
     string content;
-    string full = directory.length && directory != "." ? directory ~ "/" ~ manifestName : manifestName;
-    if (!readFile(full, content))
-        return manifest;
+    string prefix = directory.length && directory != "." ? directory ~ "/" : "";
+    string full = prefix ~ manifestNameVaris;
+    if (readFile(full, content))
+        manifest.path = manifestNameVaris;
+    else {
+        full = prefix ~ manifestName;
+        if (!readFile(full, content))
+            return manifest;
+    }
     manifest.present = true;
-    auto parser = new Parser(content, "@" ~ manifestName);
+    auto parser = new Parser(content, "@" ~ manifest.path);
     BlockStmt block;
     try {
         block = parser.parse();
     } catch (LuaException failure) {
         int line = parser.hasErrorToken ? parser.errorToken.loc.line : 0;
-        manifest.problems ~= makeDiagnostic("error", "manifest", manifestName, line,
+        manifest.problems ~= makeDiagnostic("error", "manifest", manifest.path, line,
                 parser.hasErrorToken ? parser.errorToken.loc.column : 0, line,
                 parser.hasErrorToken ? parser.errorToken.endColumn : 0,
                 "the project manifest does not parse", "project manifest");
@@ -122,6 +132,10 @@ Manifest loadManifest(string directory) {
         case "entry":
         case "session":
         case "after_choose":
+        case "battle_request":
+        case "battle_setup":
+        case "battle_sync":
+        case "battle_result":
         case "finished":
         case "load":
             if (!single) {
@@ -140,6 +154,14 @@ Manifest loadManifest(string directory) {
                 manifest.afterChoose = list.items[0];
             else if (key.value == "finished")
                 manifest.finished = list.items[0];
+            else if (key.value == "battle_request")
+                manifest.battleRequest = list.items[0];
+            else if (key.value == "battle_setup")
+                manifest.battleSetup = list.items[0];
+            else if (key.value == "battle_sync")
+                manifest.battleSync = list.items[0];
+            else if (key.value == "battle_result")
+                manifest.battleResult = list.items[0];
             else
                 manifest.load = list.items[0];
             break;
@@ -164,6 +186,28 @@ Manifest loadManifest(string directory) {
         }
     }
     return manifest;
+}
+
+/// Whether `path` (relative to the project) is a content-tier file: a `content` pattern of the
+/// manifest matches it. A pattern written with `.lua` also covers the same name with `.varis` (and
+/// the reverse), so renaming files to the Varis extension needs no manifest edit.
+bool isContentFile(ref const Manifest manifest, string path) {
+    foreach (pattern; manifest.content)
+        if (sourceGlobMatch(pattern, path))
+            return true;
+    return false;
+}
+
+/// `globMatch`, where a pattern ending in `.lua` also matches the `.varis` file of that name (and
+/// the reverse).
+bool sourceGlobMatch(string pattern, string path) {
+    if (globMatch(pattern, path))
+        return true;
+    if (pattern.length > 4 && pattern[$ - 4 .. $] == ".lua" && globMatch(pattern[0 .. $ - 4] ~ ".varis", path))
+        return true;
+    if (pattern.length > 6 && pattern[$ - 6 .. $] == ".varis" && globMatch(pattern[0 .. $ - 6] ~ ".lua", path))
+        return true;
+    return false;
 }
 
 /// `*` matches within one path segment, `**` across segments, `?` one byte.
@@ -204,10 +248,10 @@ string[] expandPatterns(string directory, const(string)[] patterns) {
     listFiles(directory.length ? directory : ".", "", 0, found);
     string[] result;
     foreach (name; found) {
-        if (name.length < 5 || name[$ - 4 .. $] != ".lua")
+        if (!isSourceName(name))
             continue;
         foreach (pattern; patterns)
-            if (globMatch(pattern, name)) {
+            if (sourceGlobMatch(pattern, name)) {
                 result ~= name;
                 break;
             }
@@ -252,7 +296,7 @@ string[] projectFiles(string directory, ref const Manifest manifest) {
         string[] found;
         listFiles(directory.length ? directory : ".", "", 0, found);
         foreach (name; found)
-            if (name.length > 4 && name[$ - 4 .. $] == ".lua")
+            if (isSourceName(name))
                 files ~= name;
         sortStrings(files);
     }

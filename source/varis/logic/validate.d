@@ -152,6 +152,7 @@ struct DepEdge {
     size_t fromId;
     size_t toId;
     bool isNegative;
+    bool computed; // strict because the rule has a computed binding (`?x := ...`)
     string fromName;
     string toName;
 }
@@ -164,12 +165,19 @@ int[size_t] computeStratification(Relation[size_t] relMap, Rule[] allRules) {
         size_t headId = rule.headRel.relId;
         string headName = rule.headRel.name;
         void dependencies(Goal[] goals, bool throughAggregate = false) {
+            // A computed binding can build a new value from every match, so a rule that has one
+            // must not feed itself: its body relations are strictly lower than its head.
+            bool computed;
+            foreach (goal; goals)
+                if (goal.kind == GoalKind.Aggregate && goal.aggregateOp == "value")
+                    computed = true;
             foreach (goal; goals) {
                 if (goal.kind == GoalKind.Aggregate)
                     dependencies(goal.aggregateGoals, true);
                 if (goal.relRef !is null) {
-                    bool strict = throughAggregate || goal.kind == GoalKind.NegatedAtom;
-                    edges ~= DepEdge(headId, goal.relRef.relId, strict, headName, goal.relRef.name);
+                    bool strict = throughAggregate || goal.kind == GoalKind.NegatedAtom || computed;
+                    edges ~= DepEdge(headId, goal.relRef.relId, strict, computed && !throughAggregate
+                            && goal.kind != GoalKind.NegatedAtom, headName, goal.relRef.name);
                 }
             }
         }
@@ -252,6 +260,10 @@ int[size_t] computeStratification(Relation[size_t] relMap, Rule[] allRules) {
             auto fromScc = nodeToScc.get(edge.fromId, size_t.max);
             auto toScc = nodeToScc.get(edge.toId, size_t.max);
             if (fromScc == toScc) {
+                if (edge.computed)
+                    throw new LuaException(format(
+                            "computed binding (':=') in a recursive rule cycle involving relation '%s' and '%s'",
+                            edge.fromName, edge.toName));
                 throw new LuaException(format(
                         "negation cycle or aggregate cycle detected involving relation '%s' and '%s'", edge.fromName, edge
                         .toName));

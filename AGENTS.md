@@ -21,8 +21,11 @@ Varis Reference Manual linked below, not here.
 | How will the checker, the language services and the writer's playtest and test tools work? | [AUTHORING_TOOLS_PLAN.md](AUTHORING_TOOLS_PLAN.md): project manifest, project index, stages A0–A6. |
 | How will localization work? | [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): workflows by role, stages T0–T5. |
 | What do the tests prove, and what is skipped? | [tests/narrative/README.md](tests/narrative/README.md), [tests/official/README.md](tests/official/README.md), [docs/STATUS.md](docs/STATUS.md) (generated). |
+| How does a writer learn the language? | [docs/writers/](docs/writers/README.md): tutorial and cookbook; their programs are run by suite `writers-docs`, so a change that breaks one is a failure to fix, not a doc to edit away. |
 | How do the benchmarks and gates work? | [benchmarks/README.md](benchmarks/README.md). |
 | What is the planned second sample game (`sample-rpg/`) and its SDL3 host work? | [SAMPLE_RPG_PLAN.md](SAMPLE_RPG_PLAN.md): plan only; nothing implemented until its stages land. |
+| What is the combined tower-defense / visual-novel sample (`sample-td/`, *Lanternfall*) that tests the battle engine? | [SAMPLE_TD_PLAN.md](SAMPLE_TD_PLAN.md) (outline and stages) and [sample-td/README.md](sample-td/README.md) (what was built). |
+| How does the hex tower-defense battle (native simulation, 2.5D view, story bridge) work? | [docs/battle.md](docs/battle.md) is the manual; [TOWER_DEFENSE_PLAN.md](TOWER_DEFENSE_PLAN.md) the design and decisions (B1–B12), with measurements from `benchmarks/experiments/td_tick.lua` and `td_native.d`; stages TD0–TD8, mostly landed with the sample. |
 | How did we get here? | [LANGUAGE_EXTENSIONS_PLAN.md](LANGUAGE_EXTENSIONS_PLAN.md), [benchmarks/PERFORMANCE_WORK.md](benchmarks/PERFORMANCE_WORK.md), [CONSOLIDATION_PLAN.md](CONSOLIDATION_PLAN.md). History only. |
 
 `LANGUAGE_EXTENSIONS.md` and `LANGUAGE_EXTENSIONS2.md` are redirects to the manual.
@@ -159,9 +162,13 @@ note names the stage. Until that stage lands, today's description is the one to 
   Lua core     types, table, state, exception, opcode, ast, lexer, parser, compiler, vm, fiber,
                pattern, gc, dump, capi, lib/{base,math,string,table,coroutine,os,io,utf8,
                package_lib,debug_lib,auxlib,fastcall,pack}
+
+  game         game/*.d: hex, terrain, fog, route, kinds, types, battle (a leaf beside the
+               layers: it imports nothing from Varis; TOWER_DEFENSE_PLAN B9)
 ```
 
-Rule: a module may import modules of its own layer and of layers below it, never above.
+Rule: a module may import modules of its own layer and of layers below it, never above. The
+`game/` leaf may import only other `game/` modules.
 
 The rule holds and is **enforced**: `make check-sources` (part of `make check` and the pre-push
 hook) fails when a module imports a higher layer. `source/varis/package.d` and `lib/package.d`,
@@ -283,6 +290,51 @@ How the core reaches the layers above it without importing them (the seam, stage
 - **Recorded decisions**: Preserve the plan's control-flow, local-relation, token, event timing, handler, serialization and migration interfaces. Quality defaults inside effects follow lexical call-world metadata (including captured helper worlds); outside effects they use global. Nonyield scopes include synchronously resumed children. Do not claim broader Lua compatibility or analysis completeness than the audit supports.
 - The lexical call world is carried in `state.callWorld`, set at call sites from `proto.callSites[pc].world`. Its only reader outside the VM is `lib/quality.d`. Stage S1 moves this off the plain Lua call path; the rule above must still hold afterwards.
 
+### Phase 9 additions (milestones 26–29, October 13, 2026)
+
+- **Readable scenes** are lowered by the parser (`parseReadableScene` in `parser.d`) to
+  `narrative.scene(:name, {beats})` calls, plus generated scenes (`<scene>__<what><n>`) for menu
+  options, `if` branches and their join points and generated procedures for `effect using`. The
+  only engine addition is the `branch` beat (`narrative/scenes.d`: validated at seal, resolved in
+  `seekBeat`, rejected as a restore position). Parsed statements queue extra statements in
+  `pendingStmts`, which `parseBlock` flushes after the scene. Do not add statements that need
+  state the beat model cannot hold (loops, expressions over several locals) without the owner.
+
+- **Computed bindings** are the aggregate goal with operator `"value"` and no goals (`?x := expr`);
+  both evaluators (`logic/evaluate.d` and the oracle `logic/naive.d`) handle it, and a rule that
+  has one gets strict dependencies on its body relations so it cannot recurse. A parenthesized
+  `or` group is parsed into one guard. Do not teach either evaluator a second meaning for them.
+- **`AdjustClamp`** was appended to the opcode enum (the last value, so existing numbering and
+  fingerprints are unchanged); `Relation.clampTuple` is set only for `quality`.
+- **Saves**: `ending` and `event_cursor` are optional fields written only when they carry
+  something (the cursor only when events are waiting), so saves that never used them are
+  byte-identical. `expose` names and `leads` are part of the content identity; the exposed
+  *values* are not part of an instance key.
+- **Handlers and `narrative.defer` callbacks** run through `callInSessionWorld`, which swaps
+  `state.globalWorldObject` for the call. Do not read `state.globalWorld` in new code on those
+  paths expecting the process-wide world; `logic.global` is that.
+- **Tiers at load time**: `LuaState.fileTierHook` (core, a delegate) is installed by
+  `services/tier.d` from the manifest; the core only calls it from `loadSourceFile`. The
+  restricted environment is built per file from `contentEnvironment`; add a name there only when
+  content may call it without breaking saves and replay.
+- **Source extension**: `.varis` and `.lua` are both source (`isSourceName`); `package.path`
+  keeps its Lua spelling and the `.lua` searcher falls back to `.varis`.
+
+### Undo, profile and conveniences (milestones 38, 40)
+
+- `session:undo()` restores facts through `World.captureFacts` / `restoreFacts` (copy-on-write
+  sharing, versions only move forward) and `SessionData.copy()`; scene objects are replaced,
+  never mutated, which is what keeps beat tokens valid. Token, deck and schedule counters keep
+  running and tokens issued after the restored point are voided. The ring is off by default and
+  not saved. Do not make scene or session state mutable in place without revisiting this.
+- The profile (`narrative/profile.d`, `narrative.profile_*`) is deliberately outside saves,
+  fingerprints and replay; reads are refused in transactions and read-only evaluation. Keep it
+  that way: content must not be able to depend on it.
+- `narrative.meta` data, save `label`/`meta` and rich-text markup are presentation data: never
+  in a fingerprint (same rule as wording).
+- `visited`/`last_chosen` are derived from `replayInputs` and `completed`; adding a counter to
+  the save would change the format, which needs the owner.
+
 ### SDL3 presentation (initial milestone 36 slice)
 
 `make varis-sdl` builds the optional `bin/varis-sdl` scene player in `tools/sdl/`.
@@ -317,12 +369,15 @@ Use this table to avoid coding against a design that has not landed.
 | Core and world model | No core module imports `logic` or `narrative` (enforced by `make check-sources`); the world model plugs in through hooks (`narrative/vmops.d`). The executor still carries an opaque call world on every Lua call | Same, with the call world resolved only for natives that ask | S1 (boundary done) |
 | Fact storage | `bool[RelTuple]` per relation for writes, plus a shared immutable `FactTable` with indexes for reads (`logic/store.d`); cloned worlds share fact sets copy-on-write | Same | W1 (done) |
 | Query evaluation | Compiled slot plans, index probes, semi-naive recursion, derived relations cached per closure; naive oracle; required-constant-fact storylet prefilter | Remaining W5 indexing only if measurements justify it | W2–W4 and W5(a) done |
-| Scenes and stage | Declarative scene/character declarations, scalar locals, jump/call/return, beat tokens and engine-owned stage; format 3 mid-scene saves; `sample-vn/` | Procedural code between beats, full presentation parity, beat rollback | 29 (first version done) |
+| Scenes and stage | Declarative scene/character declarations and the readable `scene name() … end` form (say/narrate/show/menu/if/input/effect, explicit text ids; manual 6.11a), scalar locals, jump/call/return, beat tokens and engine-owned stage; format 3 mid-scene saves; `sample-vn/` (`content.varis`) | Arbitrary Lua between beats (deferred), full presentation parity (milestone 36) | 29 (done) |
 | SDL3 presentation | Optional `varis-sdl` scene player: backgrounds, expression sprites, portraits, dialogue/menu/input, audio, quicksave/load, recent history, auto/skip; asset manifest and status-returning scene host. A manifest with a `project` runs a whole game through `GameHost`: title, storylet hub, status panel, toasts, character sheet, journal, map, pause/settings, language switch, ending screen (*The Hollowbrook Summer*) | Full stage parity and typography; general embedding API | 36 (initial slice and game host done) |
 | Sample game | In `make test` (suite `sample-game`: its check plus a golden transcript and save, `tests/sample_game/`) | Same | S0 (done) |
+| Tower-defense battle | Native fixed-step integer simulation in `source/varis/game/` (all ten ability primitives, heroes with obedience, modifiers, replay, digest; a step allocates nothing); the `battle` library (`lib/battle.d`); the four project hooks run by `GameHost` (build, silent raid, night, moments as scenes, sync, result, retry, abandon, no save during a battle); a static check of battle data in `varis check`; the 2.5D SDL battle view (`tools/sdl/battleview.d`: terrace prisms, billboards, camera, picking, four zoom bands, fog, minimap, HUD, moment overlay). Measured: about 15–21 ns per live enemy per step natively, about 3 µs in relations | Travelling projectiles, Dijkstra costs, `varis battle`, overview texture and caches for the 435,600-tile map, benchmark budgets | [TOWER_DEFENSE_PLAN.md](TOWER_DEFENSE_PLAN.md) TD0, TD5 remainder |
+| Third sample game | `sample-td/` (*Lanternfall*): four nights of dusk hub, build and real-time night on a terraced map, three heroes with trust and bonds, eleven moments with choices, ruins, injuries and deaths, judge and forecast, four endings, a French pack; suite `sample-td` plus an SDL smoke in `make test-sdl` | Real art and audio; a human review of the French draft; balance by play | [SAMPLE_TD_PLAN.md](SAMPLE_TD_PLAN.md) |
 | Second sample game | `sample-rpg/` (*The Hollowbrook Summer*): character creation, a nine-place town, stat-gated choices with reasons, scene outcomes, a three-contest finale, six endings, a French pack; suite `sample-rpg` plus an SDL smoke in `make test-sdl` | Real art and audio; a human review of the French draft | [SAMPLE_RPG_PLAN.md](SAMPLE_RPG_PLAN.md) |
+| Undo, profile, conveniences | `session:undo` (turn and beat), `GameHost.back`/`SceneHost.back` and the SDL B key; `narrative.profile_*` (host-owned; the SDL player keeps `profile.json`); save headers, autosave hook and slots; `var`, `{$name}`, `{>fragment}`, `{#if lua}`; `visited`/`last_chosen`, `narrative.meta`, `narrative.spans`, validated `input` beats; the writer's guide in `docs/writers/` | Nothing open for milestones 38, 40, 41 | Milestones 38, 40, 41 done |
 | Debugging | Workbench line breakpoints and stepping for Run/commands and story effects, selectable frame locals and read-only frame expressions; asynchronous Pause and Stop; story explanations/deltas and seeded replay/rewind; Lua `debug` library remains frozen | Error stops and separate fast/instrumented executors | Milestone 44 incomplete |
-| Tools | CLI and REPL (`cli.d`); project manifest (`project.lua`), project index, `varis check` (every syntax error, static checks, load and analysis passes, `--locale`), `varis lsp` language server, static content-tier and manifest-symbol checks, `varis play`, `varis test`, `varis l10n` (extract, status, kits, XLIFF/CSV, review, packs); `varis serve` first version (command window, workspace, story panel with why/changes and a language switch, editor with shared source services, retained drafts and rename preview, project problems, breakpoints and stepping) | Runtime tier enforcement and file identity (milestone 26), complete debugger and workbench | Milestones 26, 42–44 |
+| Tools | CLI and REPL (`cli.d`); project manifest (`project.lua` or `project.varis`), project index, `varis check` (every syntax error, static checks including battle data, load and analysis passes, `--locale`), `varis lsp` language server, static content-tier and declared-symbol checks, load-time content-tier enforcement (`services/tier.d`: restricted environment, `narrative.helper`), the `.varis` source extension, `varis play`, `varis test`, `varis l10n` (extract, status, kits, XLIFF/CSV, review, packs); `varis serve` first version (command window, workspace, story panel with why/changes and a language switch, editor with shared source services, retained drafts and rename preview, project problems, breakpoints and stepping) | Complete debugger and workbench | Milestones 42–44 |
 | Core speed | 0.62–2.67× C Lua on core workloads in the October 12 run (`fib` 2.28×, `string_ops` 1.72×, `closures` 1.93×, loops 1.1–1.5×); `pcall_error` 1.22× (was 37×), `deep_recursion` 2.67× (was 8×); see generated `docs/STATUS.md` for the latest full run | ≤ 1.0×, then below | L, X |
 | Turn latency (reference-scale game, M1) | 0.3 ms with or without a recursive rule (was 15 ms and 840 ms); peak memory 53 MB | 5 ms and 64 MB on the stand-in; real hardware unmeasured | W, M |
 
@@ -375,6 +430,10 @@ Use this table to avoid coding against a design that has not landed.
 | `source/varis/services/{tier,presentation}.d`, `tools/sdl/` | tools | ✅ initial slices | Static content restrictions, status-returning scene adapter and optional SDL3 player |
 | `sample-vn/` | | ✅ | *Harbour Window*: scene saves and graphical presentation sample |
 | `source/varis/services/gamehost.d`, `tools/sdl/{gameplayer,ui}.d` | tools | ✅ | `GameHost`: the status-returning host of a project or of scene-only content (hub, scenes, stage, status, toasts, journal, map, saves, language); the SDL3 player; `ui.d` is its widget toolkit (one root owns the screen, text owned by boxes with overflow policies, size classes, theme as data) |
+| `source/varis/game/{hex,terrain,fog,route,kinds,types,battle}.d` | game (leaf) | ✅ TD1–TD2, extended | Tower-defense battle core: axial hex maths, seeded terrain with edits and terrace heights, sector fog, flow fields, tower/enemy kinds (ten primitives), setup/command/outcome types, the fixed-step simulation, hero orders, modifiers and its digest. No Lua. |
+| `source/varis/lib/battle.d` | world model (bridge) | ✅ TD3 | The `battle` library: converts the Lua setup (1-based) to the simulation's structs with field-named problems, drives a battle, reads it (snapshot, tile, route, log), forks and replays it, applies `battle_sync` tables, `BattleHost` for `GameHost`. |
+| `tools/sdl/battleview.d` | tools | ✅ TD4–TD5 slice | The battle view widget: projection and painter's order, prisms, billboards, effects, camera, picking, minimap; read-only over the simulation. |
+| `sample-td/` | | ✅ | *Lanternfall*: tower-defense / visual-novel sample and integration test of the battle engine; see its README |
 | `sample-rpg/` | | ✅ | *The Hollowbrook Summer*: Twine-style RPG sample for the SDL3 player; see its README |
 
 Keep all source modules listed explicitly in the `Makefile` (`make check-sources`).

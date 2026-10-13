@@ -485,7 +485,7 @@ class Compiler {
                 args ~= s.delta;
             compileFactOrRetract(s.relRef, args, true,
                     s.operation == "set" ? OpCode.SetFact
-                    : s.operation == "delete" ? OpCode.DeleteKey : OpCode.AdjustKey);
+                    : s.operation == "delete" ? OpCode.DeleteKey : s.clamp ? OpCode.AdjustClamp : OpCode.AdjustKey);
             return;
         }
         if (auto s = as!FactStmt(stmt)) {
@@ -497,6 +497,9 @@ class Compiler {
             compileRetract(s);
             return;
         }
+
+        if (as!SymbolsDeclStmt(stmt) !is null)
+            return; // a declaration for tools and content loading; nothing to run
 
         if (auto s = as!RelationDeclStmt(stmt)) {
             compileRelationDecl(s);
@@ -1878,6 +1881,7 @@ class Compiler {
         template_.id = definition.name;
         template_.parameters = definition.parameters.dup;
         template_.incomingParameters = incoming.dup;
+        template_.exposed = definition.exposed.dup;
         foreach (goal; definition.goals) {
             if (auto atom = as!AstRelAtomGoal(goal)) {
                 if (!atom.isNegated)
@@ -1889,6 +1893,18 @@ class Compiler {
         }
         if (definition.kind == "procedure")
             template_.groundedParameters = definition.parameters.dup;
+        foreach (name; definition.exposed) {
+            bool grounded;
+            foreach (candidate; template_.groundedParameters)
+                grounded = grounded || candidate == name;
+            if (!grounded)
+                throw new LuaException("'expose ?" ~ name ~ "' in '" ~ definition.name
+                        ~ "' is not bound by a positive relation atom or aggregate of its 'when' query");
+            foreach (parameter; definition.parameters)
+                if (parameter == name)
+                    throw new LuaException("'expose ?" ~ name ~ "' in '" ~ definition.name
+                            ~ "' repeats a parameter; a parameter is already visible");
+        }
         foreach (i, field; definition.fieldNames) {
             int register = allocReg();
             registers ~= register;
@@ -1924,13 +1940,15 @@ class Compiler {
         if (definition.requireGoals.length) {
             auto query = new QueryExpr(definition.requireGoals, true, definition.loc);
             auto body = new BlockStmt([cast(Stmt) new ReturnStmt([cast(Expr) query], definition.loc)], definition.loc);
-            compileContext(body, incoming ~ definition.parameters, incoming ~ definition.parameters,
-                    template_.requirementRegister);
+            compileContext(body, incoming ~ definition.parameters ~ definition.exposed,
+                    incoming ~ definition.parameters ~ definition.exposed, template_.requirementRegister);
         }
         if (definition.effect !is null)
-            compileContext(definition.effect, incoming ~ definition.parameters, [], template_.effectRegister);
+            compileContext(definition.effect, incoming ~ definition.parameters ~ definition.exposed, [
+        ],
+                    template_.effectRegister);
         foreach (choice; definition.choices)
-            template_.choices ~= compileContent(choice, definition.parameters, registers);
+            template_.choices ~= compileContent(choice, definition.parameters ~ definition.exposed, registers);
         return template_;
     }
 

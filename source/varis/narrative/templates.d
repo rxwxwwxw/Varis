@@ -17,6 +17,7 @@ import varis.parser;
 import varis.compiler;
 import varis.vm;
 import varis.logic.world;
+import varis.logic.model : RelTuple;
 import varis.narrative.translation : RenderTrace, normalizeCondition, variantArguments;
 import varis.narrative.plural : pluralCategory, isPluralCategory;
 import varis.exception : LuaException;
@@ -90,7 +91,8 @@ private class TemplateNode {
     string literal;
     string parameter;
     LuaValue condition;
-    string conditionSource; // normalized `query ...` text, for render traces
+    string conditionSource; // normalized `query ...` or `lua ...` text, for render traces
+    bool luaCondition;
     TemplateNode[] yes;
     TemplateNode[] no;
     VariantGroup variantGroup;
@@ -222,11 +224,14 @@ class NarrativeTemplate {
             auto node = new TemplateNode();
             if (token.length > 4 && token[0 .. 4] == "#if ") {
                 string condition = token[4 .. $].strip;
-                if (condition.length < 6 || condition[0 .. 6] != "query ")
-                    throw new LuaException("template condition must be a query existence test");
-                auto parser = new Parser("return " ~ condition);
+                bool luaExpression = condition.length > 4 && condition[0 .. 4] == "lua ";
+                if (!luaExpression && (condition.length < 6 || condition[0 .. 6] != "query "))
+                    throw new LuaException("template condition must be {#if query ...} or {#if lua ...}");
+                // `lua EXPR`: a read-only Lua expression over the parameters, true by Lua truthiness.
+                auto parser = new Parser(luaExpression ? "return (" ~ condition[4 .. $] ~ ")" : "return " ~ condition);
                 auto prototype = Compiler.contextPrototype(parser.parse(), parameters, parameters);
                 node.condition = LuaValue(new LuaClosure(prototype));
+                node.luaCondition = luaExpression;
                 node.conditionSource = normalizeCondition(condition);
                 string ending;
                 node.yes = parseNodes(text, cursor, ending, insideVariant);
@@ -376,7 +381,9 @@ class NarrativeTemplate {
                 node.variantGroup = group;
                 variantGroups ~= group;
             } else {
-                if (!parameters.canFind(token))
+                // `{$name}` shows the story variable `name` (narrative.var / the `var` statement).
+                bool variable = token.length > 1 && token[0] == '$';
+                if (!variable && !parameters.canFind(token))
                     throw new LuaException("unknown narrative template placeholder '" ~ token ~ "'");
                 node.parameter = token;
             }
@@ -403,15 +410,30 @@ class NarrativeTemplate {
             string output;
             foreach (node; nodes) {
                 output ~= node.literal;
-                if (node.parameter.length)
+                if (node.parameter.length && node.parameter[0] == '$') {
+                    LuaValue value;
+                    if (auto relation = snapshot.getRelation("var")) {
+                        auto row = RelTuple([state.getSymbol(node.parameter[1 .. $])]) in relation.keyIndex;
+                        if (row !is null)
+                            value = row.values[1];
+                    }
+                    if (trace !is null)
+                        trace.vars[node.parameter] = value;
+                    output ~= display(value);
+                } else if (node.parameter.length)
                     output ~= display(bindings.get(node.parameter, luaNil()));
                 if (isFunction(node.condition)) {
                     LuaValue[] arguments = [wrapWorld(snapshot)];
                     foreach (name; parameters)
                         arguments ~= bindings.get(name, luaNil());
                     auto iterator = VM.callValue(state, node.condition, arguments);
-                    auto records = VM.callValue(state, iterator[0], []);
-                    bool exists = records.length && !isNil(records[0]);
+                    bool exists;
+                    if (node.luaCondition)
+                        exists = iterator.length && iterator[0].isTruthy();
+                    else {
+                        auto records = VM.callValue(state, iterator[0], []);
+                        exists = records.length && !isNil(records[0]);
+                    }
                     if (trace !is null)
                         trace.conditions[node.conditionSource] = exists;
                     output ~= renderNodes(exists ? node.yes : node.no);

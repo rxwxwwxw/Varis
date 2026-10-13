@@ -1,0 +1,184 @@
+#!/usr/bin/env python3
+"""Writes l10n/fr.json: the French draft of Lanternfall (status "draft": a human review is due).
+
+Run from sample-td/ after `varis l10n extract`:  python3 tools/fr_draft.py
+Every entry carries the revision of the source message it translates, so `varis l10n status`
+reports a draft as current until the English text changes.
+"""
+import json
+import sys
+
+FR = {
+"talk_ilse.title": "Ilse aux râteliers de lampes",
+"talk_ilse.text": "{#select t}{#case 0}Ilse vous tourne le dos et garde les mains sur la mèche.{#case 1}Ilse dit ce dont les lampes ont besoin sans lever les yeux.{#case 2}Ilse vous fait signe d'approcher du râtelier et vous tend un chiffon.{#case 3}Ilse fredonne, ce qu'elle ne fait pas d'habitude.{#default}Ilse a déjà rangé vos lampes dans l'ordre où vous les voudrez.{/select}",
+"talk_ilse.let_her.title": "Laisser Ilse choisir où vont les lampes",
+"talk_ilse.back_her.because": "Corvin n'est pas là pour être contredit.",
+"talk_ilse.back_her.title": "Soutenir Ilse contre l'objection de Corvin",
+"talk_ilse.leave.title": "La laisser à son travail",
+"talk_corvin.title": "Corvin sur le rempart",
+"talk_corvin.text": "{#select t}{#case 0}Corvin se tient sur le rempart comme s'il se demandait s'il va vous en pousser.{#case 1}Corvin vous montre la route sans qu'on le lui demande, c'est un début.{#case 2}Corvin vous fait une place à côté de lui sur le rempart.{#case 3}Corvin vous dit quelle lampe il aurait construite en premier.{#default}Corvin vous tend sa propre carte des lacets, celle avec les vraies notes.{/select}",
+"talk_corvin.road.title": "Lui demander des nouvelles de la route",
+"talk_corvin.guard_wren.because": "Wren n'a pas encore rejoint la garde.",
+"talk_corvin.guard_wren.title": "Promettre de tenir Wren à l'écart de la route",
+"talk_corvin.leave.title": "Hocher la tête et passer",
+"talk_wren.title": "Wren sur le toit",
+"talk_wren.text": "{#select t}{#case 0}Wren est assise sur le toit, là où personne ne peut l'atteindre.{#case 1}Wren fait un signe, puis fait semblant de s'étirer.{#case 2}Wren vous a gardé le bon côté du toit.{#default}Wren dessine la vallée de mémoire, et tous les traits pointent vers un seul endroit.{/select}",
+"talk_wren.valley.title": "L'interroger sur la vallée",
+"talk_wren.leave.title": "La laisser tranquille",
+"infirmary.title": "{hero} à l'infirmerie",
+"infirmary.text": "{hero} est calé(e) sous une couverture avec un sale caractère. Les lampes, dit {hero}, peuvent attendre. Elles ne le peuvent pas, bien sûr, et {hero} le sait.",
+"infirmary.sit.title": "S'asseoir auprès de {hero}",
+"infirmary.leave.title": "Laisser {hero} se reposer",
+"remembrance.title": "Une place à table",
+"remembrance.text": "Personne ne s'assied à la place de {hero}. Quelqu'un y a posé une lampe, éteinte.",
+"remembrance.light.title": "L'allumer",
+"overlook.title": "Le belvédère de la vallée",
+"overlook.text": "Du belvédère, la vallée est étalée comme une carte que personne n'a dessinée. Le brouillard est toujours là. Il paraît plus petit.",
+"overlook.look.title": "S'y tenir un moment",
+"look.title": "Crépuscule sur Marrow Hill",
+"look.text": "{#select n}{#case 1}Les lampes sont froides, et les premiers Sombres ne sont qu'une rumeur dans les lacets.{#case 2}Le deuxième crépuscule. Ilse a de l'huile sur les manches et une question sur les cuirassés.{#case 3}Le troisième crépuscule. La route de l'est est ouverte, et la milice attend une réponse.{#default}Le dernier crépuscule. Chaque lampe de Marrow Hill est allumée, et la Lanterne est assez vive pour qu'on y lise.{/select}\n{#if query bell_ruined()}Le beffroi est une forme noire sur le ciel ; sa cloche est par terre.{#else}Là-haut, dans le beffroi, on huile la cloche pour la nuit.{/if}\n{#if query any_injured()}Quelqu'un manque aux râteliers de lampes.{/if}\n{#if query any_weak()}Corvin a fait le tour des terrasses et dit qu'une lampe ou deux ne tiendront pas la nuit en l'état.{/if}",
+"look.look.title": "Contempler les terrasses",
+"go_up.title": "La nuit vient",
+"go_up.go.title": "Monter aux terrasses",
+"stand_down.title": "Les terrasses sont calmes",
+"stand_down.text": "Rien n'est encore monté par la route. Les lampes sont là où vous les avez laissées.",
+"stand_down.down.title": "Redescendre au village",
+"report.title": "L'aube après la nuit {n}",
+"report.text": "{#select outcome}{#case won}Les terrasses ont tenu.{#case withdrawn}Vous avez sonné la retraite, et la flamme est descendue de la colline dans une lanterne.{#default}La ligne a cédé avant l'aube.{/select} {#plural kills}{#one}Un des Sombres est tombé sur la route.{#other}{kills} des Sombres sont tombés sur la route.{/plural} {#select leaks}{#case 0}Aucun n'a dépassé la dernière lampe.{#default}{#plural leaks}{#one}Un a dépassé la dernière lampe.{#other}{leaks} ont dépassé la dernière lampe.{/plural}{/select}\n{#if query mill_ruined()}Le moulin est en ruine, et ses gens dorment dans la grange.{/if}{#if query any_ruin()} Il y a de quoi réparer.{/if}{#if query told(n)} Corvin ne dit pas « Je vous l'avais dit ». C'est à cela qu'on voit qu'il le pense.{/if}",
+"report.rest.title": "Se reposer jusqu'au crépuscule",
+"cut_bridge.title": "La passerelle du gué",
+"cut_bridge.text": "Ilse dit que la passerelle du gué est pourrie jusqu'à la moelle. Les Sombres la traverseraient en file et arriveraient en grappe. Corvin dit qu'un pont est un pont jusqu'au jour où l'on en a besoin.",
+"cut_bridge.cut.title": "L'abattre",
+"cut_bridge.keep.title": "La laisser",
+"clear_scree.title": "Le sentier d'éboulis",
+"clear_scree.text": "L'éboulement sous la deuxième falaise a laissé un sentier de pierres branlantes. Ilse veut en tirer le fer. Corvin fait remarquer qu'un sentier mène dans les deux sens.",
+"clear_scree.clear.title": "Le dégager pour le fer",
+"clear_scree.leave.title": "Laisser l'éboulis",
+"rebuild.title": "Une ruine sur les terrasses",
+"rebuild.text": "{#select kind}{#case 12}La charpente du beffroi tient ; la cloche, non.{#case 13}La roue du moulin est fendue. Les gens en ont besoin.{#default}Une lampe gît en morceaux là où elle a brûlé.{/select}",
+"rebuild.mend.because": "Reconstruire coûte 20 d'huile de lampe.",
+"rebuild.mend.title": "La reconstruire",
+"quality.trust.label": "Confiance",
+"quality.oil.label": "Huile de lampe",
+"quality.morale.label": "Moral",
+"quality.food.label": "Vivres",
+"quality.night.label": "Nuit",
+"name.ilse": "Ilse",
+"name.corvin": "Corvin",
+"name.wren": "Wren",
+"name.warden": "le Gardien",
+"name.lantern": "la Lanterne",
+"name.bellfrey": "le beffroi",
+"name.mill": "le moulin",
+"name.terraces": "les terrasses",
+"name.overlook": "le belvédère de la vallée",
+"name.bolt": "Lampe-trait",
+"name.chime": "Lampe-carillon",
+"name.hoar": "Lampe-givre",
+"name.arc": "Lampe-arc",
+"name.beacon": "Phare",
+"character.warden.name": "Le Gardien",
+"character.ilse.name": "Ilse",
+"character.corvin.name": "Corvin",
+"character.wren.name": "Wren",
+"scene.dawn_2.2.text": "Matin sur la deuxième terrasse. {#if query flag(:wren_joined)}Wren dort sur le toit de la réserve à lampes, une botte en moins, son décompte des Sombres au charbon sur le bras.{#else}Personne n'a revu la messagère depuis que la route s'est calmée.{/if}",
+"scene.dawn_2.3.text": "{#if query any_ruin()}Il y a des ruines là où il y avait des lampes, et Ilse y marche déjà avec son bidon.{#else}Chaque lampe est où on l'a laissée. Cela ne s'était jamais vu.{/if}",
+"scene.dawn_2.4.text": "{#if query any_injured()}L'infirmerie a une chaise de visiteur et un patient qui ne veut pas rester au lit.{/if}",
+"scene.dawn_3.2.text": "Matin du troisième jour. {#if query decided(:focus_fire)}Corvin a peint une marque sur le mur pour chaque cuirassé que sa route a pris, et il n'a plus de mur.{/if}{#if query decided(:lamps_work)}Ilse a accroché une carapace de cuirassé au-dessus de la réserve à lampes en guise d'enseigne.{/if}",
+"scene.dawn_3.3.text": "{#if query decided(:cover_wren)}Wren a pris l'habitude de marcher un demi-pas derrière Corvin. Il a cessé de faire semblant de ne pas le remarquer.{/if}{#if query decided(:hold_the_line)}Wren ne croise pas votre regard, et porte les messages plus vite que nécessaire.{/if}",
+"scene.dawn_3.4.text": "La route de l'est est ouverte. Au-delà du moulin, le brouillard a reculé d'une terrasse pendant la nuit.",
+"scene.dawn_4.2.text": "Matin du dernier jour. {#if query decided(:evacuate_mill)}Le moulin est vide et le grain avec lui ; le village mange une soupe claire sans se plaindre.{/if}{#if query decided(:call_militia)}La milice est sur la route du moulin avec ses fourches, fière, fatiguée et un peu ivre.{/if}",
+"scene.dawn_4.3.text": "{#if query decided(:side_by_side)}Ilse et Corvin partagent une table. Ils n'ont pas encore commencé à se parler, mais la table est partagée.{/if}{#if query decided(:give_minute)}La lampe de l'est d'Ilse est la plus brillante de la colline et elle l'a dit à tout le monde.{/if}{#if query decided(:no_time)}La lampe de l'est est éteinte. Ilse n'en a pas parlé, et c'est à cela qu'on le voit.{/if}",
+"scene.dawn_4.4.text": "Le brouillard s'est aminci en une corde sous la dernière terrasse. Quelque chose dedans regarde vers le haut.",
+"scene.ending_kept.2.text": "La Lanterne tient. En milieu de matinée, le brouillard est retombé sous la dernière terrasse, et le village est sur ses toits, à réparer, à se crier dessus pour rien.",
+"scene.ending_kept.3.text": "{#if query dead(:ilse)}La place d'Ilse à table est la sienne.{#else}{#if query trust_high(:ilse)}Ilse a taillé les lampes avant l'aube et ne vous presse pas une seule fois.{#else}{#if query trust_mid(:ilse)}Ilse hoche la tête devant les lampes. « Elles tiendront. À peu près. »{#else}Ilse garde ses outils dans son tablier et son opinion pour elle.{/if}{/if}{/if}",
+"scene.ending_kept.4.text": "{#if query dead(:corvin)}La route de Corvin est toujours sur la carte, dans sa main.{#else}{#if query trust_high(:corvin)}Corvin fait la route avec vous jusqu'à la porte, comme un capitaine marche avec les siens.{#else}{#if query trust_mid(:corvin)}Corvin salue, bref et sec. C'est le plus qu'il donne à quiconque.{#else}Corvin dit que la route était la sienne, et rentre sans vous attendre.{/if}{/if}{/if}",
+"scene.ending_kept.5.text": "{#if query dead(:wren)}Quelqu'un d'autre porte les messages maintenant.{#else}{#if query trust_high(:wren)}Wren a déjà donné son nom au premier coureur de la prochaine aube.{#else}{#if query trust_mid(:wren)}Wren fait signe depuis les lacets et crie la nouvelle avant qu'on la demande.{#else}Wren garde ses distances, bien qu'elle porte toujours les messages.{/if}{/if}{/if}",
+"scene.ending_cost.2.text": "La Lanterne tient, mais à un prix. Les terrasses sont brûlées et brisées, et le brouillard n'est plus que du brouillard, mais toutes les places à table ne sont pas remplies.",
+"scene.ending_cost.3.text": "{#if query dead(:ilse)}Quelqu'un a pendu le bidon d'huile d'Ilse au-dessus de la porte de la réserve.{/if}{#if query dead(:corvin)}La route est à Corvin. On lui a donné son nom.{/if}{#if query dead(:wren)}Plus personne ne porte les messages dans les lacets. C'est très calme.{/if}{#if query bell_ruined()}La cloche du beffroi est déjà une pièce de musée.{/if}",
+"scene.ending_cost.4.text": "Vous vous tenez sur le rempart et le village se tient avec vous. Ce n'est pas tout à fait rien.",
+"scene.ending_withdrawal.2.text": "Vous avez sonné la retraite, et ils ont porté la flamme au bas de la colline dans une lanterne. La Lanterne se dresse vide au sommet de Marrow Hill. Pour la première fois depuis cent ans, il n'y a rien à défendre sur les terrasses.",
+"scene.ending_withdrawal.3.text": "Ilse porte l'huile et Corvin porte la route. Wren court devant, comme toujours, sans se retourner.",
+"scene.ending_dimmed.2.text": "La Lanterne s'éteint. Dans le brouillard, quelque chose le remarque, et commence enfin à grimper.",
+"scene.ending_dimmed.3.text": "Marrow Hill est sombre. Au matin, le village n'est plus là, et le brouillard est un peu plus épais, et plus patient.",
+"scene.m1_wren.3.text": "Surveillez la route. Pas les lampes. La route.",
+"scene.m1_wren.5.text": "Ils sont au deuxième lacet ! J'ai compté. Trente, peut-être plus, et ils ne se pressent même pas.",
+"scene.m1_wren.6.text": "Vous êtes la messagère. Messagère, vous n'êtes pas à votre place.",
+"scene.m1_wren.7.text": "Je suis au seul endroit d'où je peux les voir.",
+"scene.m1_wren.8.text": "Corvin vous regarde. C'est votre terrasse, et c'est à vous de décider.",
+"scene.m1_wren.10.text": "Restez derrière les lampes, alors. Gardien, donnez-lui quelque chose à faire.",
+"scene.m2_husks.4.text": "Ce sont des carapaces, pas des corps. Les lampes les perceront si on leur en laisse le temps.",
+"scene.m2_husks.5.text": "Nous n'avons pas le temps. Frappez là où ils s'arrêtent, toutes les lampes ensemble, et la route tient.",
+"scene.m2_husks_focus.3.text": "Bien. Toutes les lampes sur un cuirassé, puis sur le suivant. Ilse, vous en aurez pour votre huile.",
+"scene.m2_husks_focus.4.text": "J'aurai une longue nuit de réparations, voilà ce que j'aurai.",
+"scene.m2_husks_lamps.3.text": "Merci. Doucement, maintenant. Une lampe qu'on laisse finir en vaut trois qu'on presse.",
+"scene.m2_husks_lamps.4.text": "Si la route cède, elle cède sur votre parole.",
+"scene.m2_wren.4.text": "Je ne peux pas revenir ! Ils sont entre moi et les lampes !",
+"scene.m2_wren.5.text": "Gardien. Elle n'est ni une lampe ni un mur. Dites le mot.",
+"scene.m2_wren_cover.5.text": "J'y vais. Si la route cède, je me souviendrai de qui en a eu l'idée.",
+"scene.m2_wren_cover.6.text": "Moi, je m'en souviendrai mieux.",
+"scene.m2_wren_hold.3.text": "Tenez ! Wren, courez vers les lampes. Courez comme si la colline brûlait.",
+"scene.m2_wren_hold.4.text": "Vous êtes le Gardien, et c'est vous qui avez décidé. Je vous ai entendu.",
+"scene.m3_together.4.text": "La route de l'est et les lacets se rejoignent sur une seule terrasse, et deux têtes dures s'y retrouvent.",
+"scene.m3_together.5.text": "Lampe de gauche. Maintenant celle de droite. Ilse, l'huile.",
+"scene.m3_together.6.text": "Je sais où est l'huile, capitaine. Tenez la brèche et je garderai vos lampes allumées.",
+"scene.m3_together.7.text": "Pendant une minute tranquille ils ne se disputent pas. Puis les cuirassés arrivent, et personne n'en a le temps.",
+"scene.m3_together.10.text": "Ce n'était pas si mal.",
+"scene.m3_together.11.text": "C'était tolérable.",
+"scene.m3_mill.3.text": "Les Sombres ont atteint la route du moulin, et le moulin est plein de gens qui le croyaient sûr.",
+"scene.m3_mill.4.text": "La milice peut tenir la ruelle un quart d'heure. Ou vous videz le moulin et laissez les Sombres prendre le bâtiment vide.",
+"scene.m3_mill_militia.2.text": "Les fourches à la ruelle. Personne n'est un héros ce soir ; tout le monde est un mur.",
+"scene.m3_mill_evacuate.3.text": "Dehors. Dehors, et vers le haut. Nous gardons les gens et perdons le grain.",
+"scene.m3_east_light.3.text": "La lumière de l'est vacille. Si je ne la taille pas maintenant, elle s'éteint en pleine ruée. Une minute, Gardien. Une.",
+"scene.m3_east_minute.3.text": "Merci. Voilà. Toutes les lampes autour de moi sont réparées, et je n'en suis pas désolée.",
+"scene.m3_east_notime.3.text": "Alors elle s'éteint. Je me souviendrai que vous avez choisi la ruée plutôt que la lampe.",
+"scene.m4_maw.2.text": "Le brouillard sous la dernière terrasse s'écarte comme un rideau. Quelque chose de la taille d'une grange en sort, lentement, et les lampes les plus proches commencent à brûler d'une mauvaise couleur.",
+"scene.m4_maw.4.text": "Ce n'est pas l'un d'eux. C'est d'où ils viennent.",
+"scene.m4_maw.6.text": "Alors nous ne le laissons pas atteindre la Lanterne. Tout sur lui.",
+"scene.m4_fallen.2.text": "L'un d'eux est à terre sur la route, et les Sombres se referment sur l'endroit.",
+"scene.m4_fallen_rescue.2.text": "Quelqu'un y va. Quelqu'un y va toujours. La ligne derrière s'amincit.",
+"scene.m4_fallen_leave.3.text": "Vous choisissez la ligne. Personne ne dit rien ensuite. C'est ce que cela coûte.",
+"scene.m4_bell.3.text": "Le beffroi a sonné chaque nuit depuis l'allumage de la Lanterne. Il se tait. Le silence est plus fort que la cloche.",
+"scene.m4_bell.4.text": "Je peux brûler l'approche. Une fusée assez grande pour les montrer tous, et les brûler pendant qu'ils regardent. Ou nous nous replions sur la Lanterne et nous y tenons.",
+"scene.m4_bell_flare.3.text": "Regardez, alors. Regardez tout.",
+"scene.m4_bell_rally.2.text": "À moi. La Lanterne, et rien d'autre, jusqu'à la fin.",
+"scene.m4_line.2.text": "Douze ont passé la dernière lampe. La Lanterne vacille, et sa chaleur quitte la terrasse.",
+"scene.m4_line.4.text": "On peut encore la porter en bas. La flamme, je veux dire. Hors de la colline. Elle vivrait.",
+"scene.m4_line_retreat.3.text": "Portez-la en bas. Portez-la lentement. Ne regardez pas la colline.",
+"scene.m4_line_stand.5.text": "Alors nous tenons. Tous. Écoutez-moi, Gardien : c'est vous qui l'avez demandé.",
+"scene.m4_won.2.text": "La Gueule se replie, et la vallée n'est plus pleine que de brouillard. Le brouillard, pour la première fois de mémoire d'homme, n'est que du brouillard.",
+"scene.m4_lost.2.text": "La ligne cède. En bas, la Lanterne vacille, et la vallée s'obscurcit.",
+"scene.prologue.2.text": "Marrow Hill est bâtie en terrasses sur un coteau raide, et chaque terrasse est éclairée. Sous la dernière, la vallée est un lac de brouillard, et rien dans le brouillard n'a jamais cessé de bouger.",
+"scene.prologue.3.text": "Vous arrivez avec une vieille clé et une lettre. La lettre dit que le dernier Gardien est parti, et qu'une lanterne brûle plus fort pour ceux en qui l'on a confiance.",
+"scene.prologue.5.text": "Vous êtes le Gardien ? On m'avait dit d'attendre quelqu'un, pas un manteau sur un bâton. Je suis Ilse. Je taille les lampes et je répare ce qui casse.",
+"scene.prologue.7.text": "Capitaine Corvin, à la retraite. Je connais les routes. Reste à savoir si vous me laisserez vous en parler.",
+"scene.prologue.8.text": "Ilse pose son bidon d'huile. Corvin ne s'assied pas du tout.",
+"scene.prologue.9.text": "Le crépuscule est l'heure. Les Sombres grimpent les lacets vers la Lanterne, et la Lanterne ne brûle que tant que quelqu'un veille dessus.",
+"scene.prologue.10.text": "Construisez là où la route tourne. Une lampe qui ne voit pas la route n'est qu'une bougie.",
+"scene.prologue.11.text": "Loin en bas, le brouillard bouge. Ce n'est pas le vent.",
+}
+
+def main():
+    source = json.load(open("l10n/source.json"))
+    out = ['{"format":1,"package":"%s","locale":"fr","entries":[' % source["package"]]
+    entries = []
+    missing = []
+    for m in source["messages"]:
+        text = FR.get(m["key"])
+        if text is None:
+            missing.append(m["key"])
+            continue
+        entries.append(' {"key":%s,"text":%s,"status":"draft","revision":"%s"}' % (
+            json.dumps(m["key"], ensure_ascii=False), json.dumps(text, ensure_ascii=False), m["revision"]))
+    out.append(",\n".join(entries))
+    out.append("]}")
+    open("l10n/fr.json", "w").write("\n".join(out) + "\n")
+    stale = [k for k in FR if k not in {m["key"] for m in source["messages"]}]
+    if missing:
+        print("untranslated:", ", ".join(missing))
+    if stale:
+        print("no longer in the source:", ", ".join(stale))
+    print("l10n/fr.json: %d entries" % len(entries))
+    return 1 if missing else 0
+
+sys.exit(main())

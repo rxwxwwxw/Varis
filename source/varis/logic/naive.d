@@ -264,7 +264,12 @@ struct NaiveEvaluator {
                         auto returned = VM.callValue(state, aggregate.aggregateExpression, arguments);
                         value = returned.length ? returned[0] : luaNil();
                     }
-                    if (aggregate.aggregateOp == "sum") {
+                    if (aggregate.aggregateOp == "value") {
+                        // A computed binding (`?x := expression`): one assignment, no goals.
+                        result = value;
+                        // Reject NaN before it reaches a binding.
+                        RelTuple([result]);
+                    } else if (aggregate.aggregateOp == "sum") {
                         if (!isNumber(value))
                             throw new LuaException("sum aggregate requires numeric values");
                         result = VM.opAdd(state, result, value);

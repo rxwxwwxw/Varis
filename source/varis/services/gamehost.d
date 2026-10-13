@@ -26,7 +26,12 @@ import varis.narrative.scenes;
 import varis.narrative.session;
 import varis.narrative.persistence;
 import varis.services.manifest;
+import varis.services.tier : installTierEnforcement;
 import varis.services.presentation : SceneChoice, SceneView, StageCharacter;
+import varis.game.battle : Battle, Problem;
+import varis.game.kinds : TowerKind;
+import varis.game.types : BattleSetup, Command, CommandKind, Outcome, StepResult, MomentSpec, WaveSpec;
+import varis.lib.battle : BattleHost, readSetup, outcomeTable, syncMods;
 
 /// One selectable line of the hub. A choice with a `require` that fails is `enabled == false`,
 /// carries a reason in `because` and has no token.
@@ -86,6 +91,16 @@ private LuaValue tfield(LuaValue table, string key) {
     return table.typeOf() == LuaType.Table ? table.asTable.rawget(LuaValue(key)) : LuaValue.init;
 }
 
+/// Where a battle stands (TOWER_DEFENSE_PLAN.md §5.5): asked for by the story and being built,
+/// running, interrupted by a moment's scene, or over and waiting for the player to go on.
+enum BattlePhase : ubyte {
+    none,
+    build,
+    night,
+    moment,
+    ended,
+}
+
 class GameHost {
     LuaState state;
     Session session;
@@ -94,11 +109,30 @@ class GameHost {
     Toast[] toasts;
     private LuaValue sessionValue, newSession, loadHook, afterChoose, finished, toastHook, journalHook,
     achievementsHook, mapHook;
+    private LuaValue requestHook, setupHook, syncHook, resultHook;
+
+    // ---- the battle bridge ----
+    /// The battle in progress (null when `battlePhase == none`). The view reads its simulation
+    /// state directly and never writes it: commands go through `battleCommand`.
+    BattleHost battle;
+    BattlePhase battlePhase;
+    /// The world as it was when the battle was asked for (after the choice that asked), and
+    /// before that choice: a retry restores the first, an abandon the second.
+    string battleStart, battleHub;
+    private LuaValue battleRequest, battleSetupTable;
+    private string pendingHub;
+    /// Notes the view shows about the battle (a refused command, a judge's chip).
+    string[] battleNotes;
+    /// The silent judge's last report: structures it chipped.
+    int judgeChipped;
     private LuaValue sceneToken;
     string startScene;
     string language;
     /// Scene-only content (no project): an empty world and no hooks.
     bool sceneOnly;
+    /// How many choices and beats `back` can take back; 0 turns it off. Applied to each new or
+    /// restored session.
+    size_t undoLimit = 64;
     private string sceneSource, sceneFile;
 
     /// Loads the project in `root`: runs its entry module (which registers and seals content)
@@ -112,10 +146,11 @@ class GameHost {
             }
             auto candidate = new LuaState;
             openLibs(candidate);
+            installTierEnforcement(candidate, manifest, root);
             enum bootstrap = q"LUA
 local cfg, root = ...
 __varis_root = root
-package.path = root .. "/?.lua;" .. root .. "/?/init.lua;" .. package.path
+package.path = root .. "/?.varis;" .. root .. "/?/init.varis;" .. root .. "/?.lua;" .. root .. "/?/init.lua;" .. package.path
 local entry = require(cfg.entry)
 if cfg.language then narrative.source_language(cfg.language) end
 local function resolve(path)
@@ -124,7 +159,9 @@ local function resolve(path)
     return require(module)[name]
 end
 return resolve(cfg.session), resolve(cfg.load), resolve(cfg.after_choose), resolve(cfg.finished),
-    entry.take_toasts, entry.journal, entry.achievements, entry.map_state
+    entry.take_toasts, entry.journal, entry.achievements, entry.map_state,
+    resolve(cfg.battle_request), resolve(cfg.battle_setup), resolve(cfg.battle_sync),
+    resolve(cfg.battle_result)
 LUA";
             auto config = new LuaTable();
             config.rawset(LuaValue("entry"), LuaValue(manifest.entry));
@@ -133,9 +170,13 @@ LUA";
             config.rawset(LuaValue("after_choose"), LuaValue(manifest.afterChoose));
             config.rawset(LuaValue("finished"), LuaValue(manifest.finished));
             config.rawset(LuaValue("language"), LuaValue(manifest.language));
+            config.rawset(LuaValue("battle_request"), LuaValue(manifest.battleRequest));
+            config.rawset(LuaValue("battle_setup"), LuaValue(manifest.battleSetup));
+            config.rawset(LuaValue("battle_sync"), LuaValue(manifest.battleSync));
+            config.rawset(LuaValue("battle_result"), LuaValue(manifest.battleResult));
             auto chunk = candidate.loadString(bootstrap, "=varis-gamehost");
             auto hooks = VM.callValue(candidate, LuaValue(chunk), [LuaValue(config), LuaValue(root)]);
-            if (hooks.length < 8 || !isFunction(hooks[0])) {
+            if (hooks.length < 12 || !isFunction(hooks[0])) {
                 error = "the manifest has no usable `session` function";
                 return false;
             }
@@ -148,6 +189,10 @@ LUA";
             journalHook = hooks[5];
             achievementsHook = hooks[6];
             mapHook = hooks[7];
+            requestHook = hooks[8];
+            setupHook = hooks[9];
+            syncHook = hooks[10];
+            resultHook = hooks[11];
             this.startScene = startScene;
             error = "";
             return true;
@@ -209,15 +254,17 @@ LUA";
             auto previousValue = sessionValue;
             session = next;
             sessionValue = nextValue;
+            session.setUndoLimit(undoLimit);
             if (language.length)
                 session.language = language;
             toasts = null;
+            endBattle();
             if (!refresh()) {
                 session = previous;
                 sessionValue = previousValue;
                 return false;
             }
-            return true;
+            return checkBattle();
         } catch (Exception failure) {
             error = failure.msg;
             return false;
@@ -498,7 +545,74 @@ LUA";
         }
         try {
             session.advanceScene(sceneToken, input);
-            return refresh();
+            if (!refresh())
+                return false;
+            // a moment's scene has ended: the story's decisions become the battle's modifiers
+            if (battlePhase == BattlePhase.moment && !view.inScene)
+                return resumeAfterMoment();
+            return true;
+        } catch (Exception failure) {
+            error = failure.msg;
+            return false;
+        }
+    }
+
+    /// The cross-save profile (`narrative.profile_*`) as text, for a host to keep beside its saves.
+    bool profileSave(out string text) {
+        if (state is null) {
+            error = "no project loaded";
+            return false;
+        }
+        try {
+            auto result = VM.callValue(state, tfield(state.getGlobal("narrative"), "profile_save"), [
+            ]);
+            text = result.length ? nameOf(result[0]) : "";
+            return text.length != 0;
+        } catch (Exception failure) {
+            error = failure.msg;
+            return false;
+        }
+    }
+
+    /// Loads profile text written by `profileSave`; the old profile stays when it is invalid.
+    bool profileLoad(string text) {
+        if (state is null) {
+            error = "no project loaded";
+            return false;
+        }
+        try {
+            VM.callValue(state, tfield(state.getGlobal("narrative"), "profile_load"), [
+                LuaValue(text)
+            ]);
+            return true;
+        } catch (Exception failure) {
+            error = failure.msg;
+            return false;
+        }
+    }
+
+    /// Whether `back` has something to take back.
+    bool canBack() {
+        return session !is null && battlePhase == BattlePhase.none && session.undoDepth() > 0;
+    }
+
+    /// Takes back the last choice or beat advance and shows what was current before it. Not
+    /// available during a battle. Only the session is rolled back: state a project keeps in
+    /// its own Lua tables is the project's to restore.
+    bool back() {
+        if (!ready())
+            return false;
+        if (battlePhase != BattlePhase.none) {
+            error = "going back is not available during a battle";
+            return false;
+        }
+        if (session.undoDepth() == 0) {
+            error = "nothing to go back to";
+            return false;
+        }
+        try {
+            toasts = null;
+            return read(session.undo());
         } catch (Exception failure) {
             error = failure.msg;
             return false;
@@ -519,10 +633,15 @@ LUA";
             return false;
         }
         try {
+            // the world before this choice: where an abandoned battle returns to
+            if (!requestHook.isNil && battlePhase == BattlePhase.none)
+                pendingHub = saveSession(session);
             session.choose(unwrapChoiceToken(chosen.token));
             if (!afterChoose.isNil)
                 VM.callValue(state, afterChoose, [sessionValue]);
-            return refresh();
+            if (!refresh())
+                return false;
+            return checkBattle();
         } catch (Exception failure) {
             error = failure.msg;
             return false;
@@ -532,6 +651,10 @@ LUA";
     bool save(out string bytes) {
         if (!ready())
             return false;
+        if (battlePhase != BattlePhase.none) {
+            error = "a battle is in progress: the game cannot be saved until it ends";
+            return false;
+        }
         try {
             bytes = saveSession(session);
             error = "";
@@ -567,11 +690,13 @@ LUA";
             auto previousValue = sessionValue;
             session = restored;
             sessionValue = restoredValue;
+            session.setUndoLimit(undoLimit);
             if (language.length)
                 session.language = language;
             toasts = null;
+            endBattle();
             if (refresh())
-                return true;
+                return checkBattle();
             session = previousSession;
             sessionValue = previousValue;
             return false;
@@ -592,6 +717,259 @@ LUA";
             return true;
         try {
             return read(session.render(lastPresentation, tag));
+        } catch (Exception failure) {
+            error = failure.msg;
+            return false;
+        }
+    }
+
+    // ---- battle -----------------------------------------------------------------------
+
+    /// True while a battle is asked for, running, or waiting to be accepted.
+    bool inBattle() const {
+        return battlePhase != BattlePhase.none;
+    }
+
+    /// The bytes of the autosave: the world at the start of a battle while one is in progress
+    /// (a save inside a battle is not possible; Continue starts the battle again), else a save.
+    bool autosaveBytes(out string bytes) {
+        if (battlePhase != BattlePhase.none && battleStart.length) {
+            bytes = battleStart;
+            return true;
+        }
+        return save(bytes);
+    }
+
+    private void endBattle() {
+        battle = null;
+        battlePhase = BattlePhase.none;
+        battleRequest = LuaValue.init;
+        battleSetupTable = LuaValue.init;
+        battleNotes = null;
+        judgeChipped = 0;
+    }
+
+    /// After a boundary: has the story asked for a battle? If so, build its setup from the world
+    /// and start its build phase. A refused setup is an error and leaves the world untouched.
+    private bool checkBattle() {
+        if (requestHook.isNil || battlePhase != BattlePhase.none || view.inScene)
+            return true;
+        try {
+            auto requested = VM.callValue(state, requestHook, [sessionValue]);
+            if (!requested.length || requested[0].isNil)
+                return true;
+            // call results share a buffer: keep the request before the next call
+            immutable request = requested[0];
+            auto made = VM.callValue(state, setupHook, [sessionValue, request]);
+            if (!made.length || made[0].isNil) {
+                error = "battle_setup returned nothing";
+                return false;
+            }
+            immutable setup = made[0];
+            auto candidate = new BattleHost;
+            auto problem = candidate.start(setup);
+            if (!problem.ok()) {
+                error = problem.field ~ ": " ~ problem.message;
+                return false;
+            }
+            foreach (i, m; candidate.battle.setup.moments)
+                if (session.registry.scene(m.scene) is null) {
+                    error = "moments.scene: moment " ~ m.scene ~ " names an unknown scene";
+                    return false;
+                }
+            battle = candidate;
+            battleRequest = request;
+            battleSetupTable = setup;
+            battleStart = saveSession(session);
+            battleHub = pendingHub.length ? pendingHub : battleStart;
+            pendingHub = null;
+            battlePhase = BattlePhase.build;
+            battleNotes = null;
+            return true;
+        } catch (Exception failure) {
+            error = failure.msg;
+            return false;
+        }
+    }
+
+    /// A command during the build phase or the night. Returns false with the reason in `reason`.
+    bool battleCommand(Command c, out string reason) {
+        if (battle is null || (battlePhase != BattlePhase.build && battlePhase != BattlePhase.night)) {
+            reason = "there is no battle to command";
+            return false;
+        }
+        return battle.battle.command(c, reason);
+    }
+
+    /// The silent days: a raid on a copy at 30 percent chips the thinnest structure (never
+    /// destroying it). Then the night begins. Nothing is shown.
+    bool battleBegin() {
+        if (battle is null || battlePhase != BattlePhase.build) {
+            error = "no battle is waiting to begin";
+            return false;
+        }
+        try {
+            auto setup = battle.battle.setup;
+            setup.moments = [];
+            setup.waves = setup.waves.dup;
+            foreach (ref w; setup.waves) {
+                w.count = w.count * 30 / 100;
+                if (w.count < 1)
+                    w.count = 1;
+            }
+            Battle raid;
+            if (raid.begin(setup).ok()) {
+                foreach (c; battle.battle.log) {
+                    string why;
+                    raid.command(c, why);
+                }
+                int[] before;
+                foreach (s; 0 .. raid.structureCount)
+                    before ~= raid.sHp[s];
+                foreach (_; 0 .. 60_000) {
+                    if (raid.step() != StepResult.running)
+                        break;
+                }
+                int lostMost, lostSlot = -1;
+                foreach (s; 0 .. raid.structureCount) {
+                    if (raid.sIsHero[s])
+                        continue;
+                    immutable lost = before[s] - raid.sHp[s];
+                    if (lost > lostMost && before[s] > 1) {
+                        lostMost = lost;
+                        lostSlot = s;
+                    }
+                }
+                judgeChipped = 0;
+                if (lostSlot >= 0) {
+                    Command c;
+                    c.action = CommandKind.setHp;
+                    c.target = battle.battle.sId[lostSlot];
+                    c.a = before[lostSlot] - lostMost > 1 ? before[lostSlot] - lostMost : 1;
+                    string why;
+                    if (battle.battle.command(c, why))
+                        judgeChipped = 1;
+                }
+            }
+            battlePhase = BattlePhase.night;
+            return true;
+        } catch (Exception failure) {
+            error = failure.msg;
+            return false;
+        }
+    }
+
+    /// Runs up to `steps` steps of the night. A moment pauses the battle and starts its scene
+    /// (the view then shows the beats); an ending leaves the battle waiting in `ended`.
+    StepResult battleAdvance(int steps) {
+        if (battle is null || battlePhase != BattlePhase.night || battle.paused)
+            return StepResult.running;
+        try {
+            immutable result = battle.pump(steps);
+            if (result == StepResult.moment) {
+                battlePhase = BattlePhase.moment;
+                session.playScene(battle.momentScene());
+                refresh();
+            } else if (result != StepResult.running) {
+                battlePhase = BattlePhase.ended;
+            }
+            return result;
+        } catch (Exception failure) {
+            error = failure.msg;
+            return StepResult.running;
+        }
+    }
+
+    private bool resumeAfterMoment() {
+        try {
+            auto context = new LuaTable();
+            foreach (s; 0 .. battle.battle.structureCount)
+                if (battle.battle.sIsHero[s] && battle.battle.sDowned[s] && !battle.battle.sAlive[s])
+                    context.rawset(LuaValue("downed"), LuaValue(cast(long) battle.battle.sId[s]));
+            auto mods = VM.callValue(state, syncHook, [sessionValue, LuaValue(context)]);
+            if (mods.length)
+                syncMods(battle, mods[0]);
+            battlePhase = BattlePhase.night;
+            return true;
+        } catch (Exception failure) {
+            error = failure.msg;
+            return false;
+        }
+    }
+
+    /// The finished battle's outcome as the table `battle_result` receives.
+    LuaValue battleOutcome() {
+        return battle is null ? LuaValue.init : outcomeTable(battle.battle);
+    }
+
+    /// The player goes on after the result (or accepts a loss): the world is written, the hub
+    /// returns and the autosave is the caller's.
+    bool battleAccept() {
+        if (battle is null || battlePhase != BattlePhase.ended) {
+            error = "no finished battle";
+            return false;
+        }
+        try {
+            auto info = new LuaTable();
+            info.rawset(LuaValue("request"), battleRequest);
+            info.rawset(LuaValue("setup"), battleSetupTable);
+            VM.callValue(state, resultHook, [sessionValue, battleOutcome(), LuaValue(info)]);
+            endBattle();
+            if (!refresh())
+                return false;
+            return checkBattle();
+        } catch (Exception failure) {
+            error = failure.msg;
+            return false;
+        }
+    }
+
+    /// Try again from the start of the battle: the world returns to the snapshot taken when it
+    /// was asked for, and the same battle is built again.
+    bool battleRetry() {
+        if (battle is null || battleStart.length == 0) {
+            error = "no battle to retry";
+            return false;
+        }
+        immutable bytes = battleStart;
+        immutable hub = battleHub;
+        endBattle();
+        if (!restore(bytes))
+            return false;
+        battleHub = hub;
+        return true;
+    }
+
+    /// Leave the battle: the world returns to the hub as it was before the choice that asked.
+    bool battleAbandon() {
+        if (battle is null) {
+            error = "no battle to abandon";
+            return false;
+        }
+        immutable bytes = battleHub.length ? battleHub : battleStart;
+        endBattle();
+        pendingHub = null;
+        return restoreNoBattle(bytes);
+    }
+
+    /// Restores without letting the pending request start a battle (used by abandon).
+    private bool restoreNoBattle(string bytes) {
+        try {
+            Session restored;
+            LuaValue restoredValue;
+            auto value = VM.callValue(state, loadHook, [LuaValue(bytes)]);
+            if (!value.length) {
+                error = "the load function returned nothing";
+                return false;
+            }
+            restored = unwrapSession(value[0]);
+            restoredValue = value[0];
+            session = restored;
+            sessionValue = restoredValue;
+            if (language.length)
+                session.language = language;
+            toasts = null;
+            return refresh();
         } catch (Exception failure) {
             error = failure.msg;
             return false;

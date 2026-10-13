@@ -63,6 +63,24 @@ string skipFilePrefix(string content) {
     return content;
 }
 
+/// Loads the chunk of a source file read from disk, as the project's tiers require: a content
+/// file is vetted and runs in the restricted environment the tier hook returns.
+LuaFunction loadSourceFile(LuaState state, string filename, string content, string chunkName, string mode) {
+    LuaValue environment;
+    if (state.fileTierHook !is null) {
+        auto problem = state.fileTierHook(filename, content, environment);
+        if (problem.length)
+            throw new LuaException(problem);
+    }
+    auto fn = loadChunk(state, skipFilePrefix(content), chunkName, mode);
+    if (!isNil(environment)) {
+        auto closure = cast(LuaClosure) fn;
+        if (closure !is null && closure.upvalues.length)
+            closure.upvalues[0].set(environment);
+    }
+    return fn;
+}
+
 /// Loads a chunk of text or binary code. Returns the function or throws LuaException.
 LuaFunction loadChunk(LuaState state, string code, string chunkName, string mode) {
     import std.string : indexOf;
@@ -572,7 +590,7 @@ void openBaseLib(LuaState state) {
             chunkName = "@" ~ filename;
         }
         try {
-            auto fn = loadChunk(s, skipFilePrefix(content), chunkName, mode);
+            auto fn = filename is null ? loadChunk(s, skipFilePrefix(content), chunkName, mode) : loadSourceFile(s, filename, content, chunkName, mode);
             if (a.length > 2) {
                 auto closure = cast(LuaClosure) fn;
                 if (closure !is null && closure.upvalues.length)
@@ -601,7 +619,7 @@ void openBaseLib(LuaState state) {
                 all.put(line);
             content = all.data;
         }
-        auto fn = loadChunk(s, skipFilePrefix(content), chunkName, "bt");
+        auto fn = filename is null ? loadChunk(s, skipFilePrefix(content), chunkName, "bt") : loadSourceFile(s, filename, content, chunkName, "bt");
         return VM.callValue(s, LuaValue(fn), []);
     });
 }

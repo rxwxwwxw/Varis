@@ -67,6 +67,18 @@ private void collectAtTurnBoundary() {
     }
 }
 
+/// Calls `callback` with the session's world as the default world: unqualified relation names,
+/// `fact`/`set`/`adjust`, queries and `quality.*` in a session handler or a deferred callback mean
+/// the world the event came from, not the process-wide global one. The real global world stays
+/// reachable as `logic.global`. Restored on every exit.
+LuaValue[] callInSessionWorld(LuaState state, World world, LuaValue callback, LuaValue[] arguments) {
+    auto previous = state.globalWorldObject;
+    state.globalWorldObject = world;
+    scope (exit)
+        state.globalWorldObject = previous;
+    return VM.callValue(state, callback, arguments);
+}
+
 /// A ground positive goal of a definition's availability query: if that fact is absent the
 /// query has no result, so the definition has no instance.
 private final class RequiredFact {
@@ -165,6 +177,10 @@ class SessionData {
     ScheduledEvent[] scheduled;
     bool[ulong] consumedTokens;
     LuaValue[] replayInputs;
+    /// The ending recorded by `narrative.finish`; empty while the session is playable.
+    string ending;
+    /// Events with a sequence number above this were delivered by an earlier presentation.
+    ulong eventCursor;
 
     SessionData copy() {
         auto result = new SessionData();
@@ -185,14 +201,28 @@ class SessionData {
         result.scheduled = scheduled.dup;
         result.consumedTokens = consumedTokens.dup;
         result.replayInputs = replayInputs.dup;
+        result.ending = ending;
+        result.eventCursor = eventCursor;
         return result;
     }
+}
+
+/// One undo point: the session data (with the live scene object, which is replaced and never
+/// mutated, so beat tokens issued for it stay valid), the world's facts and the presentation.
+private final class UndoEntry {
+    SessionData data;
+    FactSnapshot facts;
+    LuaValue presentation;
 }
 
 class ContentInstance {
     ContentDefinition definition;
     LuaValue[string] bindings;
     LuaValue[] values;
+    /// Values of the definition's `expose ?name` variables, in declaration order. Visible to
+    /// templates and effects; not part of `key`, cooldowns or history.
+    LuaValue[] exposedValues;
+    string exposure; // canonical form of exposedValues, to notice a change at choosing time
     string key;
     ulong worldVersion;
 }
@@ -233,6 +263,7 @@ final class ChoiceRender {
     LuaValue id;
     LuaValue instanceKey;
     LuaValue bindings; // immutable record
+    LuaValue exposed; // immutable record of `expose` values, or nil
     LuaValue token;
     MessageRender title;
     MessageRender text;
@@ -247,6 +278,7 @@ final class StoryRender {
     LuaValue id;
     LuaValue instanceKey;
     LuaValue bindings;
+    LuaValue exposed; // immutable record of `expose` values, or nil
     LuaValue worldVersion;
     MessageRender title;
     MessageRender text;
@@ -259,6 +291,8 @@ final class PresentationRender {
     LuaValue deck;
     StoryRender[] stories;
     LuaValue stage;
+    LuaValue events; // immutable sequence of the events this presentation delivered
+    LuaValue ending; // the ending symbol of a terminal presentation, else nil
 }
 
 /// The payload of a presentation record: its fields, as for any immutable record, and the data
@@ -268,8 +302,11 @@ final class ScenePresentationRecord : ImmutableRecord {
     LuaValue token;
     ulong turn;
     MessageRender message;
-    this(LuaValue[string] fields, SceneState snapshot, LuaValue token, ulong turn, MessageRender message) {
+    LuaValue delivered;
+    this(LuaValue[string] fields, SceneState snapshot, LuaValue token, ulong turn, MessageRender message,
+            LuaValue delivered = LuaValue.init) {
         super(fields);
+        this.delivered = delivered;
         this.snapshot = snapshot;
         this.token = token;
         this.turn = turn;
@@ -307,6 +344,14 @@ class Session : TransactionParticipant {
     /// preference: not saved, never an input to eligibility, draws or replay.
     string language;
     private Relation eventRelation;
+    /// Bounded ring of states taken just before each choice or beat advance (`undo`). Not saved:
+    /// a loaded session starts with an empty ring.
+    private UndoEntry[] undoRing;
+    private size_t undoLimit_;
+    /// The value the last `present` returned; `undo` hands back the one that was current when
+    /// the undone command ran, so its tokens are valid again.
+    private LuaValue lastPresentation;
+    private LuaValue autosaveHook;
 
     private this() {
     }
@@ -454,11 +499,57 @@ class Session : TransactionParticipant {
     }
 
     LuaValue scenePresentation() {
+        auto delivered = eventsAfter(data.eventCursor);
+        data.eventCursor = data.events.length;
         return buildScenePresentation(data.scene, language, LuaValue(new LuaUserData(new SceneToken(this, data.scene))), data
-                .turn);
+                .turn, null, delivered);
     }
 
-    private LuaValue buildScenePresentation(SceneState scene, string target, LuaValue token, ulong turn, MessageRender message = null) {
+    /// The committed events with a sequence number above `after`, as an immutable sequence of
+    /// `{sequence, turn, kind, args}` records.
+    LuaValue eventsAfter(ulong after) {
+        LuaValue[] items;
+        auto committed = view().events;
+        foreach (event; committed)
+            if (event.sequence > after)
+                items ~= immutableRecord([
+                "sequence": LuaValue(cast(long) event.sequence),
+                "turn": LuaValue(cast(long) event.turn),
+                "kind": state.getSymbol(event.kind),
+                "args": event.arguments
+        ]);
+        return immutableSequence(items);
+    }
+
+    /// Record the ending of the session (`narrative.finish`). Repeating it is harmless; a second,
+    /// different ending in the same session is an error.
+    void finish(string ending) {
+        auto value = edit();
+        if (value.ending.length && value.ending != ending)
+            throw new LuaException("session already finished with ending '" ~ value.ending ~ "'");
+        value.ending = ending;
+    }
+
+    /// The ending symbol, or nil while the session is playable.
+    LuaValue endedWith() {
+        auto name = view().ending;
+        return name.length ? state.getSymbol(name) : LuaValue.init;
+    }
+
+    private LuaValue terminalPresentation() {
+        auto renderData = new PresentationRender();
+        renderData.turn = LuaValue(cast(long) data.turn);
+        renderData.deck = state.getSymbol(data.decks[$ - 1].name);
+        renderData.events = eventsAfter(data.eventCursor);
+        renderData.ending = state.getSymbol(data.ending);
+        if (data.scene !is null)
+            renderData.stage = data.scene.stage;
+        data.eventCursor = data.events.length;
+        return buildPresentation(renderData, language);
+    }
+
+    private LuaValue buildScenePresentation(SceneState scene, string target, LuaValue token, ulong turn,
+            MessageRender message = null, LuaValue delivered = LuaValue.init) {
         auto frame = scene.frames[$ - 1];
         auto beat = scene.beat;
         auto text = field(beat, "text");
@@ -494,13 +585,21 @@ class Session : TransactionParticipant {
             "beat_index": LuaValue(cast(long) frame.pc + 1), "locals": frame.locals,
             "beats": immutableSequence([beat]), "stage": scene.stage,
             "token": token,
-            "storylets": immutableSequence(null)
+            "storylets": immutableSequence(null),
+            "events": delivered.isNil ? immutableSequence(null) : delivered
         ];
-        return wrapImmutable(new ScenePresentationRecord(fields, scene, token, turn, message));
+        return wrapImmutable(new ScenePresentationRecord(fields, scene, token, turn, message, delivered));
     }
 
     void advanceScene(LuaValue token, LuaValue input) {
+        advanceCommitted(token, input);
+        runAutosave();
+    }
+
+    private void advanceCommitted(LuaValue token, LuaValue input) {
         requireIdle();
+        if (data.ending.length)
+            throw new LuaException("SESSION_ENDED: the session finished with ending '" ~ data.ending ~ "'");
         SceneToken identity;
         if ((token.typeOf() == LuaType.UserData))
             identity = cast(SceneToken) token.asUserData.payload;
@@ -511,8 +610,12 @@ class Session : TransactionParticipant {
         auto kind = nameOf(field(beat, "kind"));
         auto frame = &next.frames[$ - 1];
         if (kind == "input") {
-            canonicalScalar(input);
-            frame.locals = replaceField(frame.locals, nameOf(field(beat, "local")), input, false);
+            auto value = input.isNil ? field(beat, "default") : input;
+            canonicalScalar(value);
+            auto problem = checkInputValue(beat, value);
+            if (problem.length)
+                throw new LuaException("invalid scene input: " ~ problem);
+            frame.locals = replaceField(frame.locals, nameOf(field(beat, "local")), value, false);
         } else if (kind == "menu") {
             string target;
             foreach (choice; sequence(field(beat, "choices")))
@@ -540,10 +643,17 @@ class Session : TransactionParticipant {
             ]);
         }
 
-        if (registry.procedures().length)
-            runEffect(&seek);
-        else
-            seek();
+        bool captured = captureUndo();
+        try {
+            if (registry.procedures().length)
+                runEffect(&seek);
+            else
+                seek();
+        } catch (Throwable error) {
+            if (captured)
+                discardUndo();
+            throw error;
+        }
     }
 
     void seed(long seed) {
@@ -698,6 +808,7 @@ class Session : TransactionParticipant {
         } else
             rows ~= (LuaValue[string]).init;
         bool[string] seen;
+        ContentInstance[string] byKey;
         ContentInstance[] result;
         foreach (row; rows) {
             auto instance = new ContentInstance();
@@ -711,15 +822,56 @@ class Session : TransactionParticipant {
                 instance.bindings[name] = value;
                 instance.values ~= value;
             }
+            foreach (name; definition.exposed) {
+                if (name !in row)
+                    throw new LuaException("availability did not ground exposed variable '?" ~ name ~ "'");
+                auto value = row[name];
+                canonicalScalar(value);
+                instance.bindings[name] = value;
+                instance.exposedValues ~= value;
+            }
+            instance.exposure = canonicalBindings(instance.exposedValues);
             instance.key = canonicalScalar(state.getSymbol(definition.id)) ~ ":" ~ canonicalBindings(instance.values);
             instance.worldVersion = world.version_;
             if (instance.key !in seen) {
                 seen[instance.key] = true;
+                byKey[instance.key] = instance;
                 result ~= instance;
+            } else if (definition.exposed.length && byKey[instance.key].exposure != instance.exposure) {
+                // One instance, several different exposed values: nothing says which to show.
+                string names;
+                foreach (i, name; definition.exposed)
+                    names ~= (i ? ", ?" : "?") ~ name;
+                throw new LuaException("AMBIGUOUS_EXPOSE: " ~ definition.kind ~ " '" ~ definition.id
+                        ~ "' exposes " ~ names ~ " but its query matches more than one value for one instance ("
+                        ~ definition.id ~ "); constrain the query or make it a parameter");
             }
         }
         result.sort!((left, right) => left.key < right.key);
         return result;
+    }
+
+    /// An instance's bindings as a presentation shows them: its parameters (and a choice's
+    /// storylet's), never the `expose` values, which are not identity.
+    private LuaValue presentedBindings(ContentInstance instance) {
+        LuaValue[string] visible;
+        foreach (name, value; instance.bindings) {
+            bool hidden;
+            foreach (candidate; instance.definition.exposed ~ instance.definition.incomingExposed)
+                hidden = hidden || candidate == name;
+            if (!hidden)
+                visible[name] = value;
+        }
+        return immutableRecord(visible);
+    }
+
+    private LuaValue exposedRecord(ContentInstance instance) {
+        if (!instance.definition.exposed.length)
+            return LuaValue.init;
+        LuaValue[string] fields;
+        foreach (i, name; instance.definition.exposed)
+            fields[name] = instance.exposedValues[i];
+        return immutableRecord(fields);
     }
 
     /// Whether a choice's `require` query has a result for these bindings (true when it has none).
@@ -730,7 +882,7 @@ class Session : TransactionParticipant {
         scope (exit)
             endReadOnlyEvaluation();
         LuaValue[] args = [wrapWorld(snapshot)];
-        foreach (name; definition.incomingParameters ~ definition.parameters)
+        foreach (name; definition.incomingParameters ~ definition.parameters ~ definition.exposed)
             args ~= bindings.get(name, luaNil());
         auto returned = VM.callValue(state, definition.requirement, args);
         if (!returned.length)
@@ -754,7 +906,7 @@ class Session : TransactionParticipant {
 
     private bool stillAvailable(ContentInstance selected, World snapshot, LuaValue[string] inputs = null) {
         foreach (instance; instances(selected.definition, snapshot, inputs))
-            if (instance.key == selected.key)
+            if (instance.key == selected.key && instance.exposure == selected.exposure)
                 return true;
         return false;
     }
@@ -828,13 +980,17 @@ class Session : TransactionParticipant {
                     "text": LuaValue(text(choice.text)),
                     "token": choice.token
                 ];
+                if (!choice.exposed.isNil)
+                    record["exposed"] = choice.exposed;
                 if (choice.hasRequirement) {
                     record["enabled"] = LuaValue(choice.enabled);
                     record["because"] = LuaValue(choice.enabled ? "" : text(choice.because));
                 }
+                if (auto meta = (nameOf(story.id) ~ "." ~ nameOf(choice.id)) in registry.metadata)
+                    record["meta"] = *meta;
                 choices ~= immutableRecord(record);
             }
-            stories ~= immutableRecord([
+            LuaValue[string] storyRecord = [
                 "id": story.id,
                 "instance_key": story.instanceKey,
                 "bindings": story.bindings,
@@ -842,13 +998,51 @@ class Session : TransactionParticipant {
                 "text": LuaValue(text(story.text)),
                 "world_version": story.worldVersion,
                 "choices": immutableSequence(choices)
-            ]);
+            ];
+            if (!story.exposed.isNil)
+                storyRecord["exposed"] = story.exposed;
+            if (auto meta = nameOf(story.id) in registry.metadata)
+                storyRecord["meta"] = *meta;
+            // Passage links in the rendered text, resolved to the choice they name (position
+            // order). A link to a choice that is not enabled carries no token.
+            {
+                import varis.narrative.text : markupSpans;
+
+                LuaValue[] links;
+                foreach (span; markupSpans(text(story.text))) {
+                    if (!span.link.length)
+                        continue;
+                    LuaValue token;
+                    bool enabled;
+                    bool known;
+                    foreach (choice; story.choices)
+                        if (nameOf(choice.id) == span.link && !known) {
+                            known = true;
+                            enabled = !choice.token.isNil;
+                            token = choice.token;
+                        }
+                    if (!known)
+                        continue;
+                    links ~= immutableRecord([
+                        "text": LuaValue(span.text),
+                        "choice": state.getSymbol(span.link),
+                        "token": token,
+                        "enabled": LuaValue(enabled)
+                    ]);
+                }
+                if (links.length)
+                    storyRecord["links"] = immutableSequence(links);
+            }
+            stories ~= immutableRecord(storyRecord);
         }
         LuaValue[string] fields = [
             "turn": data.turn,
             "deck": data.deck,
-            "storylets": immutableSequence(stories)
+            "storylets": immutableSequence(stories),
+            "events": data.events.isNil ? immutableSequence(null) : data.events
         ];
+        if (!data.ending.isNil)
+            fields["ending"] = data.ending;
         if (!data.stage.isNil)
             fields["stage"] = data.stage;
         // An ordinary immutable record that also remembers how to be rendered again.
@@ -861,7 +1055,8 @@ class Session : TransactionParticipant {
         if (presentation.typeOf() == LuaType.UserData) {
             auto scene = cast(ScenePresentationRecord) presentation.asUserData.payload;
             if (scene !is null)
-                return buildScenePresentation(scene.snapshot, target, scene.token, scene.turn, scene.message);
+                return buildScenePresentation(scene.snapshot, target, scene.token, scene.turn, scene.message,
+                        scene.delivered);
         }
         PresentationRecord record;
         if (presentation.typeOf() == LuaType.UserData)
@@ -872,6 +1067,106 @@ class Session : TransactionParticipant {
     }
 
     LuaValue present() {
+        auto result = presentCurrent();
+        lastPresentation = result;
+        return result;
+    }
+
+    /// How many times a choice of the storylet `id` has been committed (any bindings). Derived
+    /// from the replay log, which is saved, so it survives save and load unchanged.
+    size_t visitCount(string id) {
+        auto prefix = canonicalScalar(state.getSymbol(id)) ~ ":";
+        size_t count;
+        foreach (record; view().replayInputs) {
+            auto payload = record.match!((LuaUserData u) => cast(ImmutableRecord) u.payload, _ => null);
+            if (payload is null)
+                continue;
+            auto kind = "kind" in payload.fields;
+            auto value = "value" in payload.fields;
+            if (kind is null || value is null || !isSymbol(*kind) || nameOf(*kind) != "choose")
+                continue;
+            auto pair = (*value).match!((LuaUserData u) => cast(ImmutableSequence) u.payload, _ => null);
+            if (pair is null || !pair.values.length || !isString(pair.values[0]))
+                continue;
+            auto key = pair.values[0].asString;
+            if (key.length >= prefix.length && key[0 .. prefix.length] == prefix)
+                ++count;
+        }
+        return count;
+    }
+
+    /// The turn of the latest committed choice of the storylet `id`; false when never chosen.
+    bool lastChosen(string id, out ulong turn) {
+        auto prefix = canonicalScalar(state.getSymbol(id)) ~ ":";
+        bool found;
+        foreach (key, at; view().completed) {
+            if (key.length >= prefix.length && key[0 .. prefix.length] == prefix && (!found || at > turn)) {
+                turn = at;
+                found = true;
+            }
+        }
+        return found;
+    }
+
+    /// Maximum number of choices or beats `undo` can take back (0 turns undo off, the default).
+    void setUndoLimit(size_t limit) {
+        requireIdle();
+        undoLimit_ = limit;
+        if (undoRing.length > limit)
+            undoRing = undoRing[$ - limit .. $];
+    }
+
+    size_t undoDepth() {
+        return undoRing.length;
+    }
+
+    private bool captureUndo() {
+        if (undoLimit_ == 0)
+            return false;
+        auto entry = new UndoEntry;
+        entry.data = data.copy();
+        entry.data.scene = data.scene;
+        entry.facts = world.captureFacts();
+        entry.presentation = lastPresentation;
+        if (undoRing.length >= undoLimit_)
+            undoRing = undoRing[1 .. $];
+        undoRing ~= entry;
+        return true;
+    }
+
+    private void discardUndo() {
+        if (undoRing.length)
+            undoRing.length--;
+    }
+
+    /// Takes back the last committed choice or beat advance: the world's facts, the turn, decks,
+    /// the random state, periods, events, schedules and the scene position return to what they
+    /// were when that command started, and the presentation shown then is returned (its tokens
+    /// are usable again). Counters for tokens, decks and schedules keep running, and tokens issued
+    /// after that point are voided. Effects outside the session (host tables, `narrative.defer`
+    /// callbacks, files) are not taken back.
+    LuaValue undo() {
+        requireIdle();
+        if (!undoRing.length)
+            throw new LuaException("nothing to undo");
+        auto entry = undoRing[$ - 1];
+        undoRing.length--;
+        auto restored = entry.data;
+        foreach (identity; restored.nextToken .. data.nextToken)
+            restored.consumedTokens[identity] = true;
+        if (data.nextToken > restored.nextToken)
+            restored.nextToken = data.nextToken;
+        if (data.nextDeck > restored.nextDeck)
+            restored.nextDeck = data.nextDeck;
+        if (data.nextSchedule > restored.nextSchedule)
+            restored.nextSchedule = data.nextSchedule;
+        world.restoreFacts(entry.facts);
+        data = restored;
+        lastPresentation = entry.presentation;
+        return entry.presentation;
+    }
+
+    private LuaValue presentCurrent() {
         requireIdle();
         busy = true;
         scope (exit)
@@ -881,6 +1176,8 @@ class Session : TransactionParticipant {
             collectAtTurnBoundary();
         size_t eventCount;
         runPhase("pre", eventCount);
+        if (data.ending.length)
+            return terminalPresentation();
         if (data.scene !is null && data.scene.frames.length)
             return scenePresentation();
         auto snapshot = world.cloneSnapshot();
@@ -1016,7 +1313,8 @@ class Session : TransactionParticipant {
                     auto choiceRender = new ChoiceRender();
                     choiceRender.id = state.getSymbol(definition.id);
                     choiceRender.instanceKey = LuaValue(choice.key);
-                    choiceRender.bindings = immutableRecord(choice.bindings);
+                    choiceRender.bindings = presentedBindings(choice);
+                    choiceRender.exposed = exposedRecord(choice);
                     if (enabled)
                         choiceRender.token = LuaValue(new LuaUserData(token, tokenMetatable));
                     if (definition.becauseTemplate !is null) {
@@ -1036,7 +1334,8 @@ class Session : TransactionParticipant {
                 }
             storyRender.id = state.getSymbol(story.definition.id);
             storyRender.instanceKey = LuaValue(story.key);
-            storyRender.bindings = immutableRecord(story.bindings);
+            storyRender.bindings = presentedBindings(story);
+            storyRender.exposed = exposedRecord(story);
             storyRender.worldVersion = LuaValue(cast(long) story.worldVersion);
             storyRenders ~= storyRender;
         }
@@ -1046,6 +1345,8 @@ class Session : TransactionParticipant {
         renderData.stories = storyRenders;
         if (tentative.scene !is null)
             renderData.stage = tentative.scene.stage;
+        renderData.events = eventsAfter(tentative.eventCursor);
+        tentative.eventCursor = tentative.events.length;
         auto presentation = buildPresentation(renderData, language);
         LuaValue[] selections;
         foreach (story; selected)
@@ -1064,7 +1365,30 @@ class Session : TransactionParticipant {
     }
 
     void choose(ChoiceToken token) {
+        chooseCommitted(token);
+        runAutosave();
+    }
+
+    /// Called with the save text after every committed choice or beat advance, at an idle
+    /// boundary, so a host never has to remember to autosave. nil removes the hook. A hook that
+    /// raises propagates after the command has committed; it never undoes it.
+    void setAutosave(LuaValue hook) {
         requireIdle();
+        autosaveHook = hook;
+    }
+
+    private void runAutosave() {
+        if (!isFunction(autosaveHook) || busy || currentTransaction() !is null)
+            return;
+        import varis.narrative.persistence : saveSession;
+
+        VM.callValue(state, autosaveHook, [LuaValue(saveSession(this))]);
+    }
+
+    private void chooseCommitted(ChoiceToken token) {
+        requireIdle();
+        if (data.ending.length)
+            throw new LuaException("SESSION_ENDED: the session finished with ending '" ~ data.ending ~ "'");
         if (data.scene !is null && data.scene.frames.length)
             throw new LuaException("STALE_CHOICE: a scene is active");
         busy = true;
@@ -1074,28 +1398,50 @@ class Session : TransactionParticipant {
             throw new LuaException("STALE_CHOICE: invalid or consumed token");
         if (data.turn >= long.max)
             throw new LuaException("narrative turn counter exhausted");
-        runEffect({
-            auto tentative = view();
-            if (token.deckEntry != tentative.decks[$ - 1].identity || !policyAllows(token.storylet, tentative) ||
-                !stillAvailable(token.storylet, world) || !stillAvailable(token.choice, world, token.storylet.bindings))
-                throw new LuaException("STALE_CHOICE: eligibility or deck changed");
-            if (!requirementHolds(token.choice.definition, world, token.choice.bindings))
-                throw new LuaException("STALE_CHOICE: requirement no longer holds");
-            LuaValue[] args = [wrapWorld(world)];
-            foreach (name; token.choice.definition.incomingParameters ~ token.choice.definition.parameters)
-                args ~= token.choice.bindings[name];
-            VM.callValue(state, token.choice.definition.effect, args);
-            auto changes = edit();
-            changes.turn++;
-            changes.completed[token.storylet.key] = changes.turn;
-            changes.consumedTokens[token.identity] = true;
-            changes.replayInputs ~= immutableRecord([
-                "kind": state.getSymbol("choose"),
-                "value": immutableSequence([
-                    LuaValue(token.storylet.key), LuaValue(token.choice.key)
-                ])
-            ]);
-        });
+        bool captured = captureUndo();
+        try {
+            runEffect({
+                auto tentative = view();
+                if (token.deckEntry != tentative.decks[$ - 1].identity || !policyAllows(token.storylet, tentative) ||
+                    !stillAvailable(token.storylet, world) || !stillAvailable(token.choice, world, token
+                    .storylet.bindings))
+                    throw new LuaException("STALE_CHOICE: eligibility or deck changed");
+                if (!requirementHolds(token.choice.definition, world, token.choice.bindings))
+                    throw new LuaException("STALE_CHOICE: requirement no longer holds");
+                LuaValue[] args = [wrapWorld(world)];
+                foreach (name; token.choice.definition.incomingParameters ~ token.choice.definition.parameters
+                    ~ token.choice.definition.exposed)
+                    args ~= token.choice.bindings[name];
+                // `leads :deck` navigates after the authored effect, in the same transaction; an
+                // effect that also moves between decks would navigate twice, so it is refused.
+                string leads = token.choice.definition.symbolOption("leads", "");
+                auto before = view();
+                auto stackLength = before.decks.length;
+                auto nextDeckBefore = before.nextDeck;
+                VM.callValue(state, token.choice.definition.effect, args);
+                if (leads.length) {
+                    auto after = view();
+                    if (after.decks.length != stackLength || after.nextDeck != nextDeckBefore)
+                        throw new LuaException("choice '" ~ token.choice.definition.id
+                            ~ "' has 'leads' and also navigates decks in its effect");
+                    pushDeck(leads);
+                }
+                auto changes = edit();
+                changes.turn++;
+                changes.completed[token.storylet.key] = changes.turn;
+                changes.consumedTokens[token.identity] = true;
+                changes.replayInputs ~= immutableRecord([
+                    "kind": state.getSymbol("choose"),
+                    "value": immutableSequence([
+                        LuaValue(token.storylet.key), LuaValue(token.choice.key)
+                    ])
+                ]);
+            });
+        } catch (Throwable error) {
+            if (captured)
+                discardUndo();
+            throw error;
+        }
         size_t eventCount;
         runPhase("post", eventCount);
     }
@@ -1121,7 +1467,12 @@ class Session : TransactionParticipant {
     private void runPhase(string phase, ref size_t eventCount) {
         size_t count;
         while (true) {
+            // A finished session runs no further automatic actions or scheduled events.
+            if (data.ending.length)
+                return;
             processDue(eventCount);
+            if (data.ending.length)
+                return;
             ContentInstance[] eligible;
             auto snapshot = world.cloneSnapshot();
             foreach (definition; registry.actions())
@@ -1146,6 +1497,7 @@ class Session : TransactionParticipant {
                     throw new LuaException("automatic action changed during revalidation");
                 LuaValue[] args = [wrapWorld(world)];
                 args ~= instance.values;
+                args ~= instance.exposedValues;
                 VM.callValue(state, instance.definition.effect, args);
                 if (key.length)
                     edit().actionHistory[key] = true;
@@ -1156,6 +1508,8 @@ class Session : TransactionParticipant {
 
     private void processDue(ref size_t count) {
         while (true) {
+            if (data.ending.length)
+                return;
             ScheduledEvent[] due;
             foreach (event; data.scheduled)
                 if (event.due <= data.turn)
@@ -1177,13 +1531,38 @@ class Session : TransactionParticipant {
                 emit(event.kind, arguments.values);
                 auto handler = registry.handler(event.kind);
                 if (isFunction(handler))
-                    VM.callValue(state, handler, [
+                    callInSessionWorld(state, world, handler, [
                     wrapWorld(world), state.getSymbol(event.kind), event.arguments
                 ]);
             });
             count++;
         }
     }
+}
+
+/// `session:save` with its optional `{label = string, meta = portable value}` table.
+string saveWithOptions(Session session, LuaValue options) {
+    import varis.narrative.persistence : saveSession;
+
+    string label;
+    LuaValue meta;
+    if (!isNil(options)) {
+        auto table = options.match!((LuaTable t) => t, _ => null);
+        if (table is null)
+            throw new LuaException("save options must be a table with optional label and meta");
+        LuaValue key, nextKey, value;
+        while (table.next(key, nextKey, value)) {
+            key = nextKey;
+            auto name = key.match!((string s) => s, _ => "");
+            if (name == "label" && isString(value))
+                label = value.match!((string s) => s, _ => "");
+            else if (name == "meta")
+                meta = value;
+            else
+                throw new LuaException("unknown save option; expected label (string) or meta");
+        }
+    }
+    return saveSession(session, label, meta);
 }
 
 ChoiceToken unwrapChoiceToken(LuaValue value) {
@@ -1237,9 +1616,9 @@ LuaValue wrapSession(Session session) {
     method("save", (void* p, LuaValue[] a) {
         import varis.narrative.persistence : saveSession;
 
-        if (a.length != 1)
-            throw new LuaException("save requires a session");
-        return [LuaValue(saveSession(unwrapSession(a[0])))];
+        if (a.length < 1 || a.length > 2)
+            throw new LuaException("save requires a session and an optional {label=, meta=} table");
+        return [LuaValue(saveWithOptions(unwrapSession(a[0]), a.length == 2 ? a[1] : luaNil()))];
     });
     method("world", (void* p, LuaValue[] a) {
         if (a.length != 1)
@@ -1271,6 +1650,16 @@ LuaValue wrapSession(Session session) {
         unwrapSession(a[0]).setLimits(cast(size_t) actions, cast(size_t) events);
         return cast(LuaValue[])[];
     });
+    method("ended", (void* p, LuaValue[] a) {
+        if (a.length != 1)
+            throw new LuaException("ended takes no arguments");
+        return [unwrapSession(a[0]).endedWith()];
+    });
+    method("events_since", (void* p, LuaValue[] a) {
+        if (a.length != 2 || !isInteger(a[1]) || a[1].match!((long n) => n, _ => -1L) < 0)
+            throw new LuaException("events_since requires a nonnegative event sequence number");
+        return [unwrapSession(a[0]).eventsAfter(a[1].match!((long n) => cast(ulong) n, _ => 0UL))];
+    });
     method("set_period", (void* p, LuaValue[] a) {
         if (a.length != 3 || !isSymbol(a[1]))
             throw new LuaException("period requires a symbol and a serializable value");
@@ -1288,6 +1677,41 @@ LuaValue wrapSession(Session session) {
             throw new LuaException("advance requires the scene token and optional input");
         unwrapSession(a[0]).advanceScene(a[1], a.length == 3 ? a[2] : LuaValue.init);
         return cast(LuaValue[])[];
+    });
+    method("visited", (void* p, LuaValue[] a) {
+        if (a.length != 2 || !isSymbol(a[1]))
+            throw new LuaException("visited requires a storylet symbol");
+        return [LuaValue(cast(long) unwrapSession(a[0]).visitCount(nameOf(a[1])))];
+    });
+    method("last_chosen", (void* p, LuaValue[] a) {
+        if (a.length != 2 || !isSymbol(a[1]))
+            throw new LuaException("last_chosen requires a storylet symbol");
+        ulong turn;
+        if (!unwrapSession(a[0]).lastChosen(nameOf(a[1]), turn))
+            return [luaNil()];
+        return [LuaValue(cast(long) turn)];
+    });
+    method("set_autosave", (void* p, LuaValue[] a) {
+        if (a.length != 2 || !(isFunction(a[1]) || isNil(a[1])))
+            throw new LuaException("set_autosave requires a function (or nil) taking the save text");
+        unwrapSession(a[0]).setAutosave(a[1]);
+        return cast(LuaValue[])[];
+    });
+    method("set_undo_limit", (void* p, LuaValue[] a) {
+        if (a.length != 2 || !isInteger(a[1]) || a[1].match!((long n) => n < 0, _ => true))
+            throw new LuaException("set_undo_limit requires a nonnegative integer");
+        unwrapSession(a[0]).setUndoLimit(cast(size_t) a[1].match!((long n) => n, _ => 0L));
+        return cast(LuaValue[])[];
+    });
+    method("undo_depth", (void* p, LuaValue[] a) {
+        if (a.length != 1)
+            throw new LuaException("undo_depth requires a session");
+        return [LuaValue(cast(long) unwrapSession(a[0]).undoDepth())];
+    });
+    method("undo", (void* p, LuaValue[] a) {
+        if (a.length != 1)
+            throw new LuaException("undo requires a session");
+        return [unwrapSession(a[0]).undo()];
     });
     method("present", (void* p, LuaValue[] a) {
         if (a.length != 1)

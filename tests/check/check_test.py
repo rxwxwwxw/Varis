@@ -86,6 +86,22 @@ def main():
     again = [p for p in json.loads(out)["problems"] if p["code"] == "duplicate-id"][0]
     assert again["related"][0]["line"] == 6 and again["subject"] == "choice lamp.light", again
 
+    # The battle bridge's data (TOWER_DEFENSE_PLAN.md stage TD3): ability and trigger names, the
+    # fields of a kind, the scene a moment plays and a trigger's arguments, each at its position.
+    code, out = run(binary, HERE / "fixtures" / "battle", "--json", "--no-load")
+    found = [(p["line"], p["code"], p.get("suggestion", "")) for p in json.loads(out)["problems"]
+             if p["file"] == "setup.lua"]
+    assert code == 1 and found == [
+        (5, "unknown-ability", "single"),
+        (6, "missing-battle-field", ""),
+        (10, "unknown-trigger", "wave_start"),
+        (11, "unknown-scene", ""),
+        (12, "bad-battle-argument", ""),
+        (13, "bad-battle-argument", ""),
+    ], found
+    ranged = [p for p in json.loads(out)["problems"] if p["file"] == "setup.lua"]
+    assert all(p["line"] > 0 and p["column"] > 0 and p["endColumn"] > p["column"] for p in ranged), ranged
+
     # The load pass: what the engine's own validation says, at the definition's line (stage A4).
     code, out = run(binary, HERE / "fixtures" / "load_unbound", "--json")
     problem = json.loads(out)["problems"][0]

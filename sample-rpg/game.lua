@@ -16,6 +16,9 @@ function Achievements.unlock(name)
         Achievements.order[#Achievements.order + 1] = name
     end
 end
+-- Content files run in a restricted environment (milestone 26); this is the one engine global
+-- they may call, exposed by name.
+narrative.helper("Achievements", Achievements)
 
 -- Stat changes the host shows as toasts. The observer is world-owned and not saved, so it is
 -- re-established for every session.

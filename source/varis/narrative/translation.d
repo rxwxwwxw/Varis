@@ -34,6 +34,7 @@ struct RenderTrace {
     size_t[] variants; // the option drawn for each variant group, in the order encountered
     string[] variantNames; // the name of each drawn option ("" when it has none)
     bool recorded; // false when the source had no template to trace
+    LuaValue[string] vars; // `{$name}` story variables: "$name" -> the value shown
 }
 
 private struct TNode {
@@ -299,8 +300,9 @@ private struct Parser {
             TNode node;
             if (token.length > 4 && token[0 .. 4] == "#if ") {
                 auto condition = normalizeCondition(token[4 .. $]);
-                if (condition.length < 6 || condition[0 .. 6] != "query ")
-                    return fail("a condition must be a query existence test: {#if query ...}");
+                if ((condition.length < 6 || condition[0 .. 6] != "query ")
+                        && (condition.length < 5 || condition[0 .. 4] != "lua "))
+                    return fail("a condition must be {#if query ...} or {#if lua ...}");
                 node.kind = TNode.Kind.conditional;
                 node.text = condition;
                 bool known;
@@ -467,8 +469,13 @@ private struct Parser {
                 }
                 result.variantOptionCounts ~= node.options.length;
                 result.variantNames ~= node.names.dup;
+            } else if (token.length > 1 && token[0] == '>' && isIdentifier(token[1 .. $])) {
+                // A fragment reference. The runtime expands it (with the registry's fragments)
+                // before parsing; tools without a registry keep it as opaque text.
+                node.kind = TNode.Kind.literal;
+                node.text = "{" ~ token ~ "}";
             } else {
-                if (!isIdentifier(token))
+                if (!isIdentifier(token) && !(token.length > 1 && token[0] == '$' && isIdentifier(token[1 .. $])))
                     return fail("unknown tag {" ~ token ~ "}");
                 node.kind = TNode.Kind.placeholder;
                 node.text = token;
@@ -548,7 +555,10 @@ bool renderTranslation(TranslationTemplate template_, LuaValue[string] bindings,
                 text ~= node.text;
                 break;
             case TNode.Kind.placeholder:
-                text ~= display(bindings.get(node.text, luaNil()));
+                if (node.text.length && node.text[0] == '$')
+                    text ~= display(trace.vars.get(node.text, luaNil()));
+                else
+                    text ~= display(bindings.get(node.text, luaNil()));
                 break;
             case TNode.Kind.conditional:
                 if (auto known = node.text in trace.conditions)

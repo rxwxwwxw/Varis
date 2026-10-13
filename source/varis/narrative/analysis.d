@@ -229,6 +229,8 @@ private class AnalysisClone {
         copy.parameters = original.parameters.dup;
         copy.incomingParameters = original.incomingParameters.dup;
         copy.groundedParameters = original.groundedParameters.dup;
+        copy.exposed = original.exposed.dup;
+        copy.incomingExposed = original.incomingExposed.dup;
         copy.titleTemplate = original.titleTemplate;
         copy.textTemplate = original.textTemplate;
         copy.fingerprint = original.fingerprint;
@@ -257,9 +259,10 @@ private class AnalysisClone {
             relation.clearFacts();
             relation.keyIndex = null;
             relation.version_ = sourceRelation.version_;
-            if (name == "quality")
+            if (name == "quality") {
                 relation.validateTuple = &state.narrativeRegistry.validateQualityTuple;
-            else if (sourceRelation.validateTuple !is null)
+                relation.clampTuple = &state.narrativeRegistry.clampQualityTuple;
+            } else if (sourceRelation.validateTuple !is null)
                 throw new LuaException("analysis cannot reconstruct host tuple validator for '" ~ name ~ "'");
             foreach (tuple; sourceRelation.baseFacts.keys) {
                 LuaValue[] fields;

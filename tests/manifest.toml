@@ -7,8 +7,8 @@ id = "unit"
 kind = "d-unit"
 tags = ["unit"]
 timeout = 600
-expect_count = 8
-expect_results = 56
+expect_count = 9
+expect_results = 91
 cases = [
   { id = "foundation", unit = "test_foundation", tier = "smoke" },
   { id = "parser", unit = "test_parser", tier = "smoke" },
@@ -18,6 +18,7 @@ cases = [
   { id = "stateful", unit = "test_stateful", tier = "fast" },
   { id = "narrative", unit = "test_narrative", tier = "fast" },
   { id = "presentation", unit = "test_presentation", tier = "fast" },
+  { id = "battle", unit = "test_battle", tier = "fast" },
 ]
 
 [[suite]]
@@ -68,7 +69,7 @@ tier = "fast"
 tags = ["extensions"]
 glob = "tests/extensions/cases/*.lua"
 helpers = "tests/extensions/helpers.lua"
-expect_count = 64
+expect_count = 83
 timeout = 300
 
 [suite.override.negative_unsafe_head]
@@ -131,6 +132,29 @@ cases = [
   { id = "differential", command = ["python3", "tests/official/differential.py"] },
 ]
 
+# Lanternfall (TOWER_DEFENSE_PLAN.md, SAMPLE_TD_PLAN.md): the hybrid tower-defense / visual-novel
+# sample. It is the integration test of the battle engine: the bridge, the ten primitives, every
+# trigger and modifier entry, the silent judge, saves and retries, and the French pack.
+[[suite]]
+id = "sample-td"
+kind = "script"
+tier = "fast"
+tags = ["narrative", "sample-td", "battle"]
+timeout = 120
+cases = [
+  { id = "check", command = ["{candidate}", "check"], cwd = "sample-td" },
+  { id = "bridge", command = ["{candidate}", "sample-td/tests/bridge.lua"] },
+  { id = "determinism", command = ["{candidate}", "sample-td/tests/determinism.lua"] },
+  { id = "branches", command = ["{candidate}", "sample-td/tests/branches.lua"] },
+  { id = "novice", command = ["{candidate}", "sample-td/tests/novice.lua"] },
+  { id = "both-directions", command = ["{candidate}", "sample-td/tests/both_directions.lua"] },
+  { id = "judge", command = ["{candidate}", "sample-td/tests/judge.lua"] },
+  { id = "hub", command = ["{candidate}", "sample-td/tests/hub.lua"] },
+  { id = "l10n", command = ["{candidate}", "sample-td/tests/l10n.lua"] },
+  { id = "text-host-bot", command = ["{candidate}", "main.lua", "3", "--bot"], cwd = "sample-td" },
+  { id = "catalog-current", command = ["{candidate}", "l10n", "extract", "--check"], cwd = "sample-td" },
+]
+
 # The complete sample game (ROADMAP decision D12): its own scripted check, and a golden transcript
 # with the final save text compared byte for byte.
 [[suite]]
@@ -158,6 +182,18 @@ cases = [
   { id = "linear-vn", command = ["{candidate}", "sample-vn/main.lua"] },
   { id = "scene-save", command = ["python3", "tests/sample_game/scene_save_test.py", "{candidate}"] },
   { id = "wording", command = ["python3", "tests/sample_game/wording_test.py", "{candidate}"] },
+]
+
+# The writer's guide (docs/writers): every program in the tutorial and cookbook is written to a
+# scratch project and run through `varis check` and `varis test` (milestone 41).
+[[suite]]
+id = "writers-docs"
+kind = "script"
+tier = "fast"
+tags = ["docs", "writers"]
+timeout = 300
+cases = [
+  { id = "programs", command = ["python3", "tests/writers/test_docs.py", "{candidate}"] },
 ]
 
 # Every query of the relational programs and the sample game answered by both evaluators
@@ -217,6 +253,17 @@ tags = ["tools", "lsp"]
 timeout = 180
 cases = [
   { id = "protocol", command = ["python3", "tests/lsp/lsp_test.py", "{candidate}"] },
+]
+
+# The `.varis` source extension and runtime enforcement of the content tier (milestone 26).
+[[suite]]
+id = "tiers"
+kind = "script"
+tier = "fast"
+tags = ["tools", "tiers"]
+timeout = 120
+cases = [
+  { id = "enforcement", command = ["python3", "tests/tiers/tier_test.py", "{candidate}"] },
 ]
 
 # Playtest, author tests and the CI recipe (authoring plan stage A6).

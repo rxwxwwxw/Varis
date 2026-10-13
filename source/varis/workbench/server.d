@@ -737,9 +737,15 @@ public void listFiles(string directory, string prefix, int depth, ref string[] f
         if (entry.d_type == DT_DIR) {
             if (depth < 3)
                 listFiles(directory ~ "/" ~ name, relative, depth + 1, found);
-        } else if (name.length > 4 && (name[$ - 4 .. $] == ".lua" || name[$ - 3 .. $] == ".md"))
+        } else if (isSourceName(name) || name.length > 3 && name[$ - 3 .. $] == ".md")
             found ~= relative;
     }
+}
+
+/// A file the language tools read: `.varis` (the source extension of Varis; owner decision
+/// October 13, 2026) or `.lua` (existing projects keep loading).
+public bool isSourceName(string name) {
+    return (name.length > 6 && name[$ - 6 .. $] == ".varis") || (name.length > 4 && name[$ - 4 .. $] == ".lua");
 }
 
 public void sortStrings(string[] items) {
@@ -1376,7 +1382,7 @@ private string definitionsJson(string name) {
     string json = `{"definitions":[`;
     bool first = true;
     foreach (file; found) {
-        if (file.length < 4 || file[$ - 4 .. $] != ".lua")
+        if (!isSourceName(file))
             continue;
         string content;
         if (!readFile(file, content))
@@ -1440,14 +1446,14 @@ private string editorJson(LuaState state, string operation, string body) {
         foreach (i, file; drafts.keys) {
             if (!safePath(file) || drafts.items[i].kind != JsonValue.Kind.string_)
                 return `{"ok":false,"error":"invalid draft"}`;
-            if (file.length >= 4 && file[$ - 4 .. $] == ".lua")
+            if (isSourceName(file))
                 workspace.setContent(file, drafts.items[i].text);
             else
                 workspace.contents[file] = drafts.items[i].text;
         }
     auto text = input.get("text");
     if (text !is null && text.kind == JsonValue.Kind.string_) {
-        if (path.length >= 4 && path[$ - 4 .. $] == ".lua")
+        if (isSourceName(path))
             workspace.setContent(path, text.text);
         else
             workspace.contents[path] = text.text;
@@ -1640,6 +1646,7 @@ private Disposition finishStory(LuaState state, int socket, string name, LuaValu
 private string reloadProject(ref LuaState state, bool replay, long turn, long seed, long commandLimit) {
     import varis.lib : openLibs;
     import varis.services.manifest : loadManifest;
+    import varis.services.tier : installTierEnforcement;
 
     auto manifest = loadManifest(".");
     if (!manifest.present || manifest.entry.length == 0 || manifest.session.length == 0)
@@ -1652,12 +1659,13 @@ private string reloadProject(ref LuaState state, bool replay, long turn, long se
         seed = previous.rawget(LuaValue("seed")).asInteger;
     auto fresh = new LuaState();
     openLibs(fresh);
+    installTierEnforcement(fresh, manifest, ".");
     auto setup = evaluate(fresh, prelude, "=workbench");
     if (!setup.ok)
         return `{"error":` ~ jsonQuote(setup.error) ~ `}`;
     installNatives(fresh);
     installStoryNatives(fresh);
-    evaluate(fresh, `package.path = "./?.lua;./?/init.lua;" .. package.path`, "=workbench");
+    evaluate(fresh, `package.path = "./?.varis;./?/init.varis;./?.lua;./?/init.lua;" .. package.path`, "=workbench");
     bool ok;
     string result;
     auto output = captureOutput({
@@ -2173,7 +2181,7 @@ int serveWorkbench(LuaState state, string directory, ushort port) {
     installNatives(state);
     installStoryNatives(state);
     // Project modules resolve from the project directory, as when a game is run from it.
-    evaluate(state, `package.path = "./?.lua;" .. package.path`, "=workbench");
+    evaluate(state, `package.path = "./?.varis;./?.lua;" .. package.path`, "=workbench");
 
     int listener = socket(AF_INET, SOCK_STREAM, 0);
     if (listener < 0) {

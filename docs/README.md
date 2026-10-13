@@ -26,9 +26,13 @@ relationship.
 5. [Keyed state and transactions](relations.md#5--state-and-transactions)
 6. [Narrative definitions and execution](narrative.md#6--narrative-programming)
 7. [The standard libraries](libraries.md#7--standard-libraries)
+   The battle library is described in [battle.md](battle.md).
 8. [The interpreter, project tools, workbench and host interfaces](compatibility.md#8--the-interpreter-and-host-interfaces)
 9. [Compatibility and implementation limits](compatibility.md#9--compatibility-and-implementation-limits)
 10. [Complete syntax](syntax.md#10--complete-syntax)
+
+Writers who want a gentler start have a separate [writer's guide](writers/README.md):
+a tutorial and a cookbook whose programs are run by the test suite.
 
 [Runnable examples](examples/README.md) accompany the reference. The chapters
 form one manual; they are not independent extension specifications. Section

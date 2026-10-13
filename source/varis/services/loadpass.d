@@ -22,6 +22,7 @@ import varis.vm : VM;
 import varis.services.diagnostic;
 import varis.services.index;
 import varis.services.manifest;
+import varis.services.tier : installTierEnforcement;
 import varis.workbench.server : errorText;
 
 /// "file:12: message" -> file, 12, message. The line is 0 when the text has no location.
@@ -66,7 +67,9 @@ Diagnostic[] loadPass(LuaState state, ref const Manifest manifest, ref const Pro
     {
         auto quiet = QuietOutput(true);
         try {
-            auto setup = state.loadString(`package.path = "./?.lua;./?/init.lua;" .. package.path`, "=check");
+            installTierEnforcement(state, manifest, ".");
+            auto setup = state.loadString(
+                    `package.path = "./?.varis;./?/init.varis;./?.lua;./?/init.lua;" .. package.path`, "=check");
             VM.callValue(state, LuaValue(setup), []);
             VM.callValue(state, state.getGlobal("require"), [LuaValue(manifest.entry)]);
             ok = true;

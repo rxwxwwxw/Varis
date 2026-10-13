@@ -51,7 +51,9 @@ struct Declaration {
     string[] columns;
     string[] keys;
     string[] parameters; // storylets, choices and actions
+    string[] exposed; // `expose ?name`: visible to templates and effects
     string deck; // a storylet's deck
+    string leads; // the deck a choice moves to
     bool computed; // written as a call with arguments that are not literals
     string detail; // a short description for hover, built from what was written
 
@@ -427,6 +429,18 @@ private final class Builder {
             expr(n.options);
             return;
         }
+        if (auto n = as!SymbolsDeclStmt(s)) {
+            foreach (i, name; n.names) {
+                Declaration d;
+                d.kind = "symbols";
+                d.name = name;
+                d.range = rangeOf(n.nameLocs[i], n.nameEnds[i]);
+                d.extent = d.range;
+                d.detail = "symbol :" ~ name;
+                declare(d);
+            }
+            return;
+        }
         if (auto n = as!RelationDeclStmt(s)) {
             Declaration d;
             d.kind = "relation";
@@ -630,10 +644,16 @@ private final class Builder {
         d.range = rangeOf(n.nameLoc, n.nameEnd);
         d.extent = rangeOf(n.loc, n.end);
         d.parameters = n.parameters;
-        foreach (i, field; n.fieldNames)
+        d.exposed = n.exposed;
+        foreach (i, field; n.fieldNames) {
+            auto symbol = as!SymbolLiteralExpr(n.fieldValues[i]);
+            if (symbol is null)
+                continue;
             if (field == "deck")
-                if (auto symbol = as!SymbolLiteralExpr(n.fieldValues[i]))
-                    d.deck = symbol.name;
+                d.deck = symbol.name;
+            else if (field == "leads")
+                d.leads = symbol.name;
+        }
         d.detail = n.kind ~ " " ~ n.name ~ "(";
         foreach (i, p; n.parameters)
             d.detail ~= (i ? ", ?" : "?") ~ p;
@@ -665,7 +685,7 @@ private final class Builder {
             auto value = n.fieldValues[i];
             if (field == "title" || field == "text" || field == "because")
                 message(d, field, value);
-            else if (field == "deck") {
+            else if (field == "deck" || field == "leads") {
                 if (auto symbol = as!SymbolLiteralExpr(value)) {
                     refer("deck", symbol.name, "read", -1, rangeOf(symbol.loc, symbol.end));
                 } else
@@ -750,6 +770,7 @@ private final class Builder {
             return expr(n.right);
         }
         if (auto n = as!TableConstructorExpr(e)) {
+            battleShape(n);
             foreach (field; n.fields) {
                 if (auto key = as!LiteralStringExpr(field.key))
                     mention(key.value);
@@ -768,6 +789,107 @@ private final class Builder {
             return goals(n.goals);
     }
 
+    /// The battle bridge's data (TOWER_DEFENSE_PLAN.md §5): a table with `ability = "..."` is a
+    /// tower kind, one with `trigger = "..."` is a moment. Their literals are checked statically:
+    /// the ability and trigger names, the scene a moment plays, the fields a kind needs, and the
+    /// arguments a trigger takes. Computed values are left to the bridge's validation at start.
+    void battleShape(TableConstructorExpr table) {
+        Expr ability, trigger, scene, arg, arg2, arg3;
+        bool[string] present;
+        foreach (f; table.fields) {
+            auto key = as!LiteralStringExpr(f.key);
+            if (key is null)
+                continue;
+            present[key.value] = true;
+            switch (key.value) {
+            case "ability":
+                ability = f.value;
+                break;
+            case "trigger":
+                trigger = f.value;
+                break;
+            case "scene":
+                scene = f.value;
+                break;
+            case "arg":
+                arg = f.value;
+                break;
+            case "arg2":
+                arg2 = f.value;
+                break;
+            case "arg3":
+                arg3 = f.value;
+                break;
+            default:
+                break;
+            }
+        }
+        if (auto name = as!LiteralStringExpr(ability)) {
+            refer("battle-ability", name.value, "read", -1, rangeOf(name.loc, name.end));
+            foreach (required; ["cost", "range", "damage", "cooldown", "hp"])
+                if (required !in present)
+                    refer("battle-field", required, "read", -1, rangeOf(name.loc, name.end),
+                            "a tower kind needs `" ~ required ~ "`");
+        }
+        auto name = as!LiteralStringExpr(trigger);
+        if (name is null)
+            return;
+        refer("battle-trigger", name.value, "read", -1, rangeOf(name.loc, name.end));
+        if (auto target = as!LiteralStringExpr(scene))
+            refer("scene", target.value, "read", -1, rangeOf(target.loc, target.end));
+        else if (scene is null && name.value.length)
+            refer("battle-field", "scene", "read", -1, rangeOf(name.loc, name.end), "a moment needs a `scene`");
+        long number(Expr e, ref bool known) {
+            known = false;
+            if (auto i = as!LiteralIntExpr(e)) {
+                known = true;
+                return i.value;
+            }
+            return 0;
+        }
+
+        void argument(Expr e, string field, long low, long high, string message) {
+            bool known;
+            immutable value = number(e, known);
+            if (known && (value < low || value > high)) {
+                // an integer literal records no end: its width is the digits as written
+                int width = 1;
+                for (long v = value < 0 ? -value : value; v >= 10; v /= 10)
+                    ++width;
+                if (value < 0)
+                    ++width;
+                auto close = e.loc;
+                close.column += width;
+                refer("battle-argument", field, "read", -1, rangeOf(e.loc, close), name.value ~ " " ~ message);
+            }
+        }
+
+        switch (name.value) {
+        case "hero_hp_below":
+            if (arg2 !is null)
+                argument(arg2, "arg2", 1, 100, "takes a percentage from 1 to 100");
+            else
+                refer("battle-argument", "arg2", "read", -1, rangeOf(name.loc, name.end),
+                        name.value ~ " needs `arg2`, a percentage from 1 to 100");
+            break;
+        case "leak_count":
+        case "wave_start":
+            if (arg !is null)
+                argument(arg, "arg", 1, int.max, "takes a count of at least 1");
+            break;
+        case "step":
+            if (arg !is null)
+                argument(arg, "arg", 0, int.max, "takes a step number, 0 or more");
+            break;
+        case "heroes_near":
+            if (arg3 !is null)
+                argument(arg3, "arg3", 1, int.max, "takes a distance of at least 1");
+            break;
+        default:
+            break;
+        }
+    }
+
     /// `quality.define(:name, {label = "..."})` and `narrative.name(:symbol, "text")`.
     void call(CallExpr n) {
         auto callee = as!FieldExpr(n.callee);
@@ -776,6 +898,17 @@ private final class Builder {
             return qualityDefine(n);
         if (library !is null && library.name == "narrative" && callee.field == "name" && n.args.length >= 2)
             return narrativeName(n);
+        // `var gold = 0` and `narrative.fragment(:name, text)` declare a name: engine vocabulary,
+        // so the symbol is not reported as written once.
+        if (library !is null && library.name == "narrative" && (callee.field == "var" || callee.field == "fragment")
+                && n.args.length == 2) {
+            if (auto symbol = as!SymbolLiteralExpr(n.args[0]))
+                refer("symbol", symbol.name, "engine", -1, rangeOf(symbol.loc, symbol.end));
+            else
+                expr(n.args[0]);
+            expr(n.args[1]);
+            return;
+        }
         if (library !is null && library.name == "narrative" &&
                 (callee.field == "scene" || callee.field == "character") && n.args.length == 2)
             return sceneContent(n, callee.field);

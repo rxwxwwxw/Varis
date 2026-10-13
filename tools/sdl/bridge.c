@@ -97,6 +97,35 @@ int v_capture(const char *path) {
     if (!s) return 0;
     int ok = SDL_SaveBMP(s, path); SDL_DestroySurface(s); return ok;
 }
+/* A batch of coloured triangles: `xy` holds 2 floats per vertex, `colors` one 0xRRGGBBAA per vertex,
+ * `indices` is a list of vertex numbers, three per triangle (`count` of them). The battle view
+ * draws its terrain and units this way. */
+void v_triangles(const float *xy, const unsigned *colors, int vertices, const int *indices, int count) {
+    static SDL_Vertex *buffer;
+    static int capacity;
+    if (vertices <= 0 || count <= 0) return;
+    if (vertices > capacity) {
+        SDL_Vertex *grown = realloc(buffer, sizeof(SDL_Vertex) * (size_t)vertices);
+        if (!grown) return;
+        buffer = grown;
+        capacity = vertices;
+    }
+    for (int i = 0; i < vertices; ++i) {
+        unsigned c = colors[i];
+        buffer[i].position.x = xy[i * 2];
+        buffer[i].position.y = xy[i * 2 + 1];
+        buffer[i].color.r = (c >> 24) / 255.0f;
+        buffer[i].color.g = ((c >> 16) & 255) / 255.0f;
+        buffer[i].color.b = ((c >> 8) & 255) / 255.0f;
+        buffer[i].color.a = (c & 255) / 255.0f;
+        buffer[i].tex_coord.x = buffer[i].tex_coord.y = 0;
+    }
+    SDL_RenderGeometry(renderer, NULL, buffer, vertices, indices, count);
+}
+void v_line(float x1, float y1, float x2, float y2, unsigned color) {
+    SDL_SetRenderDrawColor(renderer, color >> 24, color >> 16, color >> 8, color);
+    SDL_RenderLine(renderer, x1, y1, x2, y2);
+}
 void v_clip(int x, int y, int w, int h) {
     SDL_Rect r = {x, y, w, h}; SDL_SetRenderClipRect(renderer, w > 0 && h > 0 ? &r : NULL);
 }
@@ -105,7 +134,8 @@ void v_delay(void) { SDL_Delay(16); }
 unsigned long long v_ticks(void) { return SDL_GetTicks(); }
 void v_volume(float gain) { if (mixer) MIX_SetMixerGain(mixer, gain); }
 void v_fullscreen(int on) { if (window) SDL_SetWindowFullscreen(window, on != 0); }
-/* 1 quit, 2 advance, 3 backspace, 4 text, 5 click, 6 key, 7 motion, 8 wheel (key = +-1). */
+/* 1 quit, 2 advance, 3 backspace, 4 text, 5 click, 6 key, 7 motion, 8 wheel (key = +-1),
+ * 9 right click, 10 left button released. */
 int v_event(int *key, float *x, float *y, const char **text) {
     SDL_Event e;
     while (SDL_PollEvent(&e)) {
@@ -121,10 +151,21 @@ int v_event(int *key, float *x, float *y, const char **text) {
         if (e.type == SDL_EVENT_MOUSE_MOTION) {
             SDL_RenderCoordinatesFromWindow(renderer, e.motion.x, e.motion.y, x, y); return 7;
         }
-        if (e.type == SDL_EVENT_MOUSE_WHEEL) { *key = e.wheel.y > 0 ? 1 : -1; return 8; }
+        if (e.type == SDL_EVENT_MOUSE_WHEEL) {
+            /* the wheel carries the pointer position: zoom and scroll act where the pointer is */
+            SDL_RenderCoordinatesFromWindow(renderer, e.wheel.mouse_x, e.wheel.mouse_y, x, y);
+            *key = e.wheel.y > 0 ? 1 : -1;
+            return 8;
+        }
         if (e.type == SDL_EVENT_TEXT_INPUT) { *text = e.text.text; return 4; }
         if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT) {
             SDL_RenderCoordinatesFromWindow(renderer, e.button.x, e.button.y, x, y); return 5;
+        }
+        if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_RIGHT) {
+            SDL_RenderCoordinatesFromWindow(renderer, e.button.x, e.button.y, x, y); return 9;
+        }
+        if (e.type == SDL_EVENT_MOUSE_BUTTON_UP && e.button.button == SDL_BUTTON_LEFT) {
+            SDL_RenderCoordinatesFromWindow(renderer, e.button.x, e.button.y, x, y); return 10;
         }
     }
     return 0;

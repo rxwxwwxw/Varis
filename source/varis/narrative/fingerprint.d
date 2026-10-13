@@ -104,6 +104,8 @@ private string definitionFingerprint(ContentDefinition definition, bool legacy) 
     string result = definition.kind ~ ":" ~ definition.id;
     foreach (parameter; definition.incomingParameters ~ definition.parameters)
         result ~= ":parameter:" ~ parameter;
+    foreach (name; definition.exposed)
+        result ~= ":expose:" ~ name;
     auto names = definition.options.keys;
     names.sort;
     foreach (name; names) {

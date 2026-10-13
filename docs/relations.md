@@ -186,6 +186,42 @@ aggregate is prohibited. A result can ground a head or subsequent constraint.
 Aggregates are implemented in this edition; they were an optional companion
 feature in the historical milestone scheme.
 
+### 4.6a — Computed bindings and alternatives
+
+A **computed binding** `?name := expression` binds a new variable from the values of
+variables that are already grounded:
+
+```lua
+rule price(?item, ?cost) :- item(?item, ?base), ?cost := ?base * 100
+local r = (query { item(:sword, ?n), ?double := ?n * 2, ?double > 10 })()
+```
+
+Within one conjunction the positive relation atoms are joined first, then
+aggregates and computed bindings in the order written (a binding may use the result
+of an earlier one, never a later one), then comparisons, guards and negated atoms.
+The expression follows the guard rules above: it is evaluated by ordinary Lua, must
+be pure and stable, and may not yield or change a world. Its value is any value a
+tuple can hold, including `nil`; `NaN` is rejected. The variable must be new: using
+one that is already bound is an error, as for an aggregate result.
+
+A rule that contains a computed binding must not feed itself. Its body relations
+are strictly lower than its head, so a recursive rule cannot generate an unbounded
+set of new values; such a rule is rejected when it is registered. Ordinary relational
+recursion without computed bindings is unchanged.
+
+**Alternatives.** A parenthesized group of conditions with an `or` at its own level
+is a filter that passes when any alternative is true:
+
+```lua
+rule exposed(?room) :- room(?room), level(?room, ?n), (?n < 2 or ?n > 8)
+```
+
+The alternatives are Lua conditions over grounded variables, tried left to right
+with short-circuit evaluation: a group is exactly `where( a or b )`, and has the
+semantics of a guard (equality is the Lua `==`, not the raw relational equality of a
+comparison goal). Alternatives that introduce bindings are not supported; use
+separate rules for those.
+
 ### 4.7 — Local relations
 
 ```lua
@@ -235,6 +271,21 @@ Results are unordered. Collect and sort when an application needs an order.
 An iterator retains all necessary snapshots, local relations, captures, and rules.
 Later writes, rule registrations, or coroutine suspension do not change its
 result set. Its snapshot does not recursively freeze mutable Lua objects.
+
+### 4.8a — `exists` and single-result queries
+
+`exists { goals }` is an expression that is true when the query has at least one
+match and false otherwise. It exports no bindings and is read-only like any
+query; variables inside it are local to it, and ordinary Lua values in scope are
+captured as for any query.
+
+```lua
+if exists { at(:player, ?room), locked(?room) } then ... end
+```
+
+`logic.one(iterator)` takes a query iterator and returns the sole record, `nil`
+when there is no match, and an error when there is more than one. Results of a
+query are unordered, so there is deliberately no "first" function.
 
 ### 4.9 — Evaluation and versions
 

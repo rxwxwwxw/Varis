@@ -278,6 +278,12 @@ supported.
 
 Returns a symbol's byte name; other types error.
 
+#### `logic.one(iterator)`
+
+Takes a query iterator and returns its sole binding record, `nil` when the query has
+no match, and raises an error when it has more than one. Results are unordered, so
+there is no "first". See also the `exists { goals }` expression (section 4.8a).
+
 #### `logic.hasbinding(record, name)` · `logic.binding(record, name)`
 
 Tests binding presence or returns its value in a query record. Nil is a present
@@ -338,6 +344,9 @@ and consumes no RNG. This function returns one string.
 | `narrative.pop_deck()` | Pop top entry; cannot remove the last. |
 | `narrative.replace_deck(deck)` | Replace active entry with a fresh known deck entry. |
 | `narrative.reset_deck()` | Clear active entry's nonreplacement draw history. |
+| `narrative.return_deck()` | Pop to the deck that led here; an error at the root. |
+| `narrative.set_period(symbol, value)` | Set a period of the executing session (effect or handler); transaction-aware. |
+| `narrative.finish(symbol)` | Record the session's ending (6.8a); conflicting endings error. |
 | `narrative.emit(kind, ...)` | Queue a portable event for this transaction's commit. |
 | `narrative.schedule(kind, args, after_turns)` | Queue a symbol event with immutable sequence args and nonnegative integer delay. |
 | `narrative.translate(tag, {key = text, ...})` | Register a language pack: message keys (`lamp.title`, `lamp.light.title`, `name.keeper`) to template text. The pack is rejected as a whole, with one line per bad key, if any text does not parse. Not content: not fingerprinted, not saved. |
@@ -345,9 +354,15 @@ and consumes no RNG. This function returns one string.
 | `narrative.particle(word, "은/는")` | The Korean particle form that follows `word` (`은/는`, `이/가`, `을/를`, `과/와`, `으로/로`): the first after a final consonant, the second after a vowel; `으로/로` takes `로` after ㄹ; digits by how they are read. |
 | `narrative.graphemes(text)` · `narrative.truncate(text, n)` | The number of grapheme clusters, and the first `n` of them: a combining mark, variation selector, skin tone, joined emoji or flag stays with its base. |
 | `narrative.line_breaks(text)` | Immutable sequence of 1-based byte positions where a line may break: after spaces, between wide (Chinese, Japanese, Korean) characters, never before a closing mark, small kana or `ー`, never after an opening bracket, never inside a Latin word. |
+| `narrative.spans(text)` · `narrative.escape_markup(text)` | Rich-text markup (`**strong**`, `*emphasis*`, `[text](id)`, newline) as an immutable sequence of `{text, strong, emphasis, link}` / `{break=true}` records; the second escapes markup characters in a bound value. Section 6.6a. |
+| `narrative.var(:name, value)` · `narrative.fragment(:name, text)` | The statement `var name = value`, and a named text piece for `{>name}`. Before sealing. Section 6.6a. |
+| `narrative.save_slot(session, dir, name [, opts])` · `list_slots(dir)` · `load_slot(dir, name, factory)` · `delete_slot(dir, name)` | One save file per slot with its header. |
+| `narrative.meta(:storylet [, :choice], table)` | Presentation pass-through data, shown as `meta` on that storylet or choice; frozen, outside the content identity. Before sealing. |
+| `narrative.visited(:storylet)` · `narrative.last_chosen(:storylet)` | From an effect: committed choices of the storylet, and the turn of the latest (nil if none). |
 | `narrative.ruby(text)` | Immutable sequence of `{text, reading}` spans: `｜東京《とうきょう》` or ideographs directly before `《reading》`; `reading` is nil for plain text. |
 | `narrative.languages()` | Immutable sequence of registered language tags. |
-| `narrative.defer(callback)` | Request no-argument callback after commit; discarded on rollback. |
+| `narrative.defer(callback)` | Request no-argument callback after commit; discarded on rollback. It runs with the session's world as the default world. |
+| `narrative.helper(name, value)` | Expose a function or table of functions from an engine script to content files, which otherwise see only the content environment (section 8.3). Trusted code. |
 
 #### Session methods
 
@@ -361,16 +376,35 @@ and consumes no RNG. This function returns one string.
 | `session:seed(integer)` | Set and record deterministic session RNG seed at idle boundary. |
 | `session:limits(actions, events)` | Set positive integer per-phase budgets; default 1,000 each. |
 | `session:set_period(symbol, value)` | Set a portable named period at idle or as a permitted transaction-aware effect write. |
-| `session:present()` | Run pre phase and return an immutable presentation; may be empty. |
+| `session:present()` | Run pre phase and return an immutable presentation; may be empty. Carries `events` (narration since the previous presentation) and, once the session has finished, `ending`. |
+| `session:ended()` | The ending symbol recorded by `narrative.finish`, or nil. |
+| `session:events_since(n)` | Immutable sequence of `{sequence, turn, kind, args}` for committed events with sequence above `n`. |
 | `session:choose(token)` | Revalidate/commit exact choice, advance turn, run post phase; no result values. |
 | `session:set_language(tag\|nil)` · `session:language()` | The language `present` renders in; nil is the source language. A host preference: not saved, no input to eligibility, draws or replay. |
 | `session:render(presentation [, tag])` | The same presentation with titles and texts in `tag` (nil or omitted: the source language). Draws nothing, issues no token, writes nothing; choices keep their tokens. |
-| `session:save()` | Canonical versioned JSON string at idle boundary. |
+| `session:save([{label=, meta=}])` | Canonical versioned JSON string at idle boundary. `label` (string) and `meta` (portable value, for example a host timestamp or location) are informational header fields: read by `narrative.save_info`, ignored by `narrative.load`, outside every identity. |
+| `session:set_autosave(fn\|nil)` | `fn(save_text)` after every committed choice or advance. |
+| `session:visited(:storylet)` · `session:last_chosen(:storylet)` | Committed choices of a storylet, and the turn of the latest (nil if none). |
+| `session:set_undo_limit(n)` · `session:undo_depth()` · `session:undo()` | Bounded in-place undo of choices and beat advances (default off; section 6.9a). `undo` returns the presentation that was current before the undone command, with usable tokens. |
 | `session:record_input(symbol, value)` | Record portable external input at idle, without applying it. |
 | `session:replay_log()` | Immutable record with runtime, content, program, schema, and inputs. |
 
 Presentation shapes, token validity, and failure behavior are specified in
 [sections 6.3–6.6](narrative.md#63--choices-lexical-binding-and-tokens).
+
+#### `narrative.save_info(saved)`
+
+Reads a save's header without restoring it: an immutable record with `format`, `turn`,
+`runtime`, `content`, `in_scene`, and `label` and `meta` when the save has them. Nothing is
+validated against the running content; use it to list slots, then `narrative.load` to open one.
+
+#### `narrative.profile_set(key, value)` · `profile_get(key)` · `profile_keys()` · `profile_save()` · `profile_load(text)`
+
+Cross-save data owned by the host (seen lines, unlocked endings, achievements). Keys are
+non-empty strings and values portable; `nil` removes a key. The profile is outside session
+saves, content identity and replay. `profile_set` inside an effect takes hold after the effect
+commits (a rolled-back effect writes nothing); every read is refused during effects, rules,
+templates and analysis, so content cannot depend on it. See section 6.9a.
 
 #### `narrative.load(saved, world_factory [, migration])`
 
@@ -417,7 +451,8 @@ reachability conclusions.
 | `quality.initialize(entity, name [, world])` | Insert initial value only when absent. |
 | `quality.get(entity, name [, world])` | Actual value or nil; no implicit initialization/default. |
 | `quality.set(entity, name, value [, world])` | Atomic constrained keyed replacement. |
-| `quality.add(entity, name, delta [, world])` | Atomic constrained numeric adjustment of an existing tuple. |
+| `quality.add(entity, name, delta [, {clamp = true}] [, world])` | Atomic constrained numeric adjustment of an existing tuple; with `clamp`, the result saturates at the declared bounds. |
+| `quality.metadata(name)` | Immutable record `{initial, minimum, maximum, visible, label}` of a defined quality; an absent bound is nil. |
 
 Names must be declared symbols. All writes enforce metadata, even through direct
 relational operations. Omitted world means global outside effects and lexical

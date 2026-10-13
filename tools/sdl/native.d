@@ -25,6 +25,8 @@ extern (C) @nogc nothrow {
     void v_outline(float x, float y, float w, float h, uint color);
     void v_draw(void* texture, float x, float y, float w, float h, int fit, uint tint);
     int v_capture(const(char)* path);
+    void v_triangles(const(float)* xy, const(uint)* colors, int vertices, const(int)* indices, int count);
+    void v_line(float x1, float y1, float x2, float y2, uint color);
     void v_clip(int x, int y, int w, int h);
     void v_end();
     void v_delay();

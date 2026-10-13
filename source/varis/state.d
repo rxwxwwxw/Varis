@@ -208,8 +208,15 @@ __gshared bool vmSlowMode;
 __gshared uint openFrameTransactions;
 
 /// Central runtime state for Lua execution
+/// The tier policy of a project (milestone 26), installed by a host that read its manifest. Called
+/// with each source file about to be loaded from disk (`require`, `dofile`, `loadfile`). Returns
+/// the reason the file may not be loaded, or "" to allow it; sets `environment` to the table the
+/// chunk must run with (its `_ENV`), or leaves it nil for the full language.
+alias FileTierHook = string delegate(string path, string source, ref LuaValue environment);
+
 class LuaState {
     bool gcRunning = true;
+    FileTierHook fileTierHook;
     LuaFunction errorFunction; // the builtin `error`, raised directly by the interpreter
     LuaFunction fastNext; // the builtin `next`, recognized by the generic-for fast path
     LuaFunction fastIpairsIter; // the iterator function returned by `ipairs`

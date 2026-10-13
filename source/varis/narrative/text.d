@@ -354,3 +354,158 @@ Span[] rubySpans(string text) {
     flush();
     return spans;
 }
+
+/// One run of rich text (`markupSpans`). `lineBreak` spans carry no text.
+struct MarkupSpan {
+    string text;
+    bool strong;
+    bool emphasis;
+    bool lineBreak;
+    string link;
+}
+
+/// Splits text written in the portable markup into spans: `**strong**`, `*emphasis*`,
+/// `[link text](target-id)` (a link region the host makes clickable), a newline as a line break,
+/// and `\` before `* [ ] ( ) \` for the literal character. A marker with no partner is plain
+/// text, so a stray `*` never loses words. Hosts receive spans, never markup to interpret.
+MarkupSpan[] markupSpans(string text) {
+    MarkupSpan[] result;
+    string plain;
+    void emit(MarkupSpan attributes) {
+        if (!plain.length)
+            return;
+        auto span = attributes;
+        span.text = plain;
+        plain = null;
+        if (result.length && !result[$ - 1].lineBreak && result[$ - 1].strong == span.strong
+                && result[$ - 1].emphasis == span.emphasis && result[$ - 1].link == span.link)
+            result[$ - 1].text ~= span.text;
+        else
+            result ~= span;
+    }
+
+    // Index of `marker` in text[from .. $] not preceded by a backslash, or -1.
+    long find(string text, size_t from, string marker) {
+        for (size_t i = from; i + marker.length <= text.length; ++i) {
+            if (text[i] == '\\') {
+                ++i;
+                continue;
+            }
+            if (text[i .. i + marker.length] == marker)
+                return cast(long) i;
+        }
+        return -1;
+    }
+
+    void parse(string text, MarkupSpan attributes) {
+        size_t i;
+        while (i < text.length) {
+            char c = text[i];
+            if (c == '\\' && i + 1 < text.length && "*[]()\\".indexOfChar(text[i + 1]) >= 0) {
+                plain ~= text[i + 1];
+                i += 2;
+                continue;
+            }
+            if (c == '\n') {
+                emit(attributes);
+                result ~= MarkupSpan("", false, false, true, null);
+                ++i;
+                continue;
+            }
+            if (c == '*' && i + 1 < text.length && text[i + 1] == '*') {
+                auto close = find(text, i + 2, "**");
+                if (close > cast(long) i + 2) {
+                    emit(attributes);
+                    auto inner = attributes;
+                    inner.strong = true;
+                    parse(text[i + 2 .. close], inner);
+                    emit(inner);
+                    i = cast(size_t) close + 2;
+                    continue;
+                }
+            } else if (c == '*') {
+                // The closing `*` must be a single one, not the start of `**`.
+                long close = -1;
+                for (size_t k = i + 1; k < text.length; ++k) {
+                    if (text[k] == '\\') {
+                        ++k;
+                        continue;
+                    }
+                    if (text[k] == '*' && !(k + 1 < text.length && text[k + 1] == '*')) {
+                        close = cast(long) k;
+                        break;
+                    }
+                    if (text[k] == '*')
+                        ++k;
+                }
+                if (close > cast(long) i + 1) {
+                    emit(attributes);
+                    auto inner = attributes;
+                    inner.emphasis = true;
+                    parse(text[i + 1 .. close], inner);
+                    emit(inner);
+                    i = cast(size_t) close + 1;
+                    continue;
+                }
+            } else if (c == '[' && i + 1 < text.length && text[i + 1] == '[') {
+                // Twine passage link: [[text->target]] or [[target]]
+                auto close = find(text, i + 2, "]]");
+                if (close > cast(long) i + 2) {
+                    auto inner = text[i + 2 .. close];
+                    string label = inner, target = inner;
+                    foreach (k; 0 .. inner.length)
+                        if (k + 1 < inner.length && inner[k .. k + 2] == "->") {
+                            label = inner[0 .. k];
+                            target = inner[k + 2 .. $];
+                            break;
+                        }
+                    if (label.length && target.length) {
+                        emit(attributes);
+                        auto linked = attributes;
+                        linked.link = target;
+                        plain = label;
+                        emit(linked);
+                        i = cast(size_t) close + 2;
+                        continue;
+                    }
+                }
+            } else if (c == '[') {
+                auto close = find(text, i + 1, "](");
+                long end = close < 0 ? -1 : find(text, cast(size_t) close + 2, ")");
+                if (close > cast(long) i + 1 && end > close + 2) {
+                    emit(attributes);
+                    auto inner = attributes;
+                    inner.link = text[cast(size_t) close + 2 .. cast(size_t) end];
+                    parse(text[i + 1 .. close], inner);
+                    emit(inner);
+                    i = cast(size_t) end + 1;
+                    continue;
+                }
+            }
+            plain ~= c;
+            ++i;
+        }
+        emit(attributes);
+    }
+
+    parse(text, MarkupSpan.init);
+    return result;
+}
+
+/// Escapes markup characters so a bound value (a typed name, say) cannot become markup.
+string escapeMarkup(string text) {
+    string result;
+    foreach (c; text) {
+        if (c == '*' || c == '[' || c == ']' || c == '(' || c == ')' || c == '\\')
+            result ~= '\\';
+        result ~= c;
+    }
+    return result;
+}
+
+private long indexOfChar(string set, char c) {
+    foreach (i, member; set)
+        if (member == c)
+            return cast(long) i;
+    return -1;
+}

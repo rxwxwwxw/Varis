@@ -104,6 +104,35 @@ void staticChecks(ref const ProjectIndex index, ref Diagnostic[] found) {
             if (missing)
                 found ~= at("error", "unknown-" ~ reference.kind, reference.file, reference.range,
                         "unknown " ~ reference.kind ~ " '" ~ reference.name ~ "'", reference.inside);
+            // the battle bridge's data (stage TD3): ability and trigger names, a kind's fields,
+            // a trigger's arguments
+            if (reference.kind == "battle-ability" || reference.kind == "battle-trigger") {
+                static immutable abilities = [
+                    "single", "splash", "slow", "chain", "burn", "aura", "shield",
+                    "summon", "repair", "taunt"
+                ];
+                static immutable triggers = [
+                    "step", "wave_start", "structure_destroyed", "leak_count", "battle_won",
+                    "battle_lost", "hero_downed", "hero_hp_below", "heroes_near", "enemy_kind_seen"
+                ];
+                immutable names = reference.kind == "battle-ability" ? abilities[] : triggers[];
+                bool known;
+                foreach (n; names)
+                    known = known || n == reference.name;
+                if (!known) {
+                    auto diagnostic = at("error", reference.kind == "battle-ability" ? "unknown-ability" : "unknown-trigger",
+                            reference.file, reference.range, "unknown " ~ (reference.kind == "battle-ability" ? "ability" : "trigger") ~ " \"" ~ reference
+                            .name ~ "\" (one of " ~ join(names) ~ ")", reference.inside);
+                    diagnostic.suggestion = nearestName(reference.name, names);
+                    found ~= diagnostic;
+                }
+            }
+            if (reference.kind == "battle-field")
+                found ~= at("error", "missing-battle-field", reference.file, reference.range, reference.qualifier,
+                        reference.inside);
+            if (reference.kind == "battle-argument")
+                found ~= at("error", "bad-battle-argument", reference.file, reference.range, reference.qualifier,
+                        reference.inside);
         }
     // Pools of what the project declares.
     bool[string] decks = ["default": true];
@@ -184,12 +213,12 @@ void staticChecks(ref const ProjectIndex index, ref Diagnostic[] found) {
     foreach (ref f; index.files)
         foreach (ref d; f.declarations)
             if (d.kind == "storylet" || d.kind == "action" || d.kind == "scene")
-                parameters[d.subject] ~= d.parameters;
+                parameters[d.subject] ~= d.parameters ~ d.exposed;
     foreach (ref f; index.files)
         foreach (ref d; f.declarations)
             if (d.kind == "choice") {
                 auto owner = "storylet " ~ d.owner;
-                string[] names = d.parameters.dup;
+                string[] names = d.parameters.dup ~ d.exposed.dup;
                 if (auto inherited = owner in parameters)
                     names ~= *inherited;
                 parameters[d.subject] = names;
@@ -197,6 +226,17 @@ void staticChecks(ref const ProjectIndex index, ref Diagnostic[] found) {
 
     foreach (ref f; index.files) {
         foreach (ref d; f.declarations) {
+            // unknown-deck, for a choice's `leads`
+            if (d.kind == "choice" && d.leads.length && d.leads !in decks) {
+                Range where = d.range;
+                foreach (ref r; f.references)
+                    if (r.kind == "deck" && r.inside == d.subject && r.name == d.leads)
+                        where = r.range;
+                auto diagnostic = at("error", "unknown-deck", f.path, where, d.subject ~ " leads to deck :" ~ d.leads
+                        ~ ", which no `deck :" ~ d.leads ~ " {...}` declares", d.subject);
+                diagnostic.suggestion = nearestName(d.leads, deckNames);
+                found ~= diagnostic;
+            }
             // unknown-deck
             if (d.kind == "storylet" && d.deck.length && d.deck !in decks) {
                 // Find the reference to place the diagnostic on the symbol.
@@ -279,7 +319,12 @@ void projectChecks(ref const ProjectIndex index, ref Diagnostic[] problems, cons
             if (m.computed)
                 problems ~= makeDiagnostic("warning", "computed-text", m.file, m.range.line, m.range.column, m.range.endLine,
                         m.range.endColumn, "display text built by code cannot be extracted for translation", m.owner);
-    if (strictSymbols) {
+    // Strict once the manifest lists `symbols` or any file declares some (`symbols a, b`).
+    bool declaredInSource;
+    foreach (ref f; index.files)
+        foreach (ref d; f.declarations)
+            declaredInSource = declaredInSource || d.kind == "symbols";
+    if (strictSymbols || declaredInSource) {
         declaredSymbolChecks(index, declared, problems);
         return;
     }
@@ -391,29 +436,38 @@ private int indexOf(string text, string needle) {
     return -1;
 }
 
-/// With a `symbols` list in the manifest, a symbol is an error unless it is listed or named by a
-/// declaration (storylet, action, deck, relation, quality, name, choice): a mistyped `:keepr` is
-/// then an error at its place, not a storylet that silently never appears. Opt-in, no new syntax
-/// (ROADMAP milestone 28's "declared entities/symbols", in its smallest reversible form).
-void declaredSymbolChecks(ref const ProjectIndex index, const(string)[] declared, ref Diagnostic[] problems) {
-    bool[string] known;
+/// Every name a project declares: the manifest's `symbols`, `symbols a, b` statements and the
+/// names of declarations (storylet, action, deck, relation, quality, name, choice).
+void knownSymbols(ref const ProjectIndex index, const(string)[] declared, out bool[string] known,
+        out string[] candidates) {
     foreach (name; declared)
         known[name] = true;
-    string[] candidates = declared.dup;
+    candidates = declared.dup;
     foreach (ref f; index.files)
         foreach (ref d; f.declarations)
             if (d.name.length && d.kind != "function" && d.kind != "local-function" && d.kind != "label") {
                 known[d.name] = true;
                 candidates ~= d.name;
             }
+}
+
+/// With a `symbols` list in the manifest, a symbol is an error unless it is listed or named by a
+/// declaration (storylet, action, deck, relation, quality, name, choice): a mistyped `:keepr` is
+/// then an error at its place, not a storylet that silently never appears. Opt-in, no new syntax
+/// (ROADMAP milestone 28's "declared entities/symbols", in its smallest reversible form).
+void declaredSymbolChecks(ref const ProjectIndex index, const(string)[] declared, ref Diagnostic[] problems) {
+    bool[string] known;
+    string[] candidates;
+    knownSymbols(index, declared, known, candidates);
     bool[string] reported;
     foreach (ref f; index.files)
         foreach (ref r; f.references) {
             if (r.kind != "symbol" || r.role == "engine" || r.name in known)
                 continue;
             auto diagnostic = makeDiagnostic("error", "undeclared-symbol", r.file, r.range.line, r.range.column, r.range.endLine,
-                    r.range.endColumn, "symbol :" ~ r.name ~ " is not declared: list it in `symbols` of project.lua, or "
-                    ~ "declare the storylet, relation, quality or deck it names", "symbol :" ~ r.name);
+                    r.range.endColumn, "symbol :" ~ r.name ~ " is not declared: list it with `symbols " ~ r.name ~ "` (or in "
+                    ~ "`symbols` of the manifest), or declare the storylet, relation, quality or deck it names", "symbol :" ~ r
+                    .name);
             diagnostic.suggestion = nearestName(r.name, candidates);
             problems ~= diagnostic;
         }

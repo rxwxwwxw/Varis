@@ -249,6 +249,7 @@ class Parser {
             case "rule":
             case "fact":
             case "retract":
+            case "symbols":
             case "transaction":
             case "rollback":
             case "set":
@@ -374,6 +375,9 @@ class Parser {
             if (stmt !is null) {
                 stmts ~= stmt;
             }
+            // a readable scene also registers the scenes and procedures it generates
+            stmts ~= pendingStmts;
+            pendingStmts.length = 0;
         }
 
         return new BlockStmt(stmts, loc);
@@ -465,6 +469,11 @@ class Parser {
             return parseLocalDecl(loc);
         }
 
+        // `scene name() ... end`: the readable form (milestone 29), lowered to beat tables.
+        if (check(TokenType.Identifier) && current.text == "scene" && peekToken(0)
+                .type == TokenType.Identifier &&
+                peekToken(1).type == TokenType.LParen)
+            return parseReadableScene(loc);
         // Scene/character declarations lower to registration calls, keeping the words contextual.
         if (check(TokenType.Identifier) && (current.text == "scene" || current.text == "character") &&
                 peekToken(0).type == TokenType.Identifier && peekToken(1).type == TokenType.LBrace) {
@@ -523,8 +532,32 @@ class Parser {
             if (current.text == "fact" && peekToken(0).type == TokenType.Identifier) {
                 return parseFactStmt(loc);
             }
+            // `var gold = 0`: a story variable, sugar for `narrative.var(:gold, 0)`. Two names in
+            // a row are not Lua, so the contextual word cannot change an existing program.
+            if (current.text == "var" && peekToken(0).type == TokenType.Identifier && peekToken(1)
+                    .type == TokenType.Equal) {
+                advance();
+                auto name = current.text;
+                advance();
+                advance();
+                auto value = parseExpr();
+                auto callee = new FieldExpr(new VariableExpr("narrative", loc), "var", loc);
+                return new CallStmt(new CallExpr(callee, [new SymbolLiteralExpr(name, loc), value], loc), loc);
+            }
             if (current.text == "retract" && peekToken(0).type == TokenType.Identifier) {
                 return parseRetractStmt(loc);
+            }
+            if (current.text == "symbols" && peekToken(0).type == TokenType.Identifier) {
+                advance();
+                auto declaration = new SymbolsDeclStmt(loc);
+                do {
+                    auto name = consume(TokenType.Identifier, "symbol name expected");
+                    declaration.names ~= name.text;
+                    declaration.nameLocs ~= name.loc;
+                    declaration.nameEnds ~= SourceLoc(name.endLine, name.endColumn);
+                }
+                while (match(TokenType.Comma));
+                return declaration;
             }
             if (current.text == "relation" && peekToken(0).type == TokenType.Identifier && peekToken(1)
                     .type == TokenType.LParen) {
@@ -953,6 +986,14 @@ class Parser {
             }
         }
 
+        // `exists { goals }`: whether the query has a match; binds nothing outside it.
+        if (check(TokenType.Identifier) && current.text == "exists" && peekToken(0).type == TokenType.LBrace) {
+            advance();
+            auto query = parseQueryExpr(loc);
+            auto first = new CallExpr(query, [], loc);
+            return new BinaryExpr(BinaryOp.Ne, first, new LiteralNilExpr(loc), loc);
+        }
+
         if (match(TokenType.Question)) {
             if (!inDeclarative) {
                 syntaxError("unexpected symbol", previous);
@@ -1256,6 +1297,18 @@ class Parser {
             string field = current.text;
             if (field == "choice" || field == "effect")
                 break;
+            if (field == "expose" && kind != "procedure") {
+                advance();
+                do {
+                    consume(TokenType.Question, "logic variable expected after 'expose'");
+                    auto exposedName = consume(TokenType.Identifier, "variable name expected after 'expose ?'").text;
+                    if (exposedName == "_")
+                        syntaxError("anonymous variable cannot be exposed", previous);
+                    definition.exposed ~= exposedName;
+                }
+                while (match(TokenType.Comma));
+                continue;
+            }
             if (kind == "choice" && field == "require") {
                 if (definition.requireGoals.length)
                     syntaxError("duplicate content field 'require'", current);
@@ -1263,7 +1316,7 @@ class Parser {
                 continue;
             }
             bool allowed = kind != "action" && (field == "title" || field == "text");
-            if (kind == "choice" && field == "because")
+            if (kind == "choice" && (field == "because" || field == "leads"))
                 allowed = true;
             if (kind == "storylet")
                 allowed = allowed || field == "deck" || field == "priority" || field == "weight" || field == "cooldown" || field == "repeatable" || field == "sticky" || field == "order";
@@ -1305,6 +1358,357 @@ class Parser {
         return definition;
     }
 
+    // --- readable scenes (milestone 29) ------------------------------------------------------
+    // `scene name() ... end` lowers to `narrative.scene(:name, {beats})`, plus generated scenes
+    // for menu options, conditional branches and their continuations, and generated procedures
+    // for `effect using … do … end`. Nothing here is new to the engine except the `branch` beat.
+
+    private Stmt[] pendingStmts;
+
+    private TableField sceneField(string key, Expr value, SourceLoc loc) {
+        return TableField(new LiteralStringExpr(key, loc), value);
+    }
+
+    private Expr sceneSymbol(string name, SourceLoc loc) {
+        return new SymbolLiteralExpr(name, loc);
+    }
+
+    private Expr sceneBeat(string kind, TableField[] rest, SourceLoc loc) {
+        // `return` is a Lua keyword, so the beat of that name is spelled as a string
+        Expr kindValue = kind == "return" ? cast(Expr) new LiteralStringExpr(kind, loc) : sceneSymbol(kind, loc);
+        return new TableConstructorExpr([sceneField("kind", kindValue, loc)] ~ rest, loc);
+    }
+
+    private bool sceneWord(string word) const {
+        return check(TokenType.Identifier) && current.text == word;
+    }
+
+    private Token sceneName(string what) {
+        return consume(TokenType.Identifier, what ~ " expected");
+    }
+
+    private Stmt parseReadableScene(SourceLoc loc) {
+        advance();
+        auto nameToken = consume(TokenType.Identifier, "scene name expected");
+        consume(TokenType.LParen, "'(' expected after scene name");
+        if (!check(TokenType.RParen))
+            syntaxError("a scene takes no parameters: give locals a value with 'set' or 'input'", current);
+        consume(TokenType.RParen, "')' expected after scene name");
+        auto build = new SceneBuilder(nameToken.text);
+        auto cur = build.open(nameToken.text);
+        parseSceneBody(build, cur);
+        if (!check(TokenType.KwEnd))
+            syntaxError("'end' expected to close scene '" ~ nameToken.text ~ "'", current);
+        advance();
+        Stmt first;
+        foreach (i, segment; build.segments) {
+            TableField[] items;
+            foreach (beat; segment.beats)
+                items ~= TableField(null, beat);
+            auto body = new TableConstructorExpr(items, loc);
+            auto callee = new FieldExpr(new VariableExpr("narrative", loc), "scene", loc);
+            auto call = new CallExpr(callee, [sceneSymbol(segment.name, nameToken.loc), body], loc);
+            call.end = SourceLoc(previous.endLine, previous.endColumn);
+            Stmt stmt = new CallStmt(call, loc);
+            if (i == 0)
+                first = stmt;
+            else
+                pendingStmts ~= stmt;
+        }
+        foreach (procedure; build.procedures)
+            pendingStmts ~= procedure;
+        return first;
+    }
+
+    private void parseSceneBody(SceneBuilder build, ref SceneSegment cur) {
+        while (!isAtEnd() && !abandoned) {
+            if (check(TokenType.KwEnd) || check(TokenType.KwElse) || check(TokenType.KwElseIf) || sceneWord("option"))
+                return;
+            parseSceneStatement(build, cur);
+        }
+    }
+
+    /// `id name "text"`: the explicit, scene-scoped text id and the wording.
+    private void parseSceneText(SceneBuilder build, ref TableField[] fields, SourceLoc loc) {
+        if (!sceneWord("id"))
+            syntaxError("a line needs an id: write 'id <name> \"text\"'", current);
+        advance();
+        auto name = sceneName("line id").text;
+        auto full = build.root ~ "." ~ name;
+        if (full in build.ids)
+            syntaxError("duplicate line id '" ~ name ~ "' in scene '" ~ build.root ~ "'", previous);
+        build.ids[full] = true;
+        auto text = consume(TokenType.String, "text expected after the line id");
+        auto literal = new LiteralStringExpr(text.text, text.loc);
+        literal.end = SourceLoc(text.endLine, text.endColumn);
+        fields ~= sceneField("id", new LiteralStringExpr(full, loc), loc);
+        fields ~= sceneField("text", literal, loc);
+    }
+
+    /// `with a = v, b = w`: returns the pairs as a table, or null when there is no clause.
+    private TableField[] parseSceneWith(SourceLoc loc, string[] allowed = null) {
+        TableField[] pairs;
+        if (!sceneWord("with"))
+            return pairs;
+        advance();
+        do {
+            auto key = sceneName("name");
+            if (allowed.length) {
+                bool known;
+                foreach (a; allowed)
+                    known = known || a == key.text;
+                if (!known)
+                    syntaxError("'" ~ key.text ~ "' is not accepted here", key);
+            }
+            consume(TokenType.Equal, "'=' expected");
+            pairs ~= sceneField(key.text, parseExpr(), key.loc);
+        }
+        while (match(TokenType.Comma));
+        return pairs;
+    }
+
+    private void parseSceneStatement(SceneBuilder build, ref SceneSegment cur) {
+        auto loc = current.loc;
+        if (check(TokenType.KwReturn)) {
+            advance();
+            cur.beats ~= sceneBeat("return", null, loc);
+            return;
+        }
+        if (check(TokenType.KwIf)) {
+            advance();
+            auto cont = build.fresh("then");
+            auto join = build.open(cont);
+            parseSceneIfTail(build, cur, cont);
+            if (!check(TokenType.KwEnd))
+                syntaxError("'end' expected to close 'if'", current);
+            advance();
+            cur.beats ~= sceneBeat("jump", [sceneField("target", sceneSymbol(cont, loc), loc)], loc);
+            cur = join;
+            return;
+        }
+        if (!check(TokenType.Identifier))
+            syntaxError("scene statement expected", current);
+        auto word = current.text;
+        advance();
+        TableField[] fields;
+        switch (word) {
+        case "say":
+            auto character = sceneName("character");
+            fields ~= sceneField("character", sceneSymbol(character.text, character.loc), loc);
+            auto attributes = parseSceneWith(loc);
+            if (attributes.length)
+                fields ~= sceneField("attributes", new TableConstructorExpr(attributes, loc), loc);
+            parseSceneText(build, fields, loc);
+            cur.beats ~= sceneBeat("say", fields, loc);
+            return;
+        case "narrate":
+            parseSceneText(build, fields, loc);
+            cur.beats ~= sceneBeat("narration", fields, loc);
+            return;
+        case "show":
+            auto character = sceneName("character");
+            fields ~= sceneField("character", sceneSymbol(character.text, character.loc), loc);
+            if (!sceneWord("at"))
+                syntaxError("'at' expected: show <character> at :slot", current);
+            advance();
+            fields ~= sceneField("slot", parseExpr(), loc);
+            auto attributes = parseSceneWith(loc);
+            if (attributes.length)
+                fields ~= sceneField("attributes", new TableConstructorExpr(attributes, loc), loc);
+            cur.beats ~= sceneBeat("show", fields, loc);
+            return;
+        case "hide":
+            auto character = sceneName("character");
+            cur.beats ~= sceneBeat("hide", [
+                sceneField("character", sceneSymbol(character.text, character.loc), loc)
+            ], loc);
+            return;
+        case "background":
+            cur.beats ~= sceneBeat("background", [sceneField("tag", parseExpr(), loc)], loc);
+            return;
+        case "audio":
+            auto channel = sceneName("audio channel");
+            fields ~= sceneField("channel", sceneSymbol(channel.text, channel.loc), loc);
+            if (sceneWord("off"))
+                advance();
+            else
+                fields ~= sceneField("tag", parseExpr(), loc);
+            cur.beats ~= sceneBeat("audio", fields, loc);
+            return;
+        case "pause":
+        case "transition":
+        case "screen":
+        case "picture":
+            consume(TokenType.LBrace, "'{' expected: " ~ word ~ " { … }");
+            auto table = parseTableConstructor(loc);
+            cur.beats ~= sceneBeat(word, table.fields, loc);
+            return;
+        case "input":
+            auto local = sceneName("local name");
+            fields ~= sceneField("local", new LiteralStringExpr(local.text, local.loc), loc);
+            parseSceneText(build, fields, loc);
+            fields ~= parseSceneWith(loc, ["default", "min_length", "max_length", "min", "max"]);
+            cur.beats ~= sceneBeat("input", fields, loc);
+            return;
+        case "set":
+            auto local = sceneName("local name");
+            consume(TokenType.Equal, "'=' expected");
+            cur.beats ~= sceneBeat("set", [
+                sceneField("local", new LiteralStringExpr(local.text, local.loc), loc),
+                sceneField("value", parseExpr(), loc)
+            ], loc);
+            return;
+        case "jump":
+        case "call":
+            auto target = sceneName("scene name");
+            cur.beats ~= sceneBeat(word, [
+                sceneField("target", sceneSymbol(target.text, target.loc), loc)
+            ], loc);
+            return;
+        case "ended":
+            cur.beats ~= sceneBeat("ended", null, loc);
+            return;
+        case "effect":
+            parseSceneEffect(build, cur, loc);
+            return;
+        case "menu":
+            parseSceneMenu(build, cur, loc);
+            return;
+        default:
+            syntaxError("unknown scene statement '" ~ word ~ "'", previous);
+        }
+    }
+
+    private void parseSceneIfTail(SceneBuilder build, ref SceneSegment cur, string cont) {
+        auto loc = previous.loc;
+        auto local = sceneName("local name");
+        TokenType op = current.type;
+        string text;
+        switch (op) {
+        case TokenType.DoubleEqual:
+            text = "==";
+            break;
+        case TokenType.TildeEqual:
+            text = "~=";
+            break;
+        case TokenType.Less:
+            text = "<";
+            break;
+        case TokenType.LessEqual:
+            text = "<=";
+            break;
+        case TokenType.Greater:
+            text = ">";
+            break;
+        case TokenType.GreaterEqual:
+            text = ">=";
+            break;
+        default:
+            syntaxError("a scene condition compares a local with a value: if <local> == <value> then", current);
+        }
+        advance();
+        auto value = parseExpr();
+        consume(TokenType.KwThen, "'then' expected");
+        auto thenSegment = build.open(build.fresh("if"));
+        cur.beats ~= sceneBeat("branch", [
+            sceneField("local", new LiteralStringExpr(local.text, local.loc), loc),
+            sceneField("op", new LiteralStringExpr(text, loc), loc),
+            sceneField("value", value, loc),
+            sceneField("target", sceneSymbol(thenSegment.name, loc), loc)
+        ], loc);
+        parseSceneBody(build, thenSegment);
+        thenSegment.beats ~= sceneBeat("jump", [sceneField("target", sceneSymbol(cont, loc), loc)], loc);
+        if (match(TokenType.KwElseIf)) {
+            parseSceneIfTail(build, cur, cont);
+        } else if (match(TokenType.KwElse)) {
+            parseSceneBody(build, cur);
+        }
+    }
+
+    private void parseSceneMenu(SceneBuilder build, ref SceneSegment cur, SourceLoc loc) {
+        auto contName = build.fresh("menu");
+        auto join = build.open(contName);
+        Expr[] choices;
+        while (sceneWord("option")) {
+            auto optionLoc = current.loc;
+            advance();
+            auto id = sceneName("option id");
+            auto label = consume(TokenType.String, "option text expected");
+            consume(TokenType.KwDo, "'do' expected after the option text");
+            auto segment = build.open(build.fresh("option"));
+            auto target = segment.name;
+            parseSceneBody(build, segment);
+            consume(TokenType.KwEnd, "'end' expected to close the option");
+            segment.beats ~= sceneBeat("jump", [
+                sceneField("target", sceneSymbol(contName, optionLoc), optionLoc)
+            ], optionLoc);
+            auto text = new LiteralStringExpr(label.text, label.loc);
+            text.end = SourceLoc(label.endLine, label.endColumn);
+            choices ~= new TableConstructorExpr([
+                sceneField("id", new LiteralStringExpr(id.text, id.loc), optionLoc),
+                sceneField("text", text, optionLoc),
+                sceneField("target", sceneSymbol(target, optionLoc), optionLoc)
+            ], optionLoc);
+        }
+        if (!choices.length)
+            syntaxError("a menu needs at least one 'option <id> \"text\" do … end'", current);
+        consume(TokenType.KwEnd, "'end' expected to close 'menu'");
+        TableField[] items;
+        foreach (choice; choices)
+            items ~= TableField(null, choice);
+        cur.beats ~= sceneBeat("menu", [
+            sceneField("choices", new TableConstructorExpr(items, loc), loc)
+        ], loc);
+        cur = join;
+    }
+
+    private void parseSceneEffect(SceneBuilder build, ref SceneSegment cur, SourceLoc loc) {
+        TableField[] fields, args, locals;
+        if (sceneWord("using")) {
+            advance();
+            string[] names;
+            do {
+                names ~= sceneName("local name").text;
+            }
+            while (match(TokenType.Comma));
+            consume(TokenType.KwDo, "'do' expected after 'effect using …'");
+            auto name = build.fresh("effect");
+            auto procedure = new NarrativeDefinitionStmt("procedure", name, loc);
+            procedure.nameLoc = loc;
+            procedure.nameEnd = loc;
+            procedure.parameters = names;
+            procedure.effect = parseBlock();
+            consume(TokenType.KwEnd, "'end' expected after effect");
+            procedure.end = SourceLoc(previous.endLine, previous.endColumn);
+            build.procedures ~= procedure;
+            fields ~= sceneField("name", sceneSymbol(name, loc), loc);
+            foreach (n; names)
+                locals ~= sceneField(n, new LiteralStringExpr(n, loc), loc);
+        } else {
+            auto name = sceneName("procedure name");
+            fields ~= sceneField("name", sceneSymbol(name.text, name.loc), loc);
+            consume(TokenType.LParen, "'(' expected after the procedure name");
+            if (!check(TokenType.RParen))
+                do {
+                auto key = sceneName("parameter name");
+                consume(TokenType.Equal, "'=' expected: effect name(parameter = local or value)");
+                auto next = peekToken(0).type;
+                if (check(TokenType.Identifier) && (next == TokenType.Comma || next == TokenType.RParen)) {
+                    locals ~= sceneField(key.text, new LiteralStringExpr(current.text, current.loc), key.loc);
+                    advance();
+                } else
+                    args ~= sceneField(key.text, parseExpr(), key.loc);
+            }
+            while (match(TokenType.Comma));
+            consume(TokenType.RParen, "')' expected after the arguments");
+        }
+        if (args.length)
+            fields ~= sceneField("args", new TableConstructorExpr(args, loc), loc);
+        if (locals.length)
+            fields ~= sceneField("locals", new TableConstructorExpr(locals, loc), loc);
+        cur.beats ~= sceneBeat("effect", fields, loc);
+    }
+
     private Stmt parseUpdateStmt(SourceLoc loc) {
         string operation = current.text;
         advance();
@@ -1329,7 +1733,19 @@ class Parser {
                 syntaxError("'by' expected after adjust key", by);
             delta = parseExpr();
         }
-        return new UpdateStmt(operation, reference, args, delta, loc);
+        auto update = new UpdateStmt(operation, reference, args, delta, loc);
+        // `clamp` is contextual: a modifier only when it ends the statement on the same line.
+        if (operation == "adjust" && check(TokenType.Identifier) && current.text == "clamp"
+                && current.loc.line == previous.endLine) {
+            auto after = peekToken(0).type;
+            if (after != TokenType.LParen && after != TokenType.Equal && after != TokenType.Dot
+                    && after != TokenType.Colon && after != TokenType.Comma && after != TokenType.LBracket
+                    && after != TokenType.String && after != TokenType.LBrace) {
+                advance();
+                update.clamp = true;
+            }
+        }
+        return update;
     }
 
     private Stmt parseRelationDeclStmt(SourceLoc loc) {
@@ -1482,6 +1898,24 @@ class Parser {
         return false;
     }
 
+    /// At a `(`: whether its group has an `or` at its own nesting level.
+    private bool parenthesizedOr() {
+        int depth = 1;
+        for (size_t i = 0;; ++i) {
+            auto type = peekToken(i).type;
+            if (type == TokenType.EOF)
+                return false;
+            if (type == TokenType.LParen || type == TokenType.LBrace || type == TokenType.LBracket)
+                depth++;
+            else if (type == TokenType.RParen || type == TokenType.RBrace || type == TokenType.RBracket) {
+                depth--;
+                if (depth == 0)
+                    return false;
+            } else if (type == TokenType.KwOr && depth == 1)
+                return true;
+        }
+    }
+
     private bool aggregateExpressionMode;
     private size_t aggregateExpressionDepth;
 
@@ -1493,6 +1927,42 @@ class Parser {
 
     private AstGoal parseGoalInner() {
         auto loc = current.loc;
+        // Computed binding: `?name := expression`. The expression is evaluated once per candidate
+        // from variables grounded earlier; it is the aggregate form with no goals and the
+        // operator "value" (so it is ordered with the aggregates, in written order).
+        if (check(TokenType.Question) && peekToken(0).type == TokenType.Identifier && peekToken(1)
+                .type == TokenType.Colon && peekToken(2).type == TokenType.Equal) {
+            advance();
+            string result = consume(TokenType.Identifier, "computed binding variable expected").text;
+            if (result == "_")
+                syntaxError("anonymous computed binding is prohibited", previous);
+            advance(); // ':'
+            advance(); // '='
+            bool saved = inDeclarative;
+            inDeclarative = true;
+            bool previousMode = aggregateExpressionMode;
+            aggregateExpressionMode = true;
+            auto previousDepth = aggregateExpressionDepth;
+            aggregateExpressionDepth = expressionDepth + 1;
+            auto expression = parseExpr();
+            aggregateExpressionDepth = previousDepth;
+            aggregateExpressionMode = previousMode;
+            inDeclarative = saved;
+            return new AstAggregateGoal(result, "value", expression, null, loc);
+        }
+        // Alternatives: `(?a > 3 or ?b == :open)`. One filter that passes when any alternative
+        // is true, tried left to right; a parenthesized group of comparisons is ordinary guard
+        // syntax with `or`, so it is read as `where(...)`.
+        if (check(TokenType.LParen) && parenthesizedOr()) {
+            advance();
+            bool saved = inDeclarative;
+            inDeclarative = true;
+            scope (exit)
+                inDeclarative = saved;
+            auto alternatives = parseExpr();
+            consume(TokenType.RParen, "')' expected after alternatives");
+            return new AstGuardGoal(alternatives, loc);
+        }
         if (check(TokenType.Question) && peekToken(0).type == TokenType.Identifier && peekToken(1)
                 .type == TokenType.Equal) {
             advance();
@@ -1830,5 +2300,35 @@ private Expr foldUnary(UnaryOp op, Expr operand, SourceLoc loc) {
         return null;
     default:
         return null;
+    }
+}
+
+/// One generated scene while a readable scene is being lowered.
+private final class SceneSegment {
+    string name;
+    Expr[] beats;
+}
+
+/// Names and collects the scenes and procedures one readable scene lowers to.
+private final class SceneBuilder {
+    string root;
+    SceneSegment[] segments;
+    NarrativeDefinitionStmt[] procedures;
+    bool[string] ids;
+    int counter;
+
+    this(string root) {
+        this.root = root;
+    }
+
+    string fresh(string what) {
+        return root ~ "__" ~ what ~ (++counter).to!string;
+    }
+
+    SceneSegment open(string name) {
+        auto segment = new SceneSegment;
+        segment.name = name;
+        segments ~= segment;
+        return segment;
     }
 }

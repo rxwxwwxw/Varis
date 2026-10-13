@@ -54,7 +54,67 @@ def rpg():
         (ROOT / "sample-rpg" / leftover).unlink(missing_ok=True)
 
 
+def lanternfall():
+    """The battle view: the first night built and played through the player's own widgets, one frame
+    per zoom band, and the same night played headless gives the same digest (SAMPLE_TD_PLAN.md §7)."""
+    import re
+    out = ROOT / "build/sdl/lanternfall.bmp"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    result = subprocess.run([str(BINARY), str(ROOT / "sample-td/presentation.json"), "--smoke", str(out)],
+                            cwd=ROOT, env=dict(ENV, VARIS_SMOKE_PLAY="battle", VARIS_SMOKE_SIZE="1280x720"),
+                            capture_output=True, text=True, timeout=120)
+    text = result.stdout + result.stderr
+    assert result.returncode == 0 and "checks passed" in text, text
+    placements = [tuple(int(v) for v in m.groups()) for m in re.finditer(r"^place (\d+) (-?\d+) (-?\d+)$", text, re.M)]
+    digest = int(re.search(r"digest (-?\d+)", text).group(1))
+    worst = int(re.search(r"worst frame (\d+) ms", text).group(1))
+    assert len(placements) >= 4, text
+    # a frame of the whole map at software rendering stays well inside a generous budget
+    assert worst < 250, f"a frame took {worst} ms"
+    # one capture per zoom band, each a real picture
+    sizes = set()
+    for band in ("build", "overview", "tactical", "standard", "close", "night", "over"):
+        data = (ROOT / f"build/sdl/lanternfall-{band}.bmp").read_bytes()
+        assert data[:2] == b"BM" and struct.unpack_from("<ii", data, 18) == (1280, 720), band
+        offset = struct.unpack_from("<I", data, 10)[0]
+        assert len(set(data[offset:])) > 30, band
+        sizes.add(hash(data[offset:]))
+    assert len(sizes) == 7, "the zoom bands should look different"
+    # the same night, played headless with the same commands
+    script = """
+package.path = "./?.lua;" .. package.path
+local G = require("game")
+local s = G.new_session(1)
+G.settle(s)
+assert(G.choose(s, "go_up", "go"))
+local placements = {%s}
+local o = G.run_night(s, {every = 10, build = function(night)
+    for _, p in ipairs(placements) do assert(night.handle:place(p[1], p[2], p[3])) end
+end})
+print("digest " .. o.digest)
+""" % ", ".join("{%d, %d, %d}" % p for p in placements)
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "headless.lua"
+        path.write_text(script)
+        run_lua = subprocess.run([str(ROOT / "bin/varis"), str(path)], cwd=ROOT / "sample-td",
+                                 capture_output=True, text=True, timeout=60)
+    assert run_lua.returncode == 0, run_lua.stdout + run_lua.stderr
+    headless = int(re.search(r"digest (-?\d+)", run_lua.stdout).group(1))
+    assert headless == digest, f"the window played a different night: {digest} vs headless {headless}"
+    # the same night in a phone-sized and a large window: the layout adapts, the battle does not
+    for size in ("420x800", "1920x1080"):
+        out = ROOT / f"build/sdl/lanternfall-{size}.bmp"
+        again = subprocess.run([str(BINARY), str(ROOT / "sample-td/presentation.json"), "--smoke", str(out)],
+                               cwd=ROOT, env=dict(ENV, VARIS_SMOKE_PLAY="battle", VARIS_SMOKE_SIZE=size),
+                               capture_output=True, text=True, timeout=120)
+        assert again.returncode == 0 and f"digest {digest}" in again.stdout, (size, again.stdout + again.stderr)
+    for leftover in ("autosave.json", "settings.json", "quicksave.json"):
+        (ROOT / "sample-td" / leftover).unlink(missing_ok=True)
+    print(f"Lanternfall battle view: {len(placements)} towers, digest {digest} equals the headless night")
+
+
 def main():
+    lanternfall()
     rpg()
     output = ROOT / "build/sdl/harbour.bmp"
     run(ROOT / "sample-vn/presentation.json", output, message="checks passed")

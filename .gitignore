@@ -21,3 +21,6 @@ __pycache__/
 sample-rpg/autosave.json
 sample-rpg/quicksave.json
 sample-rpg/settings.json
+sample-td/autosave.json
+sample-td/quicksave.json
+sample-td/settings.json

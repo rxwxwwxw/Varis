@@ -87,7 +87,7 @@ PNG with alpha is suitable for finished sprite and portrait artwork.
 - Up/Down scrolls long dialogue. H shows the five most recent lines.
 - A toggles automatic dialogue advancement; S toggles skipping. Neither chooses menus nor
   submits text input. H pauses both modes.
-- F5 saves; F9 loads and reconstructs the complete stage from the engine save.
+- F5 saves; F9 loads and reconstructs the complete stage from the engine save; B takes back the last choice or beat (session undo, 64 steps in a game, 256 in a scene player; not during a battle).
 
 `transition` currently fades in from black over 300 ms and `pause` waits 300 ms. These are
 player defaults; authored timing/effect parameters are not implemented. `picture` and `screen`

@@ -17,6 +17,7 @@ import varis.table;
 import varis.logic.world;
 import varis.logic.model;
 import varis.narrative.registry;
+import varis.narrative.codec : immutableRecord;
 import varis.narrative.session : currentEffectSession;
 import varis.exception : LuaException;
 
@@ -33,6 +34,7 @@ void configureQualityWorld(LuaState state, World world) {
     foreach (tuple; relation.baseFacts.keys)
         state.narrativeRegistry.validateQualityTuple(tuple);
     relation.validateTuple = &state.narrativeRegistry.validateQualityTuple;
+    relation.clampTuple = &state.narrativeRegistry.clampQualityTuple;
 }
 
 private string qualityName(LuaValue value) {
@@ -83,6 +85,21 @@ void openQualityLib(LuaState state) {
         add(name, (void* pointer, LuaValue[] args) {
             auto state = cast(LuaState) pointer;
             size_t required = (name == "set" || name == "add") ? 3 : 2;
+            bool clamp;
+            if (name == "add" && args.length > required && isTable(args[required])) {
+                // quality.add(entity, name, delta, {clamp = true} [, world])
+                auto options = args[required].match!((LuaTable t) => t, _ => null);
+                LuaValue previous, optionKey, optionValue;
+                while (options.next(previous, optionKey, optionValue)) {
+                    previous = optionKey;
+                    if (!isString(optionKey) || optionKey.match!((string s) => s, _ => "") != "clamp")
+                        throw new LuaException("unknown quality.add option");
+                    if (!isBoolean(optionValue))
+                        throw new LuaException("quality.add clamp option must be Boolean");
+                    clamp = optionValue.match!((bool b) => b, _ => false);
+                }
+                args = args[0 .. required] ~ args[required + 1 .. $];
+            }
             if (args.length < required || args.length > required + 1)
                 throw new LuaException("bad arguments to quality." ~ name);
             auto id = qualityName(args[1]);
@@ -105,6 +122,7 @@ void openQualityLib(LuaState state) {
                 throw new LuaException("invalid quality relation schema");
             // Foreign authored worlds must receive the same metadata validator.
             relation.validateTuple = &state.narrativeRegistry.validateQualityTuple;
+            relation.clampTuple = &state.narrativeRegistry.clampQualityTuple;
             auto key = RelTuple([args[0], args[1]]);
             auto old = key in visibleRelation(relation).keyIndex;
             if (name == "get")
@@ -115,12 +133,31 @@ void openQualityLib(LuaState state) {
             } else if (name == "set")
                 world.updateFact("quality", RelTuple([args[0], args[1], args[2]]), "set");
             else
-                world.updateFact("quality", key, "adjust", args[2]);
+                world.updateFact("quality", key, "adjust", args[2], clamp);
             return cast(LuaValue[])[];
         });
     }
 
     foreach (name; ["initialize", "get", "set", "add"])
         addOperation(name);
+    add("metadata", (void* pointer, LuaValue[] args) {
+        auto state = cast(LuaState) pointer;
+        if (args.length != 1)
+            throw new LuaException("quality.metadata requires a quality symbol");
+        auto id = qualityName(args[0]);
+        auto definition = state.narrativeRegistry.quality(id);
+        if (definition is null)
+            throw new LuaException("unknown quality '" ~ id ~ "'");
+        // Fields that are absent stay absent (nil), so `minimum == nil` means unbounded below.
+        return [
+            immutableRecord([
+                "initial": definition.initial,
+                "minimum": definition.minimum,
+                "maximum": definition.maximum,
+                "visible": LuaValue(definition.visible),
+                "label": LuaValue(definition.label)
+            ])
+        ];
+    });
     state.setGlobal("quality", LuaValue(library));
 }

@@ -95,7 +95,8 @@ enum OpCode {
     DefineContent,
     DefineDeck,
     RegRule, // a, bx         : register rule template bx using world R[a]
-    MakeQuery // a, bx         : R[a] = create query iterator from query template bx
+    MakeQuery, // a, bx         : R[a] = create query iterator from query template bx
+    AdjustClamp // like AdjustKey; the result saturates at the declared quality bounds
 }
 
 import varis.relterms : CompareOp, TermKind, GoalKind, PlanHolder;
@@ -194,6 +195,7 @@ class ContentTemplate {
     string[] parameters;
     string[] incomingParameters;
     string[] groundedParameters;
+    string[] exposed;
     string[] optionNames;
     int[] optionRegisters;
     int availabilityRegister = -1;

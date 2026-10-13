@@ -701,7 +701,7 @@ private enum string sharedOpcodeCases2 = q{
                     break;
 
                 case OpCode.DefineContent, OpCode.DefineDeck, OpCode.LoadSymbol, OpCode.NewLocalRel, OpCode.DeclRel,
-                    OpCode.SetFact, OpCode.DeleteKey, OpCode.AdjustKey, OpCode.AddFact, OpCode.RetractFact,
+                    OpCode.SetFact, OpCode.DeleteKey, OpCode.AdjustKey, OpCode.AdjustClamp, OpCode.AddFact, OpCode.RetractFact,
                     OpCode.RegRule, OpCode.MakeQuery:
                     declarativeOp(state, closure, proto, registers, &findOrCreateUpvalue, instr);
                     break;
@@ -2438,7 +2438,7 @@ struct VM {
             OpCode.LoadSymbol, OpCode.NewLocalRel, OpCode.DeclRel, OpCode.AddFact, OpCode.RetractFact,
             OpCode.SetFact, OpCode.DeleteKey, OpCode.AdjustKey, OpCode.BeginTransaction,
             OpCode.EndTransaction, OpCode.Rollback, OpCode.DefineContent, OpCode.DefineDeck,
-            OpCode.RegRule, OpCode.MakeQuery:
+            OpCode.RegRule, OpCode.MakeQuery, OpCode.AdjustClamp:
             return luaNil();
         }
     }

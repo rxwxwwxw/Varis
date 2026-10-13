@@ -43,6 +43,8 @@ class SceneHost {
     private LuaValue token;
     SceneView view;
     string error;
+    /// How many beats `back` can take back; 0 turns it off. Applied to each new or restored session.
+    size_t undoLimit = 256;
 
     bool loadContent(string source, string filename, string scene) {
         try {
@@ -58,6 +60,7 @@ class SceneHost {
             }
             candidate.session = new Session(candidate.state, new World);
             candidate.session.playScene(scene);
+            candidate.session.setUndoLimit(undoLimit);
             if (!candidate.refresh()) {
                 error = candidate.error;
                 return false;
@@ -135,6 +138,27 @@ class SceneHost {
         }
     }
 
+    bool canBack() {
+        return session !is null && session.undoDepth() > 0;
+    }
+
+    /// Takes back the last beat advance (beat-granularity rollback); the earlier beat is current again.
+    bool back() {
+        if (!ready())
+            return false;
+        if (session.undoDepth() == 0) {
+            error = "nothing to go back to";
+            return false;
+        }
+        try {
+            session.undo();
+            return refresh();
+        } catch (Exception failure) {
+            error = failure.msg;
+            return false;
+        }
+    }
+
     bool save(out string bytes) {
         if (!ready())
             return false;
@@ -157,6 +181,7 @@ class SceneHost {
                     }, "presentation_world")));
             auto previous = session;
             session = restored;
+            session.setUndoLimit(undoLimit);
             if (refresh())
                 return true;
             session = previous;

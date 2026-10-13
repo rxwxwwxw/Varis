@@ -561,6 +561,7 @@ final class NarrativeDefinitionStmt : Stmt {
     string[] parameters;
     AstGoal[] goals;
     AstGoal[] requireGoals; // choice `require { ... }`: shown but disabled when it fails
+    string[] exposed; // `expose ?name`: matched values shown to templates and effects
     string[] fieldNames;
     Expr[] fieldValues;
     NarrativeDefinitionStmt[] choices;
@@ -605,12 +606,24 @@ final class UpdateStmt : Stmt {
     AstRelRef relRef;
     Expr[] args;
     Expr delta;
+    bool clamp; // `adjust ... by d clamp`: saturate at the declared quality bounds
     this(string operation, AstRelRef relRef, Expr[] args, Expr delta, SourceLoc loc) {
         super(loc);
         this.operation = operation;
         this.relRef = relRef;
         this.args = args;
         this.delta = delta;
+    }
+}
+
+/// `symbols player, keeper, lamp_room`: declares symbols project-wide. Order-independent; it
+/// compiles to nothing and exists for the checker and for content loading.
+final class SymbolsDeclStmt : Stmt {
+    string[] names;
+    SourceLoc[] nameLocs;
+    SourceLoc[] nameEnds;
+    this(SourceLoc loc) {
+        super(loc);
     }
 }
 

@@ -151,6 +151,7 @@ class Transaction : FrameScope {
         auto copy = new Relation(original.id, original.name, original.arity);
         copy.protectedRelation = source.protectedRelation;
         copy.validateTuple = source.validateTuple;
+        copy.clampTuple = source.clampTuple;
         copy.columns = source.columns.dup;
         copy.keyColumns = source.keyColumns.dup;
         copy.baseFacts = source.baseFacts.dup;
@@ -271,6 +272,8 @@ class Relation {
     bool isLocal = false;
     bool protectedRelation;
     void delegate(RelTuple) validateTuple;
+    /// Saturates a tuple at declared bounds (quality only); null where bounds are not supported.
+    RelTuple delegate(RelTuple) clampTuple;
 
     this(size_t id, string name, int arity, World ownerWorld = null, bool isLocal = false) {
         this.id = id;
@@ -379,13 +382,13 @@ class Relation {
         return false;
     }
 
-    bool adjustKey(RelTuple key, LuaValue delta) {
+    bool adjustKey(RelTuple key, LuaValue delta, bool clamp = false) {
         if (protectedRelation)
             throw new LuaException("cannot modify read-only relation '" ~ name ~ "'");
         if (ownerWorld !is null) {
             checkMutationWorld(ownerWorld);
             if (auto transaction = currentTransaction())
-                return transaction.write(this).adjustKey(key, delta);
+                return transaction.write(this).adjustKey(key, delta, clamp);
         } else if (isLocal && currentTransaction() !is null) {
             throw new LuaException("local relation mutation prohibited during a transaction");
         }
@@ -416,6 +419,11 @@ class Relation {
             }
 
             values[valueColumn] = LuaValue(number(value) + number(delta));
+        }
+        if (clamp) {
+            if (clampTuple is null)
+                throw new LuaException(format("relation '%s' has no declared bounds to clamp to", name));
+            return setFact(clampTuple(RelTuple(values)));
         }
         return setFact(RelTuple(values));
     }
@@ -513,6 +521,7 @@ class Relation {
         auto clone = new Relation(g_nextRelId++, name, arity, newOwner, isLocal);
         clone.protectedRelation = protectedRelation;
         clone.validateTuple = validateTuple;
+        clone.clampTuple = clampTuple;
         clone.columns = columns.dup;
         clone.keyColumns = keyColumns.dup;
         // Share the fact set; whichever side writes first makes its own copy (see ownFacts).
@@ -523,6 +532,19 @@ class Relation {
         clone.cachedTable = factTable();
         return clone;
     }
+}
+
+/// The base facts of a world at one moment (see `World.captureFacts`).
+final class FactSnapshot {
+    struct Entry {
+        Relation relation;
+        bool[RelTuple] baseFacts;
+        RelTuple[RelTuple] keyIndex;
+        ulong version_;
+    }
+
+    Entry[] entries;
+    ulong worldVersion;
 }
 
 /// A logical world containing named relations, base facts, and rules
@@ -616,7 +638,8 @@ class World {
         return relation;
     }
 
-    bool updateFact(string name, RelTuple arguments, string operation, LuaValue delta = LuaValue.init) {
+    bool updateFact(string name, RelTuple arguments, string operation, LuaValue delta = LuaValue.init,
+            bool clamp = false) {
         checkMutationWorld(this);
         auto relation = getRelation(name);
         if (relation is null)
@@ -630,7 +653,7 @@ class World {
             changed = relation.deleteKey(arguments);
             break;
         case "adjust":
-            changed = relation.adjustKey(arguments, delta);
+            changed = relation.adjustKey(arguments, delta, clamp);
             break;
         default:
             throw new LuaException("unknown relation update");
@@ -707,6 +730,45 @@ class World {
         rule.headRel.relId = head.id;
         head.addRule(rule);
         version_++;
+        notifyCommittedChange();
+    }
+
+    /// Captures the base facts of every relation so `restoreFacts` can put them back in place
+    /// (session undo). Fact sets are shared copy-on-write, so a capture costs one copy per
+    /// relation that is written afterwards, not a copy of the world.
+    FactSnapshot captureFacts() {
+        if (transactionOwner !is null)
+            throw new LuaException("cannot capture facts during a transaction");
+        auto snapshot = new FactSnapshot;
+        snapshot.worldVersion = version_;
+        foreach (relation; relations.values) {
+            relation.factsShared = true;
+            snapshot.entries ~= FactSnapshot.Entry(relation, relation.baseFacts, relation.keyIndex, relation.version_);
+        }
+        return snapshot;
+    }
+
+    /// Puts back the facts of a capture. Versions only move forward, so a version number never
+    /// names two different states. Rules, schemas and relations declared since are untouched.
+    void restoreFacts(FactSnapshot snapshot) {
+        if (transactionOwner !is null)
+            throw new LuaException("cannot restore facts during a transaction");
+        bool changed;
+        foreach (entry; snapshot.entries) {
+            auto relation = entry.relation;
+            // A version only moves when facts are written: an equal one means nothing changed.
+            if (relation.version_ == entry.version_)
+                continue;
+            changed = true;
+            relation.baseFacts = entry.baseFacts;
+            relation.keyIndex = entry.keyIndex;
+            relation.factsShared = true;
+            relation.cachedTable = null;
+            relation.version_ = (relation.version_ > entry.version_ ? relation.version_ : entry.version_) + 1;
+        }
+        if (!changed && version_ == snapshot.worldVersion)
+            return;
+        version_ = (version_ > snapshot.worldVersion ? version_ : snapshot.worldVersion) + 1;
         notifyCommittedChange();
     }
 

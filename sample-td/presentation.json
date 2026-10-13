@@ -1,0 +1,313 @@
+{
+ "title": "Lanternfall",
+ "subtitle": "Four nights on Marrow Hill",
+ "window": [
+  1280,
+  720
+ ],
+ "theme": {
+  "font_size": 22,
+  "padding": 12,
+  "gap": 8,
+  "colors": {
+   "accent": "#f0c860",
+   "panel": "#12182aee",
+   "row": "#1c2540ee",
+   "row_hot": "#4a5a80ee",
+   "gold": "#ffe08a",
+   "good": "#9fe0a0",
+   "bad": "#e8847c"
+  }
+ },
+ "project": ".",
+ "scene": "prologue",
+ "font_size": 22,
+ "save": "quicksave.json",
+ "autosave": "autosave.json",
+ "settings": "settings.json",
+ "languages": [
+  {
+   "tag": "",
+   "name": "English"
+  },
+  {
+   "tag": "fr",
+   "name": "Fran\u00e7ais"
+  }
+ ],
+ "choice_labels": [
+  "look",
+  "go"
+ ],
+ "clock": [
+  "Dusk",
+  "Night",
+  "Dawn",
+  "Day"
+ ],
+ "backgrounds": [
+  {
+   "id": "terraces",
+   "file": "assets/bg-terraces.svg"
+  },
+  {
+   "id": "road",
+   "file": "assets/bg-road.svg"
+  },
+  {
+   "id": "mill",
+   "file": "assets/bg-mill.svg"
+  },
+  {
+   "id": "bellfrey",
+   "file": "assets/bg-bellfrey.svg"
+  },
+  {
+   "id": "valley",
+   "file": "assets/bg-valley.svg"
+  },
+  {
+   "id": "lantern",
+   "file": "assets/bg-lantern.svg"
+  },
+  {
+   "id": "title",
+   "file": "assets/bg-title.svg"
+  }
+ ],
+ "sprites": [
+  {
+   "character": "ilse",
+   "attributes": {
+    "expression": "calm"
+   },
+   "file": "assets/sprite-ilse-calm.svg"
+  },
+  {
+   "character": "ilse",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/sprite-ilse-worried.svg"
+  },
+  {
+   "character": "ilse",
+   "attributes": {
+    "expression": "fierce"
+   },
+   "file": "assets/sprite-ilse-fierce.svg"
+  },
+  {
+   "character": "corvin",
+   "attributes": {
+    "expression": "calm"
+   },
+   "file": "assets/sprite-corvin-calm.svg"
+  },
+  {
+   "character": "corvin",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/sprite-corvin-worried.svg"
+  },
+  {
+   "character": "corvin",
+   "attributes": {
+    "expression": "fierce"
+   },
+   "file": "assets/sprite-corvin-fierce.svg"
+  },
+  {
+   "character": "wren",
+   "attributes": {
+    "expression": "calm"
+   },
+   "file": "assets/sprite-wren-calm.svg"
+  },
+  {
+   "character": "wren",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/sprite-wren-worried.svg"
+  },
+  {
+   "character": "wren",
+   "attributes": {
+    "expression": "fierce"
+   },
+   "file": "assets/sprite-wren-fierce.svg"
+  },
+  {
+   "character": "warden",
+   "attributes": {
+    "expression": "calm"
+   },
+   "file": "assets/sprite-warden-calm.svg"
+  },
+  {
+   "character": "warden",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/sprite-warden-worried.svg"
+  },
+  {
+   "character": "warden",
+   "attributes": {
+    "expression": "fierce"
+   },
+   "file": "assets/sprite-warden-fierce.svg"
+  }
+ ],
+ "portraits": [
+  {
+   "character": "ilse",
+   "attributes": {
+    "expression": "calm"
+   },
+   "file": "assets/portrait-ilse-calm.svg"
+  },
+  {
+   "character": "ilse",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/portrait-ilse-worried.svg"
+  },
+  {
+   "character": "ilse",
+   "attributes": {
+    "expression": "fierce"
+   },
+   "file": "assets/portrait-ilse-fierce.svg"
+  },
+  {
+   "character": "corvin",
+   "attributes": {
+    "expression": "calm"
+   },
+   "file": "assets/portrait-corvin-calm.svg"
+  },
+  {
+   "character": "corvin",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/portrait-corvin-worried.svg"
+  },
+  {
+   "character": "corvin",
+   "attributes": {
+    "expression": "fierce"
+   },
+   "file": "assets/portrait-corvin-fierce.svg"
+  },
+  {
+   "character": "wren",
+   "attributes": {
+    "expression": "calm"
+   },
+   "file": "assets/portrait-wren-calm.svg"
+  },
+  {
+   "character": "wren",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/portrait-wren-worried.svg"
+  },
+  {
+   "character": "wren",
+   "attributes": {
+    "expression": "fierce"
+   },
+   "file": "assets/portrait-wren-fierce.svg"
+  },
+  {
+   "character": "warden",
+   "attributes": {
+    "expression": "calm"
+   },
+   "file": "assets/portrait-warden-calm.svg"
+  },
+  {
+   "character": "warden",
+   "attributes": {
+    "expression": "worried"
+   },
+   "file": "assets/portrait-warden-worried.svg"
+  },
+  {
+   "character": "warden",
+   "attributes": {
+    "expression": "fierce"
+   },
+   "file": "assets/portrait-warden-fierce.svg"
+  }
+ ],
+ "slots": [
+  {
+   "id": "left",
+   "x": 60,
+   "y": 44,
+   "width": 400,
+   "height": 350
+  },
+  {
+   "id": "center",
+   "x": 440,
+   "y": 44,
+   "width": 400,
+   "height": 350
+  },
+  {
+   "id": "right",
+   "x": 820,
+   "y": 44,
+   "width": 400,
+   "height": 350
+  }
+ ],
+ "audio": [
+  {
+   "id": "title_theme",
+   "file": "assets/title_theme.wav"
+  },
+  {
+   "id": "night_theme",
+   "file": "assets/night_theme.wav"
+  },
+  {
+   "id": "stat_up",
+   "file": "assets/stat_up.wav"
+  },
+  {
+   "id": "click",
+   "file": "assets/click.wav"
+  },
+  {
+   "id": "fail",
+   "file": "assets/fail.wav"
+  },
+  {
+   "id": "moment",
+   "file": "assets/moment.wav"
+  }
+ ],
+ "channels": [
+  {
+   "id": "music",
+   "loop": 1
+  },
+  {
+   "id": "ambience",
+   "loop": 1
+  },
+  {
+   "id": "sfx",
+   "loop": 0
+  }
+ ]
+}

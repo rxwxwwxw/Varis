@@ -24,6 +24,7 @@ import varis.services.diagnostic;
 import varis.services.index : indexFile;
 import varis.services.l10n : localeMessages;
 import varis.services.manifest;
+import varis.services.tier : installTierEnforcement;
 import varis.workbench.server : errorText, jsonQuote, readFile;
 
 private void say(string text) {
@@ -82,8 +83,10 @@ private void installConfig(LuaState state, ref const Manifest manifest, long see
     }
     table.rawset(LuaValue("parameters"), LuaValue(parameters));
     state.setGlobal("__varis_project", LuaValue(table));
+    installTierEnforcement(state, manifest, ".");
     // Project modules resolve from the project directory, as when a game is run from it.
-    auto path = state.loadString(`package.path = "./?.lua;./?/init.lua;" .. package.path`, "=varis");
+    auto path = state.loadString(
+            `package.path = "./?.varis;./?/init.varis;./?.lua;./?/init.lua;" .. package.path`, "=varis");
     VM.callValue(state, LuaValue(path), []);
 }
 

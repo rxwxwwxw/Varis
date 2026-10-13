@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
   "name": "Varis",
   "scopeName": "source.varis",
-  "fileTypes": ["lua"],
+  "fileTypes": ["varis", "lua"],
   "patterns": [
     { "include": "#comment" },
     { "include": "#string" },
@@ -74,7 +74,7 @@
     },
     "content-word": {
       "name": "keyword.other.content.varis",
-      "match": "\\b(when|title|text|effect|priority|weight|cooldown|repeatable|sticky|order|phase|once_per|fact|retract|set|delete|adjust|by|query|transaction|rollback|key)\\b"
+      "match": "\\b(when|title|text|effect|priority|weight|cooldown|repeatable|sticky|order|phase|once_per|fact|retract|set|delete|adjust|by|clamp|query|exists|expose|leads|require|because|symbols|transaction|rollback|key)\\b"
     },
     "constant": { "name": "constant.language.varis", "match": "\\b(true|false|nil)\\b" },
     "rule-operator": { "name": "keyword.operator.rule.varis", "match": ":-" }

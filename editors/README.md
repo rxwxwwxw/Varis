@@ -5,9 +5,11 @@ definition, references, hover, outline and rename (which also rewrites `l10n/` c
 It never runs project code.
 
 - **Highlighting:** `varis.tmLanguage.json` is a TextMate grammar (scope `source.varis`) and
-  `language-configuration.json` the matching bracket and comment configuration. Varis files keep
-  the `.lua` extension today (ROADMAP open decision 2), so an editor must be told to use this
-  grammar for a project's files; it is a superset of Lua's highlighting.
+  `language-configuration.json` the matching bracket and comment configuration. Varis source
+  files use the `.varis` extension (owner decision of October 13, 2026; the language is shown as
+  **Varis**, not Lua), and an editor picks this grammar from the extension. Existing `.lua`
+  files keep loading, and an editor must be told to use this grammar for those; it is a superset
+  of Lua's highlighting.
 - **Any LSP client:** start `varis lsp` with the project directory as the workspace root, for
   files of the project. For example in Neovim:
 

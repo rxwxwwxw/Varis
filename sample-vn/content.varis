@@ -1,0 +1,22 @@
+-- Harbour Window: a linear visual novel, with engine-owned stage state.
+character mira {
+    name = "Mira", tag = :mira,
+    attributes = { expression = {:quiet, :smile}, outfit = {:coat} },
+    defaults = { expression = :quiet, outfit = :coat }
+}
+scene farewell()
+    say mira id promise "Then I will see you tomorrow."
+    return
+end
+scene harbour()
+    background :harbour_evening
+    audio music :evening_theme
+    show mira at :left
+    input visitor id name "What is your name?"
+    say mira with expression = :smile id welcome "Welcome back, {visitor}."
+    call farewell
+    say mira id lantern "Leave the lantern burning."
+    hide mira
+    audio music off
+    ended
+end

@@ -282,7 +282,7 @@ private Prototype undumpProto(ref Reader r, string parentSource, int depth) {
     p.code.length = ncode;
     foreach (ref instr; p.code) {
         auto op = r.varint();
-        if (op > cast(ulong) OpCode.MakeQuery)
+        if (op > cast(ulong) OpCode.AdjustClamp)
             throw r.error("corrupted chunk");
         instr.op = cast(OpCode) op;
         instr.a = r.smallInt();

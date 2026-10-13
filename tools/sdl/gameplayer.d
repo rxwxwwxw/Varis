@@ -24,6 +24,10 @@ module tools.sdl.gameplayer;
 
 import tools.sdl.native;
 import tools.sdl.ui;
+import tools.sdl.battleview;
+import varis.game.battle : Battle;
+import varis.game.kinds : Primitive, TowerKind;
+import varis.game.types : Command, CommandKind, CueKind, Outcome, StepResult;
 import varis.services.gamehost;
 import varis.services.presentation : SceneView, StageCharacter;
 import varis.services.json;
@@ -98,6 +102,43 @@ enum Overlay {
 
 private immutable float[] textScales = [0.8f, 0.9f, 1.0f, 1.15f, 1.3f, 1.5f, 1.75f];
 private immutable string[] layoutNames = ["Auto", "Compact", "Regular", "Wide"];
+
+/// Gives its child whatever room is left and reports no natural height of its own, so the bars
+/// around it keep their place however tall its content would like to be.
+private final class Squeezable : Widget {
+    Widget inner;
+
+    this(Widget inner) {
+        this.inner = inner;
+    }
+
+    override Size measure(Ui ui, float maxW, float maxH) {
+        return Size(maxW, 0);
+    }
+
+    override bool shrinkable() {
+        return true;
+    }
+
+    override float minHeight(Ui ui) {
+        return ui.u(80);
+    }
+
+    override void arrange(Ui ui, Rect r) {
+        rect = r;
+        inner.arrange(ui, r);
+    }
+
+    override void draw(Ui ui) {
+        ui.pushClip(rect);
+        inner.draw(ui);
+        ui.popClip();
+    }
+
+    override bool event(Ui ui, ref UiEvent e) {
+        return inner.event(ui, e);
+    }
+}
 
 /// The pictures of a scene: sprites in their slots of the stage rectangle.
 private final class StageWidget : Widget {
@@ -223,7 +264,7 @@ class GamePlayer {
     string[][string] roads;
     string[] clock;
     string[] choiceLabels; // storylets whose rows are labelled by the choice, not the storylet
-    string root, savePath, autosavePath, settingsPath, title, subtitle;
+    string root, savePath, autosavePath, settingsPath, profilePath, title, subtitle;
     string[] history;
     Mode mode;
     Overlay overlay;
@@ -242,6 +283,10 @@ class GamePlayer {
     int windowWidth = 1280, windowHeight = 720;
     bool sceneOnly;
     private Widget lastRoot;
+    // the battle view (state that outlives a frame) and the smoke test's fixed step rate
+    BattleViewState bview;
+    BattleCanvas bcanvas;
+    int smokeStepsPerFrame;
 
     string path(string value) {
         return isAbsolute(value) ? value : buildPath(root, value);
@@ -287,6 +332,7 @@ class GamePlayer {
         title = config.stringOr("title", "Varis");
         subtitle = config.stringOr("subtitle");
         host = new GameHost;
+        bview = new BattleViewState;
         auto project = config.stringOr("project");
         if (project.length) {
             if (!host.loadProject(path(project), config.stringOr("scene")))
@@ -351,6 +397,9 @@ class GamePlayer {
         savePath = path(config.stringOr("save", "quicksave.json"));
         autosavePath = path(config.stringOr("autosave", "autosave.json"));
         settingsPath = path(config.stringOr("settings", "settings.json"));
+        profilePath = path(config.stringOr("profile", "profile.json"));
+        if (exists(profilePath))
+            host.profileLoad(readText(profilePath)); // a bad file leaves the empty profile
         seed = config.integerOr("seed", 0);
         if (!images(config.get("backgrounds"), backgrounds) || !images(config.get("sprites"), sprites) ||
                 !images(config.get("portraits"), portraits))
@@ -653,11 +702,20 @@ class GamePlayer {
         return afterBoundary();
     }
 
+    /// The profile (achievements, endings seen) lives outside every save; it is kept beside them.
+    void saveProfile() {
+        string text;
+        if (host.profileSave(text))
+            write(profilePath, text);
+    }
+
     void autosave() {
+        saveProfile();
         if (sceneOnly)
             return;
+        // inside a battle the autosave is the world at its start: Continue begins it again
         string bytes;
-        if (host.save(bytes))
+        if (host.autosaveBytes(bytes))
             write(autosavePath, bytes);
     }
 
@@ -1036,6 +1094,8 @@ class GamePlayer {
 
     private Widget playScreen() {
         auto cls = ui.sizeClass;
+        if (host.inBattle)
+            return battleScreen(cls);
         auto layers = new Stack;
         auto back = new Backdrop;
         back.texture = backgroundImage();
@@ -1088,6 +1148,7 @@ class GamePlayer {
                 body.add(button("Resume", &close));
                 body.add(button("Save (F5)", { quickSave(); }));
                 body.add(button("Load (F9)", { quickLoad(); }));
+                body.add(button("Back (B)", { goBack(); }, host.canBack()));
                 body.add(button("Language: " ~ currentLanguage(), { cycleLanguage(1); }, languages.length > 1));
                 body.add(button(format("Volume: %d", volume), { adjustVolume(1); }));
                 body.add(button(format("Text size: %d%%", cast(int)(textScales[textScaleIndex] * 100 + 0.5f)), {
@@ -1173,7 +1234,7 @@ class GamePlayer {
                     "Spend your days getting ready for the Trials.",
                     "Each activity uses a part of the day. Stats rise by training, and many choices need a stat to be high enough: locked choices say what they want.",
                     "Up/Down and Enter, a number key, or the mouse choose.",
-                    "C character, J journal, M map, H history, F5 save, F9 load, F11 fullscreen, Tab or Esc for the menu.",
+                    "C character, J journal, M map, H history, F5 save, F9 load, B back, F11 fullscreen, Tab or Esc for the menu.",
                     "The text size and the layout can be changed in the menu; a narrow window moves the status into a drawer."
                 ])
                     body.add(text(line, FontRole.body));
@@ -1321,11 +1382,476 @@ class GamePlayer {
             auto points = Size(ui.width / ui.pixelScale, ui.height / ui.pixelScale);
             ui.autoFit = max(0.75f, min(1.25f, min(points.w / 1280.0f, points.h / 720.0f)));
         }
+        updateBattle();
         auto rootWidget = build();
         layout(ui, rootWidget);
         v_begin(ui.theme.backdrop);
         rootWidget.draw(ui);
         lastRoot = rootWidget;
+    }
+
+    // ---- battle --------------------------------------------------------------------
+
+    /// Runs the night in real time (20 steps a second times the speed), and turns what the
+    /// simulation did into effects. The view never touches the simulation but through the host.
+    private void updateBattle() {
+        if (!host.inBattle) {
+            bview.lastTick = 0;
+            bview.reset();
+            return;
+        }
+        if (bcanvas is null)
+            bcanvas = new BattleCanvas(host, bview);
+        auto now = v_ticks();
+        if (host.battlePhase == BattlePhase.night && !host.view.inScene && !host.battle.paused) {
+            double due;
+            if (smokeStepsPerFrame)
+                due = smokeStepsPerFrame;
+            else {
+                auto elapsed = bview.lastTick ? now - bview.lastTick : 16;
+                due = min(elapsed, 100UL) * 20.0 * host.battle.speed / 1000.0;
+            }
+            bview.stepDebt += due;
+            int steps = min(cast(int) bview.stepDebt, 80);
+            bview.stepDebt -= cast(int) bview.stepDebt;
+            auto leaksBefore = host.battle.battle.leaks;
+            while (steps-- > 0) {
+                auto result = host.battleAdvance(1);
+                bcanvas.collect();
+                if (result == StepResult.moment) {
+                    sfx("moment");
+                    afterBoundary();
+                    break;
+                }
+                if (result != StepResult.running) {
+                    sfx(result == StepResult.won ? "stat_up" : "fail");
+                    break;
+                }
+            }
+            if (host.inBattle && host.battle.battle.leaks > leaksBefore)
+                sfx("fail");
+        }
+        bview.lastTick = now;
+        if (bcanvas !is null) {
+            bcanvas.age();
+            // a moment takes the camera to whoever it is about, and gives it back afterwards
+            if (host.battlePhase == BattlePhase.moment && !bview.hasSaved)
+                bcanvas.focusOnMoment();
+            else if (host.battlePhase == BattlePhase.night && bview.hasSaved)
+                bview.returnCamera();
+            bview.ease();
+        }
+    }
+
+    private string towerName(const TowerKind kind) {
+        auto shown = host.display(kind.name);
+        return shown.length ? shown : kind.name;
+    }
+
+    private void battleNotice(string text) {
+        bview.say(text, ui.now);
+    }
+
+    /// What can be done now, in words: the build phase must say how to build.
+    private Widget battleHelp() {
+        auto box = panel(true, 8);
+        box.gap = 3;
+        if (host.battlePhase == BattlePhase.build) {
+            box.add(text("Build phase: nothing moves until you begin the night.", FontRole.small, ui.theme.accent));
+            if (bview.placeKind >= 0) {
+                auto kind = host.battle.battle.setup.towers[bview.placeKind];
+                box.add(text(format("Placing %s: click a free tile on the map to build it. Esc cancels.",
+                        towerName(kind)), FontRole.small, ui.theme.gold));
+            } else
+                box.add(text("To build a lamp: 1) pick one in the bar below (or press 1-5), 2) click a free tile "
+                        ~ "near the pale road. Click a lamp to upgrade or sell it.", FontRole.small, ui.theme.text));
+            box.add(text("Scroll wheel zooms, arrow keys pan, F fits the map. Press Begin the night when ready.",
+                    FontRole.small, ui.theme.dim));
+        } else if (bview.placeKind >= 0) {
+            box.add(text("Click a free tile to build. Esc cancels.", FontRole.small, ui.theme.gold));
+        } else
+            return null;
+        return box;
+    }
+
+    /// True when nothing on screen can change without an event: the player may skip drawing.
+    bool battleIdle() {
+        if (mode != Mode.play || !host.inBattle || bview.easing || bview.flashes.length || host.view.inScene)
+            return false;
+        if (bview.notice.length && ui.now - bview.noticeAt < 3600)
+            return false;
+        return host.battlePhase == BattlePhase.build || host.battlePhase == BattlePhase.ended
+            || host.battle.paused;
+    }
+
+    private Widget battleTopBar(bool compact) {
+        auto bar = panel(false, 8);
+        const b = &host.battle.battle;
+        string phase = host.battlePhase == BattlePhase.build ? "Build" : host.battlePhase == BattlePhase.ended ? "Over" : host
+            .battle.paused ? "Paused" : format("Night  x%d", host.battle.speed);
+        bar.add(text(phase, FontRole.heading, ui.theme.accent, Overflow.ellipsis), 0.8f);
+        bar.add(text(format("Oil %d", b.credits), FontRole.body, ui.theme.gold, Overflow.ellipsis), 1);
+        bar.add(text(format("Leaks %d/%d", b.leaks, b.setup.maxLeaks), FontRole.body,
+                b.leaks * 2 >= b.setup.maxLeaks ? ui.theme.bad : ui.theme.text, Overflow.ellipsis), 1);
+        if (!compact) {
+            bar.add(text(format("Fallen %d", b.kills), FontRole.body, ui.theme.text, Overflow.ellipsis), 1);
+            bar.add(text(format("%d:%02d", b.stepIndex / 1200, (b.stepIndex / 20) % 60), FontRole.body, ui.theme.dim,
+                    Overflow.ellipsis), 0.6f);
+        }
+        return bar;
+    }
+
+    private void delegate() paletteClick(int kind) {
+        return{ bview.placeKind = bview.placeKind == kind ? -1 : kind; bview.targeting = false; };
+    }
+
+    private Widget battlePalette(SizeClass cls) {
+        auto bar = panel(false, 6);
+        bar.gap = 6;
+        const b = &host.battle.battle;
+        int shown;
+        foreach (i, ref kind; b.setup.towers) {
+            if (!kind.buildable)
+                continue;
+            ++shown;
+            auto label = format("%s  %d", towerName(kind), kind.cost);
+            bool affordable = kind.cost <= b.credits;
+            auto button = new Button(label, paletteClick(cast(int) i));
+            button.role = cls == SizeClass.compact ? FontRole.small : FontRole.body;
+            button.prefix = format("%d", shown);
+            button.selected = bview.placeKind == cast(int) i;
+            button.id = format("tower%d", i);
+            if (!affordable)
+                button.enabled = true; // clickable: the reason is shown when placing fails
+            bar.add(button, 1);
+        }
+        return bar;
+    }
+
+    private string describeUnit(int id) {
+        const b = &host.battle.battle;
+        foreach (s; 0 .. b.structureCount) {
+            if (b.sId[s] != id)
+                continue;
+            auto kind = b.setup.towers[b.sKind[s]];
+            string head = b.sIsHero[s] ? heroName(id) : towerName(kind);
+            string line = format("%s  hp %d/%d", head, b.sHp[s], b.sMaxHp[s]);
+            if (b.sShield[s] > 0)
+                line ~= format("  shield %d", b.sShield[s]);
+            if (!b.sIsHero[s])
+                line ~= format("  level %d", b.sLevel[s]);
+            if (!b.sAlive[s])
+                line ~= b.sIsHero[s] ? "  (down)" : "  (ruin)";
+            return line;
+        }
+        return "";
+    }
+
+    private string heroName(int id) {
+        switch (id) {
+        case 9001:
+            return host.display("ilse");
+        case 9002:
+            return host.display("corvin");
+        case 9003:
+            return host.display("wren");
+        default:
+            return format("Hero %d", id);
+        }
+    }
+
+    private Widget battleSidePanel() {
+        auto p = panel(true, 8);
+        p.gap = 6;
+        const b = &host.battle.battle;
+        // heroes: a button each, with health
+        foreach (s; 0 .. b.structureCount) {
+            if (!b.sIsHero[s])
+                continue;
+            auto id = b.sId[s];
+            string label = format("%s  %d/%d%s", heroName(id), max(0, b.sHp[s]), b.sMaxHp[s], b.sAlive[s] ? ""
+                    : "  down");
+            auto button = new Button(label, { bview.selectedId = id; bview.placeKind = -1; });
+            button.role = FontRole.small;
+            button.selected = bview.selectedId == id;
+            button.id = format("hero%d", id);
+            p.add(button);
+        }
+        if (bview.selectedId >= 0) {
+            p.add(text(describeUnit(bview.selectedId), FontRole.small, ui.theme.text));
+            int sel = bview.selectedId;
+            int slot = -1;
+            foreach (s; 0 .. b.structureCount)
+                if (b.sId[s] == sel)
+                    slot = s;
+            if (slot >= 0 && b.sAlive[slot]) {
+                if (b.sIsHero[slot]) {
+                    auto ak = b.sAbilityKind[slot];
+                    if (ak >= 0) {
+                        auto ability = b.setup.towers[ak];
+                        string label = towerName(ability);
+                        bool ready = b.sAbilityCd[slot] == 0;
+                        auto bt = new Button(ready ? "Use " ~ label : format("%s (%d)", label, (b.sAbilityCd[slot] + 19) / 20),
+                        {
+                            if (ability.primitive == Primitive.burn) {
+                                bview.targeting = true;
+                                bview.placeKind = -1;
+                                battleNotice("Click where the flare should land.");
+                            } else {
+                                Command c;
+                                c.action = CommandKind.useAbility;
+                                c.target = sel;
+                                c.q = -1;
+                                c.r = -1;
+                                string why;
+                                if (!host.battleCommand(c, why))
+                                    battleNotice(why);
+                            }
+                        });
+                        bt.role = FontRole.small;
+                        bt.enabled = ready && host.battlePhase == BattlePhase.night;
+                        p.add(bt);
+                    }
+                    p.add(text("Click the ground to order a move.", FontRole.small, ui.theme.dim));
+                } else {
+                    auto kind = b.setup.towers[b.sKind[slot]];
+                    auto up = new Button(format("Upgrade  %d", kind.cost * b.sLevel[slot]), {
+                        Command c;
+                        c.action = CommandKind.upgrade;
+                        c.target = sel;
+                        string why;
+                        if (!host.battleCommand(c, why))
+                            battleNotice(why);
+                    });
+                    up.role = FontRole.small;
+                    up.enabled = b.sLevel[slot] < 3 && kind.buildable;
+                    p.add(up);
+                    auto sell = new Button(format("Sell  %d", kind.cost * b.sLevel[slot] / 2), {
+                        Command c;
+                        c.action = CommandKind.sell;
+                        c.target = sel;
+                        string why;
+                        if (host.battleCommand(c, why))
+                            bview.selectedId = -1;
+                        else
+                            battleNotice(why);
+                    });
+                    sell.role = FontRole.small;
+                    sell.enabled = kind.buildable;
+                    p.add(sell);
+                    if (b.sHp[slot] < b.sMaxHp[slot]) {
+                        auto mend = new Button(format("Repair  %d", (b.sMaxHp[slot] - b.sHp[slot] + 1) / 2), {
+                            Command c;
+                            c.action = CommandKind.repair;
+                            c.target = sel;
+                            string why;
+                            if (!host.battleCommand(c, why))
+                                battleNotice(why);
+                        });
+                        mend.role = FontRole.small;
+                        p.add(mend);
+                    }
+                }
+            }
+        } else {
+            p.add(text(bview.placeKind >= 0 ? "Click a free, open tile to build." : "Click a tower or a hero.",
+                    FontRole.small, ui.theme.dim));
+        }
+        return p;
+    }
+
+    private Widget battleControls() {
+        auto bar = panel(false, 6);
+        bar.gap = 6;
+        if (host.battlePhase == BattlePhase.build) {
+            bar.add(button("Begin the night", {
+                    if (!host.battleBegin())
+                        fail(host.error);
+                    else {
+                        if (host.judgeChipped > 0)
+                            battleNotice("");
+                        autosave();
+                    }
+                }), 2.0f);
+        } else {
+            auto pause = button(host.battle.paused ? "Resume (Space)" : "Pause (Space)", {
+                host.battle.paused = !host.battle.paused;
+            });
+            bar.add(pause, 1.6f);
+            foreach (speed; [1, 2, 4]) {
+                auto b = new Button(format("x%d", speed), { host.battle.speed = speed; });
+                b.role = FontRole.body;
+                b.selected = host.battle.speed == speed;
+                bar.add(b, 0.4f);
+            }
+        }
+        bar.add(button("Fit (F)", { bview.fitted = false; }), 0.6f);
+        bar.add(button("Abandon", {
+                if (!host.battleAbandon())
+                    fail(host.error);
+                else
+                    afterBoundary();
+            }), 0.8f);
+        return bar;
+    }
+
+    private Widget battleResultPanel() {
+        const b = &host.battle.battle;
+        auto body = new Box(true);
+        body.gap = 8;
+        string head = b.outcome == Outcome.won ? "The terraces held." : b.outcome == Outcome.withdrawn
+            ? "You sounded the retreat." : "The line broke.";
+        body.add(text(head, FontRole.heading, b.outcome == Outcome.won ? ui.theme.good : ui.theme.bad));
+        body.add(text(format("%d fell on the road. %d got past the last lamp.", b.kills, b.leaks), FontRole.body));
+        void proceed() {
+            if (!host.battleAccept())
+                fail(host.error);
+            else {
+                autosave();
+                afterBoundary();
+            }
+        }
+
+        if (b.outcome == Outcome.won || b.outcome == Outcome.withdrawn) {
+            body.add(button("Continue", &proceed));
+        } else {
+            body.add(button("Try the night again", {
+                    if (!host.battleRetry())
+                        fail(host.error);
+                    else
+                        afterBoundary();
+                }));
+            body.add(button("Accept the loss and go on", &proceed));
+        }
+        return new Modal("The night is over", body, 520, 320);
+    }
+
+    /// The whole battle screen: the canvas, with the HUD above and below, a side panel, and a
+    /// moment's scene over the dimmed battle.
+    private Widget battleScreen(SizeClass cls) {
+        if (bcanvas is null)
+            bcanvas = new BattleCanvas(host, bview);
+        auto canvas = bcanvas;
+        canvas.flex = 1;
+        auto main = new Box(false);
+        main.gap = 0;
+        main.add(canvas, 1);
+        if (cls != SizeClass.compact) {
+            auto side = new Box(true);
+            side.widthUnits = 230;
+            side.gap = 6;
+            side.add(new MiniMap(host, bview, canvas));
+            side.add(battleSidePanel());
+            main.add(side);
+        }
+        auto column = new Box(true);
+        column.gap = 0;
+        column.add(battleTopBar(cls == SizeClass.compact));
+        if (auto help = battleHelp())
+            column.add(help);
+        // the middle takes what is left and never pushes the palette and controls off the screen
+        column.add(new Squeezable(main), 1);
+        if (cls == SizeClass.compact)
+            column.add(battleSidePanel());
+        column.add(battlePalette(cls));
+        column.add(battleControls());
+        auto layers = new Stack;
+        auto back = new Backdrop;
+        back.colour = ui.theme.backdrop;
+        layers.add(back);
+        if (host.view.inScene) {
+            layers.add(new Dimmed(column));
+            layers.add(dialogue(cls));
+        } else {
+            layers.add(column);
+            if (host.battlePhase == BattlePhase.ended)
+                layers.add(battleResultPanel());
+            else if (bview.notice.length && ui.now - bview.noticeAt < 3500) {
+                auto note = new Box(true);
+                note.add(new Spacer(0, 0, 1));
+                auto line = text(bview.notice, FontRole.body, ui.theme.gold, Overflow.ellipsis);
+                auto holder = panel(false, 6);
+                holder.add(line, 1);
+                note.add(holder);
+                note.add(new Spacer(0, 150));
+                layers.add(note);
+            }
+        }
+        return layers;
+    }
+
+    /// Keys of the battle screen: tower numbers, pan, zoom, pause, begin.
+    bool battleEvent(int type, int key, string typed) {
+        if (type == 2 && host.battlePhase == BattlePhase.build) {
+            if (!host.battleBegin())
+                return fail(host.error);
+            autosave();
+            return true;
+        }
+        if (type != 6)
+            return false;
+        auto canvas = bcanvas;
+        switch (key) {
+        case 27:
+            if (bview.placeKind >= 0 || bview.targeting || bview.selectedId >= 0) {
+                bview.placeKind = -1;
+                bview.targeting = false;
+                bview.selectedId = -1;
+                return true;
+            }
+            return false;
+        case ' ':
+            if (host.battlePhase == BattlePhase.night)
+                host.battle.paused = !host.battle.paused;
+            return true;
+        case 'f':
+            bview.fitted = false;
+            return true;
+        case KeyLeft:
+        case 'a':
+            if (canvas !is null)
+                canvas.pan(-60, 0);
+            return true;
+        case KeyRight:
+        case 'd':
+            if (canvas !is null)
+                canvas.pan(60, 0);
+            return true;
+        case KeyUp:
+        case 'w':
+            if (canvas !is null)
+                canvas.pan(0, -60);
+            return true;
+        case KeyDown:
+        case 's':
+            if (canvas !is null)
+                canvas.pan(0, 60);
+            return true;
+        case '=':
+        case '+':
+            if (canvas !is null)
+                canvas.zoomAbout(1.25f, canvas.rect.x + canvas.rect.w / 2, canvas.rect.y + canvas.rect.h / 2);
+            return true;
+        case '-':
+            if (canvas !is null)
+                canvas.zoomAbout(0.8f, canvas.rect.x + canvas.rect.w / 2, canvas.rect.y + canvas.rect.h / 2);
+            return true;
+        default:
+            break;
+        }
+        if (key >= '1' && key <= '9') {
+            int number = cast(int)(key - '1'), seen;
+            foreach (i, ref kind; host.battle.battle.setup.towers) {
+                if (!kind.buildable)
+                    continue;
+                if (seen++ == number) {
+                    bview.placeKind = bview.placeKind == cast(int) i ? -1 : cast(int) i;
+                    bview.targeting = false;
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     // ---- input ---------------------------------------------------------------------
@@ -1362,12 +1888,26 @@ class GamePlayer {
     }
 
     bool quickSave() {
+        saveProfile();
         string bytes;
         if (!host.save(bytes))
             notice = host.error;
         else {
             write(savePath, bytes);
             notice = "Saved";
+        }
+        noticeAt = v_ticks();
+        return true;
+    }
+
+    /// Takes back the last choice or beat (session undo); a status line says when there is none.
+    bool goBack() {
+        if (!host.back())
+            notice = host.error;
+        else {
+            overlay = Overlay.none;
+            afterBoundary();
+            notice = "Went back";
         }
         noticeAt = v_ticks();
         return true;
@@ -1420,9 +1960,16 @@ class GamePlayer {
     bool event(int type, int key, float x, float y, string typed) {
         if (type == 1)
             return false;
-        if (type == 7) {
+        if (type == 7 || type == 9 || type == 10) {
             ui.mouseX = x;
             ui.mouseY = y;
+            if (lastRoot !is null && host.inBattle) {
+                auto e = UiEvent(type, key, x, y, typed);
+                if (lastRoot.event(ui, e))
+                    return true;
+            }
+            if (type != 7)
+                return true;
             if (mode == Mode.play && overlay == Overlay.none)
                 foreach (i, b; rowButtons)
                     if (b.rect.contains(x, y))
@@ -1490,6 +2037,8 @@ class GamePlayer {
             return true;
         }
         bool typing = v.inScene && v.beat.kind == "input";
+        if (host.inBattle && !v.inScene && battleEvent(type, key, typed))
+            return true;
         if (type == 6) {
             switch (key) {
             case 27:
@@ -1512,6 +2061,10 @@ class GamePlayer {
                 return quickSave();
             case KeyF9:
                 return quickLoad();
+            case 'b':
+                if (!typing && overlay == Overlay.none)
+                    return goBack();
+                break;
             case KeyF11:
                 toggleFullscreen();
                 return true;
@@ -1644,23 +2197,172 @@ int runGame(string manifest, string screenshot) {
     player.mode = player.sceneOnly ? Mode.play : Mode.title;
     if (player.sceneOnly && !player.newGame())
         return 1;
+    bool redraw = true;
     for (;;) {
-        player.frame();
-        v_end();
+        // a build phase, a pause or a result changes nothing by itself: draw only after an event
+        if (redraw || !player.battleIdle()) {
+            player.frame();
+            v_end();
+            redraw = false;
+        }
         int key;
         float x, y;
         const(char)* typed;
         int event;
-        while ((event = v_event(&key, &x, &y, &typed)) != 0)
+        while ((event = v_event(&key, &x, &y, &typed)) != 0) {
+            redraw = true;
             if (!player.event(event, key, x, y, typed ? fromStringz(typed).idup : "")) {
                 if (player.mode == Mode.play)
                     player.autosave();
                 return player.failed ? 1 : 0;
             }
+        }
         if (player.failed)
             return 1;
         v_delay();
     }
+}
+
+/// Plays the first night of a project that has battles, through the player's own widgets and
+/// the host: builds a few towers along the route, captures one frame per zoom band, runs the night
+/// (taking the first answer of every moment), accepts the result and prints the digest, so the
+/// test can compare it with the same night played headless.
+private int battleSmoke(GamePlayer player, string screenshot) {
+    import std.path : stripExtension;
+    import varis.game.route : unreachable;
+
+    if (!player.newGame())
+        return 1;
+    player.smokeStepsPerFrame = 10;
+    auto host = player.host;
+    // the prologue and anything else before the hub
+    foreach (_; 0 .. 200) {
+        if (!host.view.inScene)
+            break;
+        if (host.view.beat.kind == "menu") {
+            if (!player.advance(host.view.beat.choices[0].id))
+                return 1;
+        } else if (!player.advance())
+            return 1;
+    }
+    // "Go up to the terraces"
+    bool asked;
+    foreach (i, ref story; host.view.stories)
+        if (story.id == "go_up") {
+            if (!player.rows.length || !host.choose(i, 0)) {
+                writeln("battle smoke: go_up refused: ", host.error);
+                return 1;
+            }
+            player.afterBoundary();
+            asked = true;
+            break;
+        }
+    if (!asked || host.battlePhase != BattlePhase.build) {
+        writeln("battle smoke: no battle was asked for");
+        return 1;
+    }
+    auto base = screenshot.stripExtension;
+    player.frame();
+    v_capture((base ~ "-build.bmp").toStringz);
+    // towers along the route, a step off the road, every sixth tile from the Lantern end
+    const b = &host.battle.battle;
+    int[] route;
+    {
+        immutable sink = b.setup.sources[0].sink;
+        immutable at = sink * b.tiles;
+        int t = b.sourceTile[0];
+        foreach (_; 0 .. b.tiles) {
+            route ~= t;
+            if (t == b.sinkTile[sink])
+                break;
+            immutable next = b.openDistance[at + t] != unreachable ? b.openParent[at + t] : b.throughParent[at + t];
+            if (next < 0)
+                break;
+            t = next;
+        }
+    }
+    int placed;
+    foreach (k; 0 .. 12) {
+        if (placed >= 6 || route.length < 10 * (k + 1))
+            break;
+        immutable t = route[$ - 6 * (k + 1)];
+        foreach (d; [[1, 1], [-1, 1], [1, -1], [-1, -1], [2, 0], [-2, 0]]) {
+            Command c;
+            c.action = CommandKind.place;
+            c.towerKind = 0;
+            c.q = t % b.width + d[0];
+            c.r = t / b.width + d[1];
+            string why;
+            if (host.battleCommand(c, why)) {
+                writeln("place ", c.towerKind + 1, " ", c.q, " ", c.r);
+                ++placed;
+                break;
+            }
+        }
+    }
+    // one frame in each zoom band (plan §7.3); the frame times are the budget evidence
+    ulong worst;
+    foreach (band, zoom; [5.0f, 11.0f, 26.0f, 55.0f]) {
+        player.bview.zoom = zoom;
+        player.bview.fitted = true;
+        player.bview.easing = false;
+        auto before = v_ticks();
+        player.frame();
+        auto took = v_ticks() - before;
+        if (took > worst)
+            worst = took;
+        v_capture((base ~ "-" ~ ["overview", "tactical", "standard", "close"][band] ~ ".bmp").toStringz);
+    }
+    player.bview.fitted = false;
+    if (!host.battleBegin()) {
+        writeln("battle smoke: ", host.error);
+        return 1;
+    }
+    size_t frames;
+    int moments;
+    while (host.inBattle && host.battlePhase != BattlePhase.ended && frames++ < 60000) {
+        auto before = v_ticks();
+        player.frame();
+        auto took = v_ticks() - before;
+        if (took > worst)
+            worst = took;
+        if (frames == 30)
+            v_capture((base ~ "-night.bmp").toStringz);
+        if (host.view.inScene) {
+            ++moments;
+            if (host.view.beat.kind == "menu") {
+                if (!player.advance(host.view.beat.choices[0].id))
+                    return 1;
+            } else if (!player.advance())
+                return 1;
+        }
+    }
+    if (host.battlePhase != BattlePhase.ended) {
+        writeln("battle smoke: the night did not end");
+        return 1;
+    }
+    player.frame();
+    v_capture((base ~ "-over.bmp").toStringz);
+    const done = &host.battle.battle;
+    writeln("battle smoke: result ", done.outcome, " steps ", done.stepIndex, " kills ", done.kills, " leaks ",
+            done.leaks, " digest ", cast(long) done.digest(), " moments ", moments);
+    writeln("battle smoke: worst frame ", worst, " ms");
+    if (!host.battleAccept()) {
+        writeln("battle smoke: ", host.error);
+        return 1;
+    }
+    player.afterBoundary();
+    bool dawn;
+    foreach (ref story; host.view.stories)
+        dawn = dawn || story.id == "report";
+    if (!dawn || host.inBattle) {
+        writeln("battle smoke: the hub did not return with the dawn report");
+        return 1;
+    }
+    player.frame();
+    v_capture(screenshot.toStringz);
+    writeln("checks passed");
+    return 0;
 }
 
 /// Headless run for `make test-sdl`: starts a game, plays by the first sensible choice,
@@ -1686,6 +2388,8 @@ private int smokeGame(GamePlayer player, string screenshot) {
     }
     if (environment.get("VARIS_SMOKE_PLAY", "") == "ui")
         return uiPlaythrough(player, screenshot);
+    if (environment.get("VARIS_SMOKE_PLAY", "") == "battle")
+        return battleSmoke(player, screenshot);
     if (!player.newGame())
         return 1;
     bool captured, project = !player.sceneOnly;

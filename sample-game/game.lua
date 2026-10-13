@@ -16,6 +16,9 @@ function Achievements.unlock(name)
         print("[achievement] " .. name)
     end
 end
+-- Content files run in a restricted environment (milestone 26); this is the one engine global
+-- they may call, exposed by name.
+narrative.helper("Achievements", Achievements)
 
 require("qualities")
 require("content.decks")

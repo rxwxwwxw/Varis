@@ -19,11 +19,14 @@ import varis.narrative.codec;
 import varis.narrative.templates;
 import varis.narrative.session;
 import varis.narrative.persistence;
+import varis.narrative.profile;
+import varis.narrative.text : markupSpans, escapeMarkup;
 import varis.narrative.observe;
 import varis.narrative.diagnostics;
 import varis.narrative.analysis;
 import varis.vm : VM;
 import varis.logic.world;
+import varis.logic.model : RelTuple;
 import varis.exception : LuaException;
 
 private string symbolName(LuaValue value) {
@@ -59,15 +62,89 @@ void openNarrativeLib(LuaState state) {
             } else {
                 if (registry.scene(id) !is null)
                     throw new LuaException("duplicate scene '" ~ id ~ "'");
-                auto beats = sequence(frozen);
+                auto beats = sequence(frozen).dup;
                 if (!beats.length)
                     throw new LuaException("scene '" ~ id ~ "' requires beats");
+                foreach (ref beat; beats) {
+                    auto text = field(beat, "text");
+                    if (text.isString)
+                        beat = replaceField(beat, "text", LuaValue(registry.expandFragments(text.asString)));
+                }
                 registry.scenes ~= SceneDefinition(id, beats);
             }
             return cast(LuaValue[])[];
         });
     }
 
+    // narrative.meta(:storylet [, :choice], record): presentation data passed through to the
+    // storylet's (or choice's) `meta` field: icon, tags, shortcut, style. Frozen at registration;
+    // never part of the content identity, so changing it never invalidates a save.
+    add("meta", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length < 2 || arguments.length > 3 || !arguments[0].isSymbol || (arguments.length == 3 && !arguments[1]
+            .isSymbol))
+            throw new LuaException("narrative.meta requires a storylet symbol, an optional choice symbol and a table");
+        auto registry = (cast(LuaState) pointer).narrativeRegistry;
+        registry.requireOpen();
+        auto key = nameOf(arguments[0]);
+        if (arguments.length == 3)
+            key ~= "." ~ nameOf(arguments[1]);
+        if (key in registry.metadata)
+            throw new LuaException("duplicate narrative.meta for '" ~ key ~ "'");
+        if (!isTable(arguments[$ - 1]))
+            throw new LuaException("narrative.meta requires a table of fields");
+        LuaValue frozen;
+        auto error = freeze(arguments[$ - 1], frozen);
+        if (error.length)
+            throw new LuaException("narrative.meta '" ~ key ~ "': " ~ error);
+        registry.metadata[key] = frozen;
+        return cast(LuaValue[])[];
+    });
+    // narrative.visited(:storylet) / narrative.last_chosen(:storylet): the same answers as the
+    // session methods, readable from an effect (they see its tentative state).
+    add("visited", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1 || !arguments[0].isSymbol)
+            throw new LuaException("visited requires a storylet symbol");
+        return [LuaValue(cast(long) requireEffectSession().visitCount(nameOf(arguments[0])))];
+    });
+    add("last_chosen", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1 || !arguments[0].isSymbol)
+            throw new LuaException("last_chosen requires a storylet symbol");
+        ulong turn;
+        if (!requireEffectSession().lastChosen(nameOf(arguments[0]), turn))
+            return [luaNil()];
+        return [LuaValue(cast(long) turn)];
+    });
+    // narrative.fragment(:name, "text"): reusable template text, included with {>name}. Define a
+    // fragment before the storylets and scenes that use it; it is expanded where it is used.
+    add("fragment", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 2 || !arguments[0].isSymbol || !isString(arguments[1]))
+            throw new LuaException("narrative.fragment requires a name symbol and a text");
+        auto registry = (cast(LuaState) pointer).narrativeRegistry;
+        registry.requireOpen();
+        auto name = nameOf(arguments[0]);
+        if (name in registry.fragments)
+            throw new LuaException("duplicate template fragment '" ~ name ~ "'");
+        registry.fragments[name] = registry.expandFragments(arguments[1].match!((string s) => s, _ => ""));
+        return cast(LuaValue[])[];
+    });
+    // narrative.var(:name, value) (the `var name = value` statement): a story variable, one row of
+    // the keyed relation var(name, value). Read it in a text as {$name}, in rules and effects as
+    // var(:name, ?v), write it with `set var(:name, v)` or `adjust var(:name) by n`.
+    add("var", (void* pointer, LuaValue[] arguments) {
+        auto state = cast(LuaState) pointer;
+        if (arguments.length != 2 || !arguments[0].isSymbol)
+            throw new LuaException("var requires a name and an initial value");
+        encodeValue(arguments[1], "var");
+        auto world = state.globalWorld;
+        auto relation = world.getRelation("var");
+        if (relation is null)
+            relation = world.declareNamedRelation("var", ["name", "value"], ["name"]);
+        auto name = arguments[0];
+        if (RelTuple([name]) in relation.keyIndex)
+            throw new LuaException("duplicate story variable '" ~ nameOf(name) ~ "'");
+        relation.setFact(RelTuple([name, arguments[1]]));
+        return cast(LuaValue[])[];
+    });
     addSceneRegistration("scene");
     addSceneRegistration("character");
     add("play", (void* pointer, LuaValue[] arguments) {
@@ -75,6 +152,14 @@ void openNarrativeLib(LuaState state) {
             throw new LuaException("play requires a scene symbol");
         requireEffectSession().playScene(nameOf(arguments[0]));
         return cast(LuaValue[])[];
+    });
+    // narrative.has_scene(:name): whether a scene is registered; hosts use it to refuse a battle
+    // setup whose moment names a scene that does not exist.
+    add("has_scene", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1 || !arguments[0].isSymbol)
+            throw new LuaException("has_scene requires a scene symbol");
+        auto registry = (cast(LuaState) pointer).narrativeRegistry;
+        return [LuaValue(registry.scene(nameOf(arguments[0])) !is null)];
     });
     add("analyze", (void* pointer, LuaValue[] arguments) {
         if (arguments.length < 1 || arguments.length > 2)
@@ -156,6 +241,149 @@ void openNarrativeLib(LuaState state) {
         declareAuthoredProgram(unwrapWorld(arguments[0]), arguments[1].match!((string s) => s, _ => ""));
         return cast(LuaValue[])[];
     });
+    // Cross-save data owned by the host (see varis.narrative.profile).
+    auto profile = new Profile;
+    string profileKey(LuaValue value) {
+        if (!isString(value) || !value.match!((string s) => s.length != 0, _ => false))
+            throw new LuaException("profile key must be a non-empty string");
+        return value.match!((string s) => s, _ => "");
+    }
+
+    void requireProfileRead() {
+        import varis.fiber : isReadOnlyEvaluation;
+
+        if (currentTransaction() !is null || isReadOnlyEvaluation())
+            throw new LuaException("the profile is not readable during effects, rules or templates");
+    }
+
+    add("profile_set", (void* pointer, LuaValue[] arguments) {
+        import varis.fiber : isReadOnlyEvaluation;
+
+        if (arguments.length != 2)
+            throw new LuaException("profile_set requires a key and a portable value (nil removes it)");
+        auto key = profileKey(arguments[0]);
+        if (isReadOnlyEvaluation())
+            throw new LuaException("profile writes are prohibited during read-only evaluation");
+        auto value = arguments[1];
+        if (!isNil(value))
+            encodeValue(value, "profile." ~ key);
+        void apply() {
+            if (isNil(value))
+                profile.values.remove(key);
+            else
+                profile.values[key] = value;
+        }
+
+        if (auto transaction = currentTransaction())
+            transaction.afterCommit ~= &apply;
+        else
+            apply();
+        return cast(LuaValue[])[];
+    });
+    add("profile_get", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1)
+            throw new LuaException("profile_get requires a key");
+        requireProfileRead();
+        auto found = profileKey(arguments[0]) in profile.values;
+        return [found is null ? luaNil() : *found];
+    });
+    add("profile_keys", (void* pointer, LuaValue[] arguments) {
+        requireProfileRead();
+        LuaValue[] names;
+        foreach (name; profile.keys)
+            names ~= LuaValue(name);
+        return [immutableSequence(names)];
+    });
+    add("profile_save", (void* pointer, LuaValue[] arguments) {
+        requireProfileRead();
+        return [LuaValue(profile.save())];
+    });
+    add("profile_load", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1 || !isString(arguments[0]))
+            throw new LuaException("profile_load requires saved profile text");
+        requireProfileRead();
+        profile.load(arguments[0].match!((string s) => s, _ => ""));
+        return cast(LuaValue[])[];
+    });
+    // Save slots: one file per slot, `directory/name.json`, holding the save text.
+    string slotPath(LuaValue directory, LuaValue name) {
+        import std.path : buildPath;
+
+        if (!isString(directory) || !isString(name))
+            throw new LuaException("a slot needs a directory and a name (strings)");
+        auto slot = name.match!((string s) => s, _ => "");
+        if (!slot.length)
+            throw new LuaException("slot name must be letters, digits, '_' or '-'");
+        foreach (c; slot)
+            if (!((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-'))
+                throw new LuaException("slot name must be letters, digits, '_' or '-'");
+        return buildPath(directory.match!((string s) => s, _ => ""), slot ~ ".json");
+    }
+
+    add("save_slot", (void* pointer, LuaValue[] arguments) {
+        import std.file : mkdirRecurse, write;
+        import std.path : dirName;
+
+        if (arguments.length < 3 || arguments.length > 4)
+            throw new LuaException("save_slot requires a session, a directory, a name and optional {label=, meta=}");
+        auto path = slotPath(arguments[1], arguments[2]);
+        auto text = saveWithOptions(unwrapSession(arguments[0]), arguments.length == 4 ? arguments[3] : luaNil());
+        mkdirRecurse(dirName(path));
+        write(path, text);
+        return cast(LuaValue[])[];
+    });
+    add("load_slot", (void* pointer, LuaValue[] arguments) {
+        import std.file : exists, readText;
+
+        if (arguments.length != 3)
+            throw new LuaException("load_slot requires a directory, a name and a world factory");
+        auto path = slotPath(arguments[0], arguments[1]);
+        if (!exists(path))
+            throw new LuaException("no such save slot");
+        return [wrapSession(loadSession(cast(LuaState) pointer, readText(path), arguments[2]))];
+    });
+    add("list_slots", (void* pointer, LuaValue[] arguments) {
+        import std.file : dirEntries, exists, readText, SpanMode;
+        import std.path : baseName, stripExtension;
+        import std.algorithm : sort;
+
+        if (arguments.length != 1 || !isString(arguments[0]))
+            throw new LuaException("list_slots requires a directory");
+        auto directory = arguments[0].match!((string s) => s, _ => "");
+        LuaValue[] rows;
+        if (exists(directory)) {
+            string[] files;
+            foreach (entry; dirEntries(directory, "*.json", SpanMode.shallow))
+                files ~= entry.name;
+            files.sort;
+            foreach (file; files) {
+                try {
+                    auto info = saveInfo(readText(file));
+                    auto fields = (cast(ImmutableRecord) info.asUserData.payload).fields.dup;
+                    fields["name"] = LuaValue(baseName(stripExtension(file)));
+                    rows ~= immutableRecord(fields);
+                } catch (Exception) {
+                    // Not a save (a profile, say): not a slot.
+                }
+            }
+        }
+        return [immutableSequence(rows)];
+    });
+    add("delete_slot", (void* pointer, LuaValue[] arguments) {
+        import std.file : exists, remove;
+
+        if (arguments.length != 2)
+            throw new LuaException("delete_slot requires a directory and a name");
+        auto path = slotPath(arguments[0], arguments[1]);
+        if (exists(path))
+            remove(path);
+        return cast(LuaValue[])[];
+    });
+    add("save_info", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1 || !isString(arguments[0]))
+            throw new LuaException("save_info requires saved session text");
+        return [saveInfo(arguments[0].match!((string s) => s, _ => ""))];
+    });
     add("load", (void* pointer, LuaValue[] arguments) {
         if ((arguments.length != 2 && arguments.length != 3) || !isString(arguments[0]) || (arguments.length == 3 && !isFunction(
             arguments[2])))
@@ -193,6 +421,40 @@ void openNarrativeLib(LuaState state) {
         requireEffectSession().pushDeck(symbolName(arguments[0]));
         return cast(LuaValue[])[];
     });
+    // narrative.helper(name, value): expose a function (or table of functions) from an engine
+    // script to content-tier files, which otherwise see only the content environment. The helper
+    // is trusted code: it is responsible for respecting the save and replay rules.
+    add("helper", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 2 || !isString(arguments[0]) || !(isFunction(arguments[1]) || isTable(arguments[1])))
+            throw new LuaException("narrative.helper requires a name and a function or table");
+        auto name = arguments[0].match!((string s) => s, _ => "");
+        if (!name.length)
+            throw new LuaException("narrative.helper requires a name");
+        (cast(LuaState) pointer).narrativeRegistry.helpers[name] = arguments[1];
+        return cast(LuaValue[])[];
+    });
+    // narrative.return_deck(): go back to the deck that led here (pop; an error at the root).
+    add("return_deck", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length)
+            throw new LuaException("return_deck takes no arguments");
+        requireEffectSession().popDeck();
+        return cast(LuaValue[])[];
+    });
+    // narrative.set_period(:period, value): the executing session's period, in an effect or
+    // handler. Transaction-aware like every other effect write.
+    add("set_period", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 2 || !arguments[0].isSymbol)
+            throw new LuaException("narrative.set_period requires a period symbol and a serializable value");
+        requireEffectSession().setPeriod(nameOf(arguments[0]), arguments[1]);
+        return cast(LuaValue[])[];
+    });
+    // narrative.finish(:ending): record the ending of the session transactionally.
+    add("finish", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1 || !arguments[0].isSymbol)
+            throw new LuaException("narrative.finish requires an ending symbol");
+        requireEffectSession().finish(nameOf(arguments[0]));
+        return cast(LuaValue[])[];
+    });
     add("replace_deck", (void* pointer, LuaValue[] arguments) {
         if (arguments.length != 1)
             throw new LuaException("replace_deck requires a deck symbol");
@@ -228,7 +490,10 @@ void openNarrativeLib(LuaState state) {
             throw new LuaException("defer requires a function");
         auto session = requireEffectSession();
         auto callback = arguments[0];
-        currentTransaction().afterCommit ~= { VM.callValue(session.state, callback, []); };
+        auto sessionWorld = session.world;
+        currentTransaction().afterCommit ~= {
+            callInSessionWorld(session.state, sessionWorld, callback, []);
+        };
         return cast(LuaValue[])[];
     });
     add("seal", (void* pointer, LuaValue[] arguments) {
@@ -409,6 +674,33 @@ void openNarrativeLib(LuaState state) {
             spans ~= immutableRecord(record);
         }
         return [immutableSequence(spans)];
+    });
+    // narrative.spans(text): the portable markup (**strong**, *emphasis*, [text](id) links, line
+    // breaks) as an immutable sequence of span records; hosts never interpret markup themselves.
+    add("spans", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1 || !isString(arguments[0]))
+            throw new LuaException("narrative.spans requires a string");
+        LuaValue[] spans;
+        foreach (span; markupSpans(arguments[0].match!((string s) => s, _ => ""))) {
+            LuaValue[string] record;
+            if (span.lineBreak)
+                record["break"] = LuaValue(true);
+            else
+                record["text"] = LuaValue(span.text);
+            if (span.strong)
+                record["strong"] = LuaValue(true);
+            if (span.emphasis)
+                record["emphasis"] = LuaValue(true);
+            if (span.link.length)
+                record["link"] = LuaValue(span.link);
+            spans ~= immutableRecord(record);
+        }
+        return [immutableSequence(spans)];
+    });
+    add("escape_markup", (void* pointer, LuaValue[] arguments) {
+        if (arguments.length != 1 || !isString(arguments[0]))
+            throw new LuaException("narrative.escape_markup requires a string");
+        return [LuaValue(escapeMarkup(arguments[0].match!((string s) => s, _ => "")))];
     });
     add("languages", (void* pointer, LuaValue[] arguments) {
         LuaValue[] tags;

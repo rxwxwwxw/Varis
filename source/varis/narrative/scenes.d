@@ -13,6 +13,7 @@ module varis.narrative.scenes;
 import varis.types;
 import varis.table;
 import varis.narrative.codec;
+import std.conv : to;
 
 /// Scene programs are immutable records. No Lua frame survives a beat boundary.
 struct SceneDefinition {
@@ -288,6 +289,17 @@ string validateScenes(ContentRegistry registry) {
                 if (kind == "call" && target == "hub")
                     return "call cannot target hub";
                 break;
+            case "branch":
+                if (!nameOf(field(beat, "local")).length)
+                    return definition.id ~ ": branch requires a local name";
+                if (!portableScalar(field(beat, "value")))
+                    return definition.id ~ ": branch compares with a portable scalar";
+                if (branchOperator(beat) < 0)
+                    return definition.id ~ ": branch operator must be one of == ~= < <= > >=";
+                auto branchTarget = nameOf(field(beat, "target"));
+                if (branchTarget != "hub" && registry.scene(branchTarget) is null)
+                    return "unknown scene '" ~ branchTarget ~ "'";
+                break;
             case "menu":
                 auto options = sequence(field(beat, "choices"));
                 if (!options.length)
@@ -345,6 +357,11 @@ string validateScenes(ContentRegistry registry) {
                     return "input/set requires a local name";
                 if (kind == "set" && !portableScalar(field(beat, "value")))
                     return "scene locals must be portable scalars";
+                if (kind == "input") {
+                    auto problem = validateInputBeat(beat);
+                    if (problem.length)
+                        return definition.id ~ ": " ~ problem;
+                }
                 break;
             case "background":
                 if (!nameOf(field(beat, "tag")).length)
@@ -440,6 +457,21 @@ string seekBeat(ContentRegistry registry, SceneState state, string delegate(stri
                     return "scene call stack limit exceeded";
                 state.frames ~= SceneFrame(target, 0, locals);
             }
+        } else if (kind == "branch") {
+            string problem;
+            auto taken = branchTaken(beat, frame.locals, problem);
+            if (problem.length)
+                return problem;
+            frame.pc++;
+            if (taken) {
+                auto target = nameOf(field(beat, "target"));
+                auto locals = frame.locals;
+                state.frames.length--;
+                if (target == "hub")
+                    state.frames.length = 0;
+                else
+                    state.frames ~= SceneFrame(target, 0, locals);
+            }
         } else if (kind == "return") {
             state.frames.length--;
         } else if (kind == "effect") {
@@ -527,7 +559,7 @@ SceneState restoreScene(ContentRegistry registry, LuaValue value, out string pro
         }
         state.beat = definition.beats[top.pc];
         auto kind = nameOf(field(state.beat, "kind"));
-        if (kind == "jump" || kind == "call" || kind == "return" || kind == "set" || kind == "effect") {
+        if (kind == "jump" || kind == "call" || kind == "return" || kind == "set" || kind == "effect" || kind == "branch") {
             problem = "position is not a beat boundary";
             return null;
         }
@@ -579,4 +611,112 @@ SceneState restoreScene(ContentRegistry registry, LuaValue value, out string pro
                 return null;
         }
     return state;
+}
+
+/// The index of a `branch` beat's operator in `== ~= < <= > >=`, or -1.
+private int branchOperator(LuaValue beat) {
+    auto op = field(beat, "op");
+    if (!op.isString)
+        return -1;
+    foreach (i, name; ["==", "~=", "<", "<=", ">", ">="])
+        if (op.asString == name)
+            return cast(int) i;
+    return -1;
+}
+
+/// Whether a `branch` beat's comparison holds for the frame's locals; `problem` is set when an
+/// ordering compares a nil or mismatched pair.
+private bool branchTaken(LuaValue beat, LuaValue locals, out string problem) {
+    auto left = field(locals, nameOf(field(beat, "local")));
+    auto right = field(beat, "value");
+    auto op = branchOperator(beat);
+    if (op == 0)
+        return luaRawEqual(left, right);
+    if (op == 1)
+        return !luaRawEqual(left, right);
+    double a, b;
+    int order;
+    if ((left.isInteger || left.isFloat) && (right.isInteger || right.isFloat)) {
+        a = left.isInteger ? cast(double) left.asInteger : left.asFloat;
+        b = right.isInteger ? cast(double) right.asInteger : right.asFloat;
+        order = a < b ? -1 : (a > b ? 1 : 0);
+    } else if (left.isString && right.isString) {
+        auto x = left.asString, y = right.asString;
+        order = x < y ? -1 : (x > y ? 1 : 0);
+    } else {
+        problem = "scene condition compares '" ~ nameOf(field(beat, "local")) ~ "' with a value of another kind";
+        return false;
+    }
+    switch (op) {
+    case 2:
+        return order < 0;
+    case 3:
+        return order <= 0;
+    case 4:
+        return order > 0;
+    default:
+        return order >= 0;
+    }
+}
+
+private bool nonnegativeInteger(LuaValue value) {
+    return value.isInteger && value.asInteger >= 0;
+}
+
+/// An `input` beat may say what it accepts: `default` (used when the host supplies nil),
+/// `min_length` and `max_length` for text (counted in characters), `min` and `max` for numbers.
+/// Returns the problem with the beat's own fields, or "".
+string validateInputBeat(LuaValue beat) {
+    auto defaultValue = field(beat, "default");
+    foreach (name; ["min_length", "max_length"]) {
+        auto bound = field(beat, name);
+        if (!bound.isNil && !nonnegativeInteger(bound))
+            return "input " ~ name ~ " must be a nonnegative integer";
+    }
+    foreach (name; ["min", "max"]) {
+        auto bound = field(beat, name);
+        if (!bound.isNil && !bound.isInteger && !bound.isFloat)
+            return "input " ~ name ~ " must be a number";
+    }
+    if (!defaultValue.isNil && !portableScalar(defaultValue))
+        return "input default must be a portable scalar";
+    if (!defaultValue.isNil) {
+        auto problem = checkInputValue(beat, defaultValue);
+        if (problem.length)
+            return "input default is not acceptable: " ~ problem;
+    }
+    return "";
+}
+
+/// Why `value` is not acceptable for an `input` beat, or "" when it is.
+string checkInputValue(LuaValue beat, LuaValue value) {
+    auto minLength = field(beat, "min_length"), maxLength = field(beat, "max_length");
+    auto minNumber = field(beat, "min"), maxNumber = field(beat, "max");
+    bool textRules = !minLength.isNil || !maxLength.isNil, numberRules = !minNumber.isNil || !maxNumber.isNil;
+    if (value.isNil)
+        return textRules || numberRules ? "a value is required" : "";
+    if (value.isString && textRules) {
+        size_t length;
+        foreach (c; value.asString)
+            if ((c & 0xC0) != 0x80)
+                ++length;
+        if (!minLength.isNil && length < cast(size_t) minLength.asInteger)
+            return "at least " ~ minLength.asInteger.to!string ~ " characters are required";
+        if (!maxLength.isNil && length > cast(size_t) maxLength.asInteger)
+            return "at most " ~ maxLength.asInteger.to!string ~ " characters are allowed";
+    } else if (textRules && !numberRules) {
+        return "text is required";
+    }
+    if (numberRules) {
+        if (!value.isInteger && !value.isFloat)
+            return "a number is required";
+        double number = value.isInteger ? cast(double) value.asInteger : value.asFloat;
+        double low = minNumber.isNil ? -double.infinity : (minNumber.isInteger ? cast(double) minNumber.asInteger
+                : minNumber.asFloat);
+        double high = maxNumber.isNil ? double.infinity : (maxNumber.isInteger ? cast(double) maxNumber.asInteger
+                : maxNumber.asFloat);
+        if (number < low || number > high)
+            return "the number must be between the beat's min and max";
+    }
+    return "";
 }

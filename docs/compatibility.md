@@ -56,8 +56,17 @@ or public programmatic Lua rule/query builder is defined by this manual.
 
 `bin/varis check [--json] [files...]` parses, compiles and statically checks files.
 With a manifest entry it also runs the load pass described below; use `--no-load`
-for static checking only. Without file arguments it checks the files listed by the project manifest, or every `.lua`
-file under the current directory when there is no manifest.
+for static checking only. Without file arguments it checks the files listed by the project manifest, or every `.varis`
+and `.lua` file under the current directory when there is no manifest.
+
+**Source files.** Varis source files use the extension `.varis` and the editor language
+name **Varis** (owner decision of October 13, 2026); the extension identifies the
+language and the manifest decides each file's tier. Existing `.lua` files load and check
+exactly as before, a project can mix both, and `require("a.b")` finds `a/b.varis` when
+no `a/b.lua` exists on `package.path` (`package.path` itself keeps its Lua spelling).
+A manifest pattern written with `.lua` also matches the same name with `.varis`, so
+renaming a file needs no manifest edit. The manifest may itself be `project.varis`; it
+wins when both exist.
 
 The **project manifest** is the file `project.lua` at the project root: one
 `return { ... }` of literals. It is parsed and **never executed**. Fields:
@@ -71,7 +80,7 @@ The **project manifest** is the file `project.lua` at the project root: one
 | `content` | list of patterns | Files that hold content. |
 | `scripts` | list of patterns | Engine scripts. |
 | `tests` | list of patterns | Author tests. |
-| `symbols` | list of strings | Opt-in strictness: symbols (entities, flags, event kinds) that no declaration names. With it, any symbol neither listed nor named by a storylet, action, deck, scene, character, relation, quality or choice is an `undeclared-symbol` error, and `symbol-once` is not reported. `varis check --symbols` prints the symbols that need listing. |
+| `symbols` | list of strings | Opt-in strictness: symbols (entities, flags, event kinds) that no declaration names. With it, any symbol neither listed nor named by a storylet, action, deck, scene, character, relation, quality or choice is an `undeclared-symbol` error, and `symbol-once` is not reported. `varis check --symbols` prints the symbols that need listing. The same strictness starts when any file contains a `symbols a, b, c` statement (below). |
 | `locales` | list of strings | Translations kept in the repository. |
 
 In a pattern `*` matches within one path segment, `**` across segments and `?` one
@@ -106,9 +115,33 @@ tier: error `tier` for the globals `coroutine`, `io`, `os`, `debug`, `package`, 
 `loadstring`, `loadfile`, `dofile`, `setmetatable` and `getmetatable`; for a function
 value or declaration, except a callback passed directly to `narrative.defer`,
 `narrative.formatter` or `narrative.on`; and for a callback that uses a local of the
-code around it. Engine scripts (`scripts`, `tests`) are unrestricted. The restriction is
-static (`varis check`, the language server, CI): the runtime does not know which
-files are content. The list is the roadmap's default for open decision 1.
+code around it. Engine scripts (`scripts`, `tests`) are unrestricted. The list is the
+roadmap's default for open decision 1.
+
+**Enforcement at load time (milestone 26).** The same restriction holds when the project
+runs. A host that has read the manifest (`varis play`, `varis test`, `varis serve`, the
+game host, the load pass of `varis check`) installs a policy on the state: each file loaded
+from disk with `require`, `dofile` or `loadfile` that matches `content` is vetted by the
+static check (a violation refuses the file, naming `file:line`), must be source text and
+not a binary chunk, and runs in a **restricted environment** instead of the globals:
+`assert error ipairs next pairs pcall print require select tonumber tostring type xpcall`,
+copies of `math string table utf8`, the interfaces `narrative quality logic battle` and
+`symbol`, and the helpers engine scripts exposed with `narrative.helper(name, value)`.
+There is no `io`, `os`, `debug`, `package`, `load`, `coroutine` or metatable function to
+alias, and reading any other global is an error that names `narrative.helper`, so a
+mistyped or unexposed name is not a silent nil. Each file has its own environment, so
+content files cannot talk to each other through globals; they use the world. Helpers are
+trusted engine code responsible for respecting the saves and replay rules. A plain
+`varis script.varis` run has no manifest policy and keeps the full language.
+
+**Declared symbols.** `symbols player, keeper, lamp_room` (contextual, a declaration
+that runs nothing) declares symbols for the whole project, in any file and in any order;
+references keep the `:keeper` spelling. Named definitions (storylets, actions, choices,
+decks, scenes, characters, relations, qualities, names) declare their own symbol, so
+they need no second declaration. Once a project declares symbols, by this statement or
+the manifest's `symbols` list, an undeclared symbol in content is an `undeclared-symbol`
+error in `varis check` and refuses the file when it loads; engine scripts keep creating
+symbols dynamically with `symbol(name)`.
 
 When the manifest names an `entry` module and nothing else failed, `varis check`
 also runs that module in a fresh state, up to the seal of the content, and reports
@@ -287,10 +320,9 @@ for further ones (owner decisions, October 11, 2026; see the decision record in 
   exist. The workbench's initial debugger works at source lines and story
   turns; the complete interface remains planned and is not built on the `debug` library.
 - The manifest content tier is checked statically by `varis check` and LSP,
-  including restricted globals and function captures (8.3). Engine scripts and
-  script mods keep the full language. Runtime/compiler enforcement of file tiers
-  and a distinct source extension remain planned; ordinary loading still accepts
-  the full language.
+  including restricted globals and function captures, and enforced when a project
+  loads (restricted environment, 8.3). Engine scripts and script mods keep the full
+  language. Source files may use the `.varis` extension; `.lua` still loads (8.3).
 - The internal representation of values, instructions and errors is planned to
   change for performance. Such changes are not divergences: they must leave every
   behavior defined in this manual, and saved games, unchanged.

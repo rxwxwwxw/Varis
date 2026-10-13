@@ -25,6 +25,15 @@ def main():
         runs.append(([binary, path, "small"], pathlib.Path(path).parent))
     for path in sorted(glob.glob(str(ROOT / "tests/datalog/acceptance/positive/*.lua"))):
         runs.append(([binary, path], ROOT))
+    # The relational conveniences of milestone 28 (computed bindings, alternatives, exists): the
+    # case file needs the extension helpers in front of it.
+    import tempfile
+
+    helpers = (ROOT / "tests/extensions/helpers.lua").read_text()
+    scratch = pathlib.Path(tempfile.mkdtemp(prefix="oracle-"))
+    case = scratch / "phase9_relational_conveniences.lua"
+    case.write_text(helpers + "\n" + (ROOT / "tests/extensions/cases/phase9_relational_conveniences.lua").read_text())
+    runs.append(([binary, str(case)], ROOT))
     runs.append(([binary, "tools/check.lua"], ROOT / "sample-game"))
     runs.append(([binary, "tools/golden.lua"], ROOT / "sample-game"))
     runs.append(([binary, "benchmarks/experiments/synthetic_game.lua", "5", "60", "1", "6", "10"], ROOT))

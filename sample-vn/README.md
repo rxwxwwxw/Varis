@@ -22,7 +22,7 @@ Leave the lantern burning.
 mid-scene save/load checks passed
 ```
 
-`content.lua` holds writer-authored declarations; `main.lua` is the small text host
+`content.varis` holds writer-authored declarations (the readable scene syntax, manual 6.11a); `main.lua` is the small text host
 and round-trip check. The `sample-game` test suite also runs
 `tests/sample_game/scene_save_test.py`: it loads the save in a fresh process,
 accepts wording edits, rejects structural edits and corrupted positions/stage,

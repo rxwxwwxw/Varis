@@ -174,7 +174,9 @@ private string checkedProgram(World world) {
     return fingerprint;
 }
 
-string saveSession(Session session) {
+/// `label` and `meta` are informational header fields (a slot name, a host timestamp, a
+/// location): they are never read back by `loadSession` and are outside every identity.
+string saveSession(Session session, string label = null, LuaValue meta = LuaValue.init) {
     session.requireIdle();
     try {
         auto data = session.data;
@@ -276,11 +278,48 @@ string saveSession(Session session) {
         ]);
         if (data.scene !is null)
             encoded.object["scene"] = encodeValue(data.scene.portable(), "scene");
+        // Optional fields, written only when they carry something, so older saves are unchanged.
+        if (data.ending.length)
+            encoded.object["ending"] = encodeValue(session.state.getSymbol(data.ending), "ending");
+        // The cursor is implied (every event delivered) unless events are waiting for a presentation.
+        if (data.eventCursor != data.events.length)
+            encoded.object["event_cursor"] = counter(data.eventCursor);
+        if (label.length)
+            encoded.object["label"] = JSONValue(label);
+        if (!isNil(meta))
+            encoded.object["meta"] = encodeValue(meta, "save metadata");
         return canonicalJSON(encoded);
     } catch (LuaException error) {
         throw error;
     } catch (Exception error) {
         throw new LuaException("cannot save narrative session: " ~ error.msg);
+    }
+}
+
+/// The header of a save, read without restoring it: what a slot list shows. Nothing is checked
+/// against the running content; `loadSession` does that.
+LuaValue saveInfo(string saved) {
+    try {
+        auto input = parseJSON(saved);
+        auto format = input["format"].str;
+        if (format != saveFormat1 && format != saveFormat2 && format != saveFormat3)
+            throw new LuaException("incompatible save format version");
+        LuaValue[string] fields = [
+            "format": LuaValue(format),
+            "turn": LuaValue(unsignedValue(input["turn"], "turn").to!long),
+            "runtime": LuaValue(input["runtime"].str),
+            "content": LuaValue(input["content"].str),
+            "in_scene": LuaValue("scene" in input.object ? true : false)
+        ];
+        if (auto label = "label" in input.object)
+            fields["label"] = LuaValue(label.str);
+        if (auto meta = "meta" in input.object)
+            fields["meta"] = decodeValue(*meta);
+        return immutableRecord(fields);
+    } catch (LuaException error) {
+        throw error;
+    } catch (Exception error) {
+        throw new LuaException("invalid narrative save: " ~ error.msg);
     }
 }
 
@@ -396,6 +435,17 @@ Session loadSession(LuaState state, string saved, LuaValue factory) {
                     payload.fields["kind"]))
                 throw new LuaException("invalid saved replay input");
             data.replayInputs ~= record;
+        }
+        if (auto ending = "ending" in input.object) {
+            data.ending = symbolValue(*ending);
+            if (!data.ending.length)
+                throw new LuaException("invalid saved ending");
+        }
+        data.eventCursor = data.events.length;
+        if (auto cursor = "event_cursor" in input.object) {
+            data.eventCursor = unsignedValue(*cursor, "event_cursor");
+            if (data.eventCursor > data.events.length)
+                throw new LuaException("invalid saved event cursor");
         }
         ulong actions = unsignedValue(input["action_limit"], "action_limit"), events = unsignedValue(
                 input["event_limit"], "event_limit");

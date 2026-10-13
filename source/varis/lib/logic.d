@@ -13,6 +13,7 @@ module varis.lib.logic;
 import varis.types;
 import varis.table;
 import varis.state;
+import varis.vm : VM;
 import varis.exception : LuaException;
 import varis.logic.model;
 import varis.logic.world;
@@ -102,6 +103,21 @@ void openLogicLib(LuaState state) {
                 auto sym = args[0].match!((Symbol s) => s, _ => Symbol.init);
                 return [LuaValue(sym.name)];
             }, "symbolname")));
+
+    // logic.one(query): the sole binding record, nil when there is no match, an error when there
+    // are several. (Query results are unordered, so there is no "first".)
+    logicTable.rawset(LuaValue("one"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {
+                if (args.length != 1 || !isFunction(args[0]) && args[0].typeOf() != LuaType.UserData)
+                    throw new LuaException("bad argument #1 to 'logic.one' (query expected)");
+                auto s = cast(LuaState) sPtr;
+                auto first = VM.callValue(s, args[0], []);
+                if (!first.length || isNil(first[0]))
+                    return [luaNil()];
+                auto second = VM.callValue(s, args[0], []);
+                if (second.length && !isNil(second[0]))
+                    throw new LuaException("logic.one: the query has more than one match");
+                return [first[0]];
+            }, "one")));
 
     // logic.hasbinding(record, name)
     logicTable.rawset(LuaValue("hasbinding"), LuaValue(new LuaNativeFunction((void* sPtr, LuaValue[] args) {

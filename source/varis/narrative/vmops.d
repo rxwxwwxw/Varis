@@ -133,16 +133,23 @@ private void declarativeOp(LuaState state, LuaClosure closure, Prototype proto, 
             content.parameters = template_.parameters.dup;
             content.incomingParameters = template_.incomingParameters.dup;
             content.groundedParameters = template_.groundedParameters.dup;
-            foreach (index, name; template_.optionNames)
-                content.options[name] = registers[template_.optionRegisters[index]];
+            content.exposed = template_.exposed.dup;
+            foreach (index, name; template_.optionNames) {
+                auto value = registers[template_.optionRegisters[index]];
+                if ((name == "title" || name == "text" || name == "because") && value.isString)
+                    value = LuaValue(state.narrativeRegistry.expandFragments(value.asString));
+                content.options[name] = value;
+            }
             if (template_.availabilityRegister >= 0)
                 content.availability = registers[template_.availabilityRegister];
             if (template_.effectRegister >= 0)
                 content.effect = registers[template_.effectRegister];
             if (template_.requirementRegister >= 0)
                 content.requirement = registers[template_.requirementRegister];
-            foreach (choice; template_.choices)
+            foreach (choice; template_.choices) {
                 content.choices ~= instantiateContent(choice);
+                content.choices[$ - 1].incomingExposed = content.exposed.dup;
+            }
             import varis.narrative.fingerprint : contentFingerprint, legacyContentFingerprint;
 
             content.fingerprint = contentFingerprint(content);
@@ -204,6 +211,7 @@ private void declarativeOp(LuaState state, LuaClosure closure, Prototype proto, 
     case OpCode.SetFact:
     case OpCode.DeleteKey:
     case OpCode.AdjustKey:
+    case OpCode.AdjustClamp:
     case OpCode.AddFact:
     case OpCode.RetractFact:
         bool isAdd = (op == OpCode.AddFact);
@@ -216,7 +224,7 @@ private void declarativeOp(LuaState state, LuaClosure closure, Prototype proto, 
             tupleVals ~= val;
         }
         LuaValue delta;
-        if (op == OpCode.AdjustKey) {
+        if (op == OpCode.AdjustKey || op == OpCode.AdjustClamp) {
             delta = tupleVals[$ - 1];
             tupleVals = tupleVals[0 .. $ - 1];
         }
@@ -226,7 +234,7 @@ private void declarativeOp(LuaState state, LuaClosure closure, Prototype proto, 
             auto localRel = unwrapLocalRelation(registers[b]);
             if (localRel is null)
                 throw new LuaException("expected local relation");
-            if (op == OpCode.SetFact || op == OpCode.DeleteKey || op == OpCode.AdjustKey)
+            if (op == OpCode.SetFact || op == OpCode.DeleteKey || op == OpCode.AdjustKey || op == OpCode.AdjustClamp)
                 throw new LuaException("keyed updates require a named world relation");
             if (isAdd) {
                 localRel.addFact(tuple);
@@ -236,8 +244,9 @@ private void declarativeOp(LuaState state, LuaClosure closure, Prototype proto, 
         } else {
             World factWorld = (a == -1) ? state.globalWorld : unwrapWorld(registers[a]);
             string factRelName = proto.constants[b].match!((string s) => s, _ => "");
-            if (op == OpCode.SetFact || op == OpCode.DeleteKey || op == OpCode.AdjustKey) {
-                factWorld.updateFact(factRelName, tuple, op == OpCode.SetFact ? "set" : op == OpCode.DeleteKey ? "delete" : "adjust", delta);
+            if (op == OpCode.SetFact || op == OpCode.DeleteKey || op == OpCode.AdjustKey || op == OpCode.AdjustClamp) {
+                factWorld.updateFact(factRelName, tuple, op == OpCode.SetFact ? "set" : op == OpCode.DeleteKey ? "delete" : "adjust", delta,
+                        op == OpCode.AdjustClamp);
             } else if (isAdd) {
                 factWorld.addFact(factRelName, tuple);
             } else {

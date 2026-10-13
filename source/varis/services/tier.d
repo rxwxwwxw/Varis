@@ -92,6 +92,8 @@ private final class Walker {
             push();
             foreach (p; n.parameters)
                 declare(p);
+            foreach (p; n.exposed)
+                declare(p);
             goals(n.goals);
             goals(n.requireGoals);
             foreach (v; n.fieldValues)
@@ -317,4 +319,135 @@ Diagnostic[] checkTier(string path, string content) {
     auto walker = new Walker(path);
     walker.block(block);
     return walker.found;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Runtime enforcement (milestone 26). A host that has read the project manifest installs a hook on
+// the state: each file loaded from disk that the manifest lists under `content` is vetted by the
+// static check above and runs in a restricted environment. Aliases cannot bypass it, because the
+// names it forbids are simply absent: content has no `io`, `os`, `debug`, `package`, `load`,
+// `coroutine` or metatable functions to alias.
+// ---------------------------------------------------------------------------------------------
+
+import varis.types;
+import varis.table;
+import varis.state;
+import varis.narrative.registry : narrativeRegistry;
+import varis.services.manifest : Manifest, isContentFile, projectFiles;
+import varis.services.index : ProjectIndex, indexFile;
+import varis.services.checks : knownSymbols;
+import varis.workbench.server : readFile;
+import std.conv : to;
+
+private immutable string[] contentBaseNames = [
+    "assert", "error", "ipairs", "next", "pairs", "pcall", "print", "require", "select", "tonumber",
+    "tostring",
+    "type", "xpcall"
+];
+// Library tables content may use; the first group is copied so content cannot change the shared
+// table, the second is shared because it is the engine's own interface.
+private immutable string[] contentCopiedLibraries = ["math", "string", "table", "utf8"];
+private immutable string[] contentSharedLibraries = ["narrative", "quality", "logic", "battle"];
+
+/// The environment content files run in: the safe part of the standard library, the narrative
+/// interface, and the helpers engine scripts exposed with `narrative.helper`. Reading any other
+/// global is an error that names the helper mechanism, so a mistyped or unexposed name is not a
+/// silent nil.
+LuaTable contentEnvironment(LuaState state) {
+    auto environment = new LuaTable();
+    auto globals = state.globals;
+    LuaValue fetch(string name) {
+        return globals.rawget(LuaValue(name));
+    }
+
+    foreach (name; contentBaseNames)
+        if (!isNil(fetch(name)))
+            environment.rawset(LuaValue(name), fetch(name));
+    foreach (name; contentCopiedLibraries) {
+        auto library = fetch(name);
+        if (!isTable(library))
+            continue;
+        auto source = library.match!((LuaTable t) => t, _ => null);
+        auto copy = new LuaTable();
+        LuaValue previous, key, value;
+        while (source.next(previous, key, value)) {
+            previous = key;
+            copy.rawset(key, value);
+        }
+        environment.rawset(LuaValue(name), LuaValue(copy));
+    }
+    foreach (name; contentSharedLibraries)
+        if (!isNil(fetch(name)))
+            environment.rawset(LuaValue(name), fetch(name));
+    if (!isNil(fetch("symbol")))
+        environment.rawset(LuaValue("symbol"), fetch("symbol"));
+    if (auto registry = state.narrativeRegistry)
+        foreach (name, value; registry.helpers)
+            environment.rawset(LuaValue(name), value);
+    environment.rawset(LuaValue("_G"), LuaValue(environment));
+    auto metatable = new LuaTable();
+    metatable.rawset(LuaValue("__index"), LuaValue(new LuaNativeFunction((void* pointer, LuaValue[] args) {
+                string name = args.length > 1 && isString(args[1]) ? args[1].match!((string s) => s, _ => "?") : "?";
+                throw new LuaException("`" ~ name ~ "` is not available in content files; an engine script can "
+                ~ "expose it with narrative.helper(\"" ~ name ~ "\", ...)");
+                return cast(LuaValue[])[];
+            }, "content.__index")));
+    metatable.rawset(LuaValue("__metatable"), LuaValue("content environment"));
+    environment.metatable = metatable;
+    return environment;
+}
+
+/// Makes `state` hold the files the manifest lists under `content` to the content tier when they
+/// are loaded. `root` is the directory the project's paths are relative to.
+void installTierEnforcement(LuaState state, ref const Manifest manifest, string root) {
+    if (!manifest.present || !manifest.content.length)
+        return;
+    Manifest copy = cast(Manifest) manifest;
+    string prefix = root.length && root != "." ? root ~ "/" : "";
+    // Declared symbols are project-wide and order-independent, so the whole project is read once,
+    // before any content file loads. Strict only when the project declares symbols at all.
+    bool[string] known;
+    bool strictSymbols = manifest.declaresSymbols;
+    {
+        ProjectIndex index;
+        foreach (name; projectFiles(root, manifest)) {
+            string text;
+            if (readFile(prefix ~ name, text))
+                index.files ~= indexFile(name, text);
+        }
+        string[] candidates;
+        knownSymbols(index, manifest.symbols, known, candidates);
+        foreach (ref f; index.files)
+            foreach (ref d; f.declarations)
+                strictSymbols = strictSymbols || d.kind == "symbols";
+    }
+    state.fileTierHook = (string path, string source, ref LuaValue environment) {
+        string relative = path;
+        if (prefix.length && relative.length > prefix.length && relative[0 .. prefix.length] == prefix)
+            relative = relative[prefix.length .. $];
+        while (relative.length > 2 && relative[0 .. 2] == "./")
+            relative = relative[2 .. $];
+        if (!isContentFile(copy, relative))
+            return "";
+        if (source.length && source[0] == '\x1b')
+            return "content file '" ~ relative ~ "' must be source text, not a binary chunk";
+        auto problems = checkTier(relative, source);
+        if (problems.length) {
+            string text = "content file '" ~ relative ~ "' breaks the content tier:";
+            foreach (problem; problems)
+                text ~= "\n  " ~ relative ~ ":" ~ problem.line.to!string ~ ": " ~ problem.message;
+            return text;
+        }
+        if (strictSymbols) {
+            string text;
+            foreach (ref reference; indexFile(relative, source).references)
+                if (reference.kind == "symbol" && reference.role != "engine" && reference.name !in known)
+                    text ~= "\n  " ~ relative ~ ":" ~ reference.range.line.to!string ~ ": symbol :" ~ reference.name
+                        ~ " is not declared; add `symbols " ~ reference.name ~ "` or declare what it names";
+            if (text.length)
+                return "content file '" ~ relative ~ "' uses undeclared symbols:" ~ text;
+        }
+        environment = LuaValue(contentEnvironment(state));
+        return "";
+    };
 }

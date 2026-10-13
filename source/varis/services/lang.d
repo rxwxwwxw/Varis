@@ -90,7 +90,7 @@ private immutable string[] reservedWords = [
 private immutable string[] contentKeywords = [
     "storylet", "action", "choice", "deck", "scene", "character", "relation", "rule", "fact",
     "retract", "set", "delete",
-    "adjust", "when", "require", "because",
+    "adjust", "when", "require", "because", "symbols", "expose", "leads", "exists", "clamp",
     "title", "text", "effect", "priority", "weight", "cooldown", "repeatable", "sticky", "order",
     "phase", "once_per",
     "query", "transaction", "rollback", "local", "function", "if", "then", "else", "end", "for",
@@ -158,10 +158,7 @@ final class Workspace {
             auto f = indexes[path];
             result[path] = f.problems.dup;
             if (f.parsed) {
-                bool isContent;
-                foreach (pattern; manifest.content)
-                    isContent = isContent || globMatch(pattern, path);
-                if (isContent)
+                if (isContentFile(manifest, path))
                     result[path] ~= checkTier(path, contents[path]);
             }
             if (f.parsed)

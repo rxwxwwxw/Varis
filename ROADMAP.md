@@ -104,16 +104,20 @@ can overturn it. All entries are dated October 11, 2026.
 
 ## Language tiers (planned)
 
-The target is two tiers enforced per file by the compiler (milestone 26). Today the manifest
-records tiers, and `varis check`/LSP enforce the default content restrictions statically;
-ordinary loading and execution still accept the full language (manual §8.3):
+Two tiers enforced per file (milestone 26, implemented October 13, 2026). The manifest records
+tiers; `varis check` and the language server enforce the default content restrictions
+statically; and a host that has read the manifest enforces them when files load, in a
+restricted environment (manual §8.3). A plain script run with no manifest keeps the full
+language:
 
 - **Content files** — what contracted writers produce: narrative definitions, relations, rules,
-  facts, effects and calls to named helpers. No coroutines, no function values that capture
-  mutable state or are stored in world/session state, and no `io`, `os`, `debug`, `package`,
-  `load` or metatables. The restriction exists so that writers cannot break saves by accident and
-  so that a content-only package can be loaded without trusting its author. The exact list is an
-  open decision.
+  facts, transactional effects, ordinary expressions, local variables and structured control
+  flow, plus calls to named helpers explicitly exposed by engine scripts. No author-defined
+  function values, coroutines, metatables, dynamic loading or direct access to `io`, `os`,
+  `debug` or `package`. Compilation/loading must enforce this policy with a restricted
+  environment so aliases cannot trivially bypass it. Exposed helpers are trusted engine code
+  responsible for respecting save/replay rules. Decided October 13, 2026; implemented the
+  same day (the helpers are exposed with `narrative.helper`).
 - **Engine scripts and script mods** — the full language (D2), for world setup, shared helpers,
   host glue, tests, tools and mods that change how a game works.
 
@@ -158,21 +162,36 @@ section numbers), [sample-game/REVIEW.md](sample-game/REVIEW.md) and
 
 | Milestone | Deliverable |
 | --- | --- |
-| 26 | **Tiers and file identity.** Content/engine tiers enforced per file; a source extension and language id distinct from Lua (editors must not treat Varis files as Lua); the decisions recorded in `docs/compatibility.md`. |
-| 27 | **Syntax triage and freeze.** Every proposal in `needed_extensions.md` is accepted, deferred or rejected. Accepted constructs get grammar in `docs/syntax.md` and semantics in the manual in the same change that implements and tests them; unimplemented syntax stays in proposals. Rules of thumb: one obvious way to write a thing; new words stay contextual; nothing in content requires understanding closures, iterators or metatables. The freeze includes the localization-ready decisions of [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md) §3: message keys from authored names and line ids, one template grammar with named placeholders, a select/plural construct and named variants, literal display text in content files, and wording kept out of the gameplay fingerprint. |
-| 28 | **Core authoring gaps.** Periods settable from effects (§1.1); `leads`/return sugar for decks (§1.2); clamped `adjust` and readable quality metadata (§1.3); a narration channel with events delivered in the presentation (§1.4); binding goals and `or` in rule bodies (§1.5); `expose` (§1.6); session-world binding for handlers and deferred callbacks (§1.7); terminal state (§1.8); `exists` and single-result queries (§1.9). New in this direction: **declared entities/symbols**, so a mistyped `:keepr` is an error instead of a storylet that silently never appears. |
+| 26 | **Tiers and file identity.** Content/engine tiers enforced per file; a source extension and language id distinct from Lua (editors must not treat Varis files as Lua); the decisions recorded in `docs/compatibility.md`. **Implemented October 13, 2026:** source files may use `.varis` (`require` finds `a/b.varis`, manifest patterns written `.lua` also match it, `project.varis` is read, editors' grammar and the language server accept it; `.lua` loads as before); a host that has read the manifest installs a load-time policy (`LuaState.fileTierHook`, `services/tier.d`): a file matching `content` is vetted by the static tier check and runs in a restricted environment (no `io`, `os`, `debug`, `package`, `load`, `coroutine` or metatable functions; helpers exposed with `narrative.helper`; unknown globals are errors naming it). Suite `tiers`. Manual §8.3. |
+| 27 | **Syntax triage and freeze.** Every proposal in `needed_extensions.md` is accepted, deferred or rejected. Accepted constructs get grammar in `docs/syntax.md` and semantics in the manual in the same change that implements and tests them; unimplemented syntax stays in proposals. Rules of thumb: one obvious way to write a thing; new words stay contextual; nothing in content requires understanding closures, iterators or metatables. The freeze includes the localization-ready decisions of [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md) §3: message keys from authored names and line ids, one template grammar with named placeholders, a select/plural construct and named variants, literal display text in content files, and wording kept out of the gameplay fingerprint. **Done October 13, 2026:** every topic of the inventory has a disposition (table in `sample-game/needed_extensions.md`), the implemented constructs have grammar in `docs/syntax.md` §10 and semantics in the manual, and §10.5 records what is frozen, what is accepted but not built (readable scene bodies, explicit text ids in content, readable input statements: milestone 29) and what is deferred. The migration of *Saltmarsh Light* off its workarounds is separate work. |
+| 28 | **Core authoring gaps.** Periods settable from effects (§1.1); `leads`/return sugar for decks (§1.2); clamped `adjust` and readable quality metadata (§1.3); a narration channel with events delivered in the presentation (§1.4); binding goals and `or` in rule bodies (§1.5); `expose` (§1.6); session-world binding for handlers and deferred callbacks (§1.7); terminal state (§1.8); `exists` and single-result queries (§1.9). New in this direction: **declared entities/symbols**, so a mistyped `:keepr` is an error instead of a storylet that silently never appears. **Implemented October 13, 2026:** `narrative.set_period`; choice `leads :deck` and `narrative.return_deck`; `adjust … clamp`, `quality.add(…, {clamp = true})` and `quality.metadata`; presentation `events` and `session:events_since` (the cursor is saved only when events are waiting); computed bindings `?x := expr` (rejected in recursive rules) and parenthesized `or`; `expose ?x`; handler and `narrative.defer` callbacks default to the session's world; `narrative.finish` and `session:ended`; `exists { … }` and `logic.one`; `symbols a, b` with the manifest list (strict once either exists; refused at load in content). Manual §§4.6a, 4.8a, 6.2–6.8a, 7.4, 8.3, 10. Suite cases `phase9_*` in `tests/extensions`. |
 | 29 | **Scenes, beats and the stage.** A `scene` content kind compiled to a resumable, serializable position (scene id, beat index, portable locals) rather than a coroutine (§3.1); characters and stable line ids (§3.2); media directives as structured beats (§3.3); beat-stream presentations (§4.1); `jump`/`call`/return between scenes and back to storylet hubs. **Stage state is engine data**: each character has a tag and a set of attributes (expression, outfit) that a dialogue line can change, plus who is on stage in which named slot, the background and named audio channels. It is carried in beats and saved in the session, so a load or rollback restores it and the checker can reject an unknown character or attribute. The engine never holds pixel positions, timing or image files. From the same state a front end can draw a face in the text box, a full-body sprite, or both. Parity checklist for this milestone: RPG Maker's story event commands (text with face/name/window position, choices with default and cancel, number and item input, pictures, screen fade/tint/flash/shake, waits, BGM/BGS/ME/SE, inline text codes for colour, size, pauses and speed, common events), Ren'Py's show/hide/scene with transitions, side images, menus and jump/call, and Twine's passages and inline links. |
+
+Milestone 29, readable scenes (October 13, 2026): `scene name() … end` with `say … id …`,
+`narrate`, `show … at`, `hide`, `background`, `audio`, structured directives, `input … id`,
+`set`, `menu`/`option`, `if`/`elseif`/`else` on a local, `effect name(…)` and
+`effect using … do … end`, `jump`/`call`/`return`/`ended`; it lowers at parse time to the beat
+tables (plus a `branch` beat and generated scenes/procedures), requires an explicit
+scene-scoped id on every line, and is documented in manual 6.11a and `docs/syntax.md` §10.
+*Saltmarsh Light* was migrated off its workarounds (golden and format-1 fixture regenerated in
+their own commit) and `sample-vn` is written in the readable form (`content.varis`).
 
 Milestone 29 first version (October 12, 2026): declarative `scene`/`character`
 programs, scalar locals, jump/call/return, menu/input beats, stable line ids,
 engine-owned stage and format 3 scene saves are implemented; see manual §6.11.
 `sample-vn/` proves mid-scene and mid-call restoration, including fresh-process
-loading and wording compatibility. Procedural blocks between beats, beat rollback,
-and the full presentation parity checklist remain planned. This does not freeze
-Phase 9 syntax or complete milestones 26–28.
+loading and wording compatibility. The current manual also documents beat undo and input
+validation. The writer-facing procedural syntax landed on October 13 (above). The full presentation
+parity checklist above is retained as a comparison target; by owner decision October 13,
+advanced rendering belongs to milestone 36 and does not block the Phase 9 syntax freeze.
+General mixed scene/storylet beat streams and a separate passage kind are deferred.
 
 Exit: syntax v1 is documented as frozen; *Saltmarsh Light* runs with its workarounds removed; a
 second sample written in linear visual-novel style runs; a save taken mid-scene round-trips.
+The agreed v1 boundary includes readable branching scenes, calls, input, transactional effects,
+beat undo, saveable stage state, structured media directives, stable text ids and localization
+coverage (including menu labels and character display names), plus the agreed relational/session
+improvements and sample migration. See the October 13 Phase 9 decisions below.
 
 ### Phase 10 — Authoring tools and the workbench
 
@@ -217,19 +236,45 @@ Exit: the reference game meets its budgets on the reference machine under the re
 
 | Milestone | Deliverable |
 | --- | --- |
-| 38 | Undo/rollback at turn and beat granularity (§2, §3.4); persistent cross-save data (§3.5); save slots and metadata (§4.8). |
+| 38 | Undo/rollback at turn and beat granularity (§2, §3.4); persistent cross-save data (§3.5); save slots and metadata (§4.8). **Implemented October 13, 2026:** `session:set_undo_limit(n)`, `undo_depth()` and `undo()` restore the last choice or beat advance in place (facts shared copy-on-write, session data, scene position; the undone command's presentation comes back with usable tokens; not saved; off by default), with `GameHost.back`/`SceneHost.back` and the SDL player's B key; `narrative.profile_*`, a host-owned cross-save store outside saves, fingerprints and replay (reads refused in effects, effect writes applied after commit); `session:save{label=, meta=}` and `narrative.save_info`. Also `session:set_autosave` (a callback with the save text after every committed command), `narrative.save_slot` / `list_slots` / `load_slot` / `delete_slot`, and profile storage in the SDL player (`profile.json`). Manual section 6.9a. |
 | 39 | Localization pipeline per [NARRATIVE_LOCALIZATION_PLAN.md](NARRATIVE_LOCALIZATION_PLAN.md): catalogs, the publisher handoff kit, loadable translation packs, per-language text features for Chinese, Japanese, Korean, French and Russian. Built on the line ids of milestone 29 and the decisions frozen in milestone 27. Its stage T1 (extraction and the source catalog) needs neither and starts once the project index of milestone 30 exists. **Status (October 12, 2026):** T1–T4 are implemented (T2, the wording split and the plural/select/named-variant syntax, were approved by the owner on October 12, 2026); scene line ids, catalog extraction and translated line rendering are implemented in the first milestone 29 slice. Menu labels and scene character metadata still render authored text. T5 has engine text helpers and character-set output; complete CJK layout, ruby and per-locale fonts in SDL remain unfinished; see the plan's status note. |
-| 40 | Twine-class conveniences (**disabled choices with reasons done October 12, 2026**: `require … because`; the rest open): `var` sugar, `visited`/`last_chosen`, disabled choices with reasons, rich-text spans, text input, template fragments, pass-through content metadata (§2, §4.3–§4.6). |
-| 41 | Writer documentation: a tutorial and cookbook for content authors, separate from the reference manual. |
+| 40 | Twine-class conveniences (**disabled choices with reasons done October 12, 2026**: `require … because`). **Done October 13, 2026:** `session:visited` / `last_chosen` (and `narrative.visited` / `last_chosen` in effects), derived from data a save already carries; `narrative.meta` pass-through metadata on storylets and choices, outside the content identity; `narrative.spans` and `narrative.escape_markup` for a portable rich-text markup; `default`, `min_length`/`max_length` and `min`/`max` on scene `input` beats. Also `var name = v` with `{$name}` (sugar over the keyed relation `var`), `narrative.fragment` with `{>name}`, `{#if lua …}` read-only conditions, and `[[text->choice]]` passage links: validated against the storylet's choices at seal, delivered as `links` with each choice's token, and drawn inline from `narrative.spans`. Manual section 6.6a. |
+| 41 | Writer documentation: a tutorial and cookbook for content authors, separate from the reference manual. **Done October 13, 2026:** [docs/writers/](docs/writers/README.md) (guide, eight-step tutorial, fifteen-recipe cookbook). Every program in it is run by suite `writers-docs` (`tests/writers/test_docs.py`: scratch project, `varis check`, `varis test`, play transcripts), so the pages cannot drift from the engine. Scope complete; translated guides are a localization-plan matter, not part of this milestone. |
+
+### Phase 13 — Tower-defense battle (proposed, October 12, 2026)
+
+Goal: the battle half of the tower-defense / visual-novel hybrid: a native D, fixed-step integer
+simulation on a hex map (about 15–20 ns per live enemy per step, against about 3 µs for the same
+step in relations), a 2.5D pointy-top zoomable battle view in the SDL3 player, and a narrow bridge
+to the story engine: relationships and story state become a battle setup through rules, story
+moments interrupt a battle as ordinary scenes, and the outcome returns through one transaction.
+There is no saving during a battle; abandoning restores the snapshot taken at its start. The
+design, measurements, decisions (owner, October 12, 2026) and stages TD0–TD8 are in
+[TOWER_DEFENSE_PLAN.md](TOWER_DEFENSE_PLAN.md); the fifteen-minute sample that tests all of it
+(*Lanternfall*, `sample-td/`) is in [SAMPLE_TD_PLAN.md](SAMPLE_TD_PLAN.md). **Status, October 12,
+2026: implemented as a first complete slice** (native simulation with all ten ability primitives,
+the bridge in `GameHost`, the SDL battle view, the four-night sample with French pack and tests);
+the remaining TD0/TD5 items (budget entries, render caches at the largest map) and the cuts listed in
+`sample-td/README.md` are open. It needs none of the
+Lua-core stages and does not block them. These milestone numbers are proposed identifiers, not an
+order:
+
+| Milestone | Deliverable | Plan stages |
+| --- | --- | --- |
+| 48 | **Native battle and bridge.** `source/varis/game/` (hex, terrain from seed plus edits, fog, routing, kinds, the simulation, digest), `varis battle`, and the bridge in `services/battlehost.d`: setup, moments as scenes, sync, result, abandon by snapshot. | TD0–TD3 |
+| 49 | **Battle view.** SDL bridge primitives (geometry, points, render targets, buttons and drag), the 2.5D pointy-top view with camera, picking, zoom bands and fog, HUD, moment overlay. | TD4–TD5 |
+| 50 | **Tower-defense game.** Hub ↔ battle, weekly cadence with silent judging, economy, fog growth, heroes and relationships, content depth, 435,600-tile scale and budgets. | TD6–TD8 |
 
 ## Open decisions (owner)
 
-Until one of these is decided, use the stated default and say so in the change.
+Until one of these is decided, use the stated default and say so in the change. The
+tower-defense plan's own open decisions (hex orientation, simulation rate, lanes or corridors,
+what judging reports, the game-support layer) are in [TOWER_DEFENSE_PLAN.md](TOWER_DEFENSE_PLAN.md) §10.
 
 | # | Question | Default until decided |
 | --- | --- | --- |
-| 1 | The exact content-tier restrictions. | The list under "Language tiers". |
-| 2 | The source file extension and language name shown in editors. | Keep `.lua`. |
+| 1 | The exact content-tier restrictions. | Decided October 13, 2026; see "Language tiers" and the Phase 9 decisions below. Implemented (milestone 26): static checks and load-time enforcement. |
+| 2 | The source file extension and language name shown in editors. | Decided October 13, 2026: `.varis`, editor language "Varis"; retain `.lua` loading compatibility. Implemented (milestone 26); samples still use `.lua` and migrate separately. |
 | 3 | The reference low-end machine and the budget numbers in milestone 34. | The provisional budgets; an M1 performance core is assumed ten times faster than the low-end machine. |
 | 4 | Which frozen Lua features are removed outright, and when. | Remove none; keep them passing on the instrumented executor. |
 | 5 | How mods are packaged, loaded and recorded in saves (the localization plan only reserves room: packages with a declared source language and package-qualified keys). | Not designed; do not build on assumptions about it. |
@@ -238,6 +283,112 @@ Until one of these is decided, use the stated default and say so in the change.
 | 8 | Whether the public D host API returns statuses only or also offers a throwing wrapper. | Status returns, with an optional thin throwing wrapper. |
 | 9 | Workbench choices: the editor component, whether the server uses a third-party HTTP library, and the exact panel layout. | See [WORKBENCH_PLAN.md](WORKBENCH_PLAN.md) §9. |
 | 10 | A target below 1.0× C Lua for milestone 47. | None until parity is reached and measured. |
+
+### Phase 9 decisions — October 13, 2026
+
+Approved by the owner; these are implementation targets, not current language semantics.
+
+- **File identity:** `.varis` for new content and engine scripts, editor language name
+  **Varis**. The project manifest determines the tier; the extension identifies the language.
+  Keep loading existing `.lua` files. Migrate samples separately.
+- **Content tier:** use the restrictions under "Language tiers" above, including explicitly
+  exposed named helpers and compiler/load-time enforcement through a restricted environment.
+  Engine scripts retain the full language. Writers do not define function values or classify
+  captures as safe/unsafe.
+- **Declared symbols:** contextual source declaration `symbols player, keeper, lamp_room,
+  resolve`; references keep `:keeper` spelling. Declarations are project-wide and
+  order-independent and introduce ordinary symbols, not a new entity type. Manifest symbol
+  declarations remain supported. Unknown symbols are errors in content; engine scripts retain
+  dynamic symbol creation. Named definitions declare their corresponding symbol where
+  applicable (for example characters and decks), avoiding duplicate declarations.
+- **Computed bindings:** `?name := expression` binds a new variable from grounded inputs.
+  Positive relation joins run first, then bindings and aggregates in written order, then
+  filters. Expressions follow guard purity and no-yield rules. For v1, computed bindings
+  are rejected in recursive rule cycles so they cannot generate an unbounded domain;
+  ordinary relational recursion remains supported.
+- **Disjunction:** allow parenthesized `or` alternatives in grounded filters, with
+  left-to-right short-circuit evaluation. Defer branching relation bodies that introduce
+  bindings; separate rules remain the v1 way to express those alternatives.
+- **Query conveniences:** `exists { goals }` returns a Boolean without exporting bindings.
+  `logic.one(query ...)` returns the sole binding record, nil for no match, and an error
+  for multiple matches. Defer `first` because query results are unordered.
+- **Exposed bindings:** `expose ?name` makes a matched value available to templates and
+  effects without adding it to instance identity or cooldown/history keys. For each
+  instance, require exactly one distinct exposed value across matching bindings; repeated
+  equal values are allowed, ambiguity is an author-facing error. Choosing revalidates
+  exposed bindings against the current world.
+- **Effect period changes:** `narrative.set_period(:period, value)` targets the executing
+  session in an effect or handler; elsewhere it errors. Changes are transaction-aware,
+  visible immediately within the effect, discarded on rollback, and visible to subsequent
+  actions after commit. Setting a period neither advances the turn nor starts a nested action
+  phase. Keep `session:set_period` for hosts.
+- **Explicit clamping:** `adjust quality(...) by delta clamp` and
+  `quality.add(entity, name, delta, {clamp = true})` saturate at declared quality bounds.
+  An absent bound leaves that side unrestricted; an absent value still errors. Ordinary
+  adjustment retains its bounds errors. For v1, reject `clamp` on relations without supported
+  quality bounds. `quality.metadata(:name)` exposes read-only metadata.
+- **Deck navigation:** `leads :deck` belongs to a choice and pushes the destination after
+  its authored effect, in the same transaction; a failed effect does not navigate.
+  `narrative.return_deck()` pops, with an error at the root. Ordinary Lua `return` is unchanged
+  and existing push/pop APIs remain available to engine scripts. Reject a choice combining
+  `leads` with explicit deck navigation in its effect, preventing double navigation.
+- **Narration delivery:** keep `narrative.emit(:say, text)`; add ordered
+  `session:events_since(sequence)` and presentation `events` containing events committed
+  since the previous successful presentation. Stable sequence numbers permit host
+  deduplication. Failed effects emit nothing; save/load preserves the presentation event
+  cursor; re-rendering an existing presentation consumes nothing. Defer action `text` syntax.
+- **Handler/callback world context:** unqualified relations and `quality.*` in session
+  handlers and deferred callbacks default to the originating session world. Explicit worlds
+  and helpers deliberately capturing another world retain their meaning. Handlers remain
+  transactional. Deferred callbacks run after commit, cannot undo it on failure, do not retry
+  automatically, and gain no permission to use effect-only operations. Gameplay changes belong
+  in effects or scheduled handlers; deferred callbacks serve host notifications/external work.
+- **Terminal sessions:** `narrative.finish(:ending)` records an ending transactionally.
+  The current effect finishes normally; commit stops subsequent automatic actions and
+  scheduled-event delivery, but already committed notifications still run. `session:ended()`
+  returns the ending symbol or nil. Terminal `present()` returns the ending and final pending
+  narration without choices; choose/advance error. Save/load preserves the ending and undo
+  may restore the preceding nonterminal state. Repeating the same ending is harmless;
+  conflicting endings in one transaction error. Cross-save achievements remain profile data.
+- **Readable scenes:** add writer-facing statements over the existing serializable scene
+  model, with explicit effect blocks, scalar locals, conditionals, menus, jump/call/return
+  and media directives. Keep beat records as a lower-level engine-script interface. Defer
+  arbitrary Lua loops and function definitions in scenes. Effects between presentation
+  boundaries commit together; failure restores position, locals, stage and world. No
+  coroutine implementation. The approved illustrative syntax uses `scene greeting()`,
+  `show mira at :left`, `say mira id greeting_hello "Welcome back."`, and `effect do ... end`;
+  complete grammar remains implementation work.
+- **Stable text identity:** content scenes require explicit authored ids for dialogue,
+  narration, menu options and input prompts. Short ids are scene-scoped. Editors may generate
+  them once and preserve them across moves; missing ids are content errors. Position-generated
+  ids remain for legacy/engine-created scenes. Menu labels and character display names must
+  participate in localization before the authoring syntax is frozen.
+- **V1 scope:** require the authoring contract stated at the Phase 9 exit above. Retain the
+  RPG Maker/Ren'Py/Twine comparison checklist, but finish advanced rendering under milestone 36.
+  Defer compound relation values/destructuring, a separate `passage` kind, general mixed
+  scene/storylet beat streams, timed-choice syntax and parser-style text commands. Existing
+  implemented conveniences remain supported.
+- **Nested relational subqueries:** defer correlated nested `exists { ... }` and
+  `not { ... }` goals. The approved Boolean `exists` expression remains in v1; auxiliary
+  relations and existing stratified negation express relational alternatives.
+- **Choice-by-name:** retain selection by name in author-test tools; defer public
+  `session:choose_by`. Gameplay hosts select exact presentation tokens, preserving instance
+  identity and availability checks.
+- **HUD/template additions:** defer `session:status()` and arbitrary Lua expressions in
+  template conditions. Hosts use qualities and the approved metadata accessor; authors use
+  named relations in template conditions. Preserve implemented rich text, links, variables,
+  fragments, history, profile and save-slot facilities. Click-to-replace prose is host-level
+  work outside the v1 language contract.
+
+The high-level Phase 9 decision pass is complete. The proposal inventory records the
+disposition of each topic; full grammar, implementation, tests, sample migration and the
+documented syntax freeze remain work. Approval of these targets does not complete Phase 9.
+
+**Status, October 13, 2026:** milestones 26, 27, 28 and 29 are done (see their rows), which
+completes Phase 9: readable scenes with explicit text ids and input statements, *Saltmarsh
+Light* migrated off its workarounds, `sample-vn` in `.varis`. Left over and not blocking: menu
+labels are not yet in the localization catalog, and the other samples keep the `.lua`
+extension (their migration is mechanical).
 
 Decided October 12, 2026 (owner, asked while planning the executor work):
 

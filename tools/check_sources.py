@@ -35,6 +35,7 @@ def check(files=None):
         if "PUC-Rio" not in head:
             errors.append(f"{rel}: missing license header")
     errors.extend(check_layers())
+    errors.extend(check_game_leaf())
     return errors
 
 
@@ -75,6 +76,18 @@ def check_layers():
                     if RANK[layer] > RANK[own]:
                         errors.append(f"{rel}:{number}: {own} module imports the {layer} layer ({match.group(1)})")
                     break
+    return errors
+
+
+def check_game_leaf():
+    """The battle simulation (source/varis/game/) is a leaf: it imports nothing from Varis (plan B9)."""
+    errors = []
+    for f in sorted(Path(ROOT / "source/varis/game").rglob("*.d")):
+        rel = str(f.relative_to(ROOT))
+        for number, line in enumerate(f.read_text(errors="replace").splitlines(), 1):
+            match = re.search(r"\bimport\s+(varis\.[\w.]+)", line)
+            if match and not match.group(1).startswith("varis.game."):
+                errors.append(f"{rel}:{number}: game module imports {match.group(1)} (game/ is a leaf)")
     return errors
 
 

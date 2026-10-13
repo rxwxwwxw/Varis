@@ -21,6 +21,7 @@ public import varis.lib.utf8;
 public import varis.lib.package_lib;
 public import varis.lib.debug_lib;
 public import varis.lib.logic;
+public import varis.lib.battle;
 public import varis.lib.narrative;
 public import varis.lib.quality;
 import varis.lib.fastcall : installFastCalls;
@@ -42,6 +43,7 @@ void openLibs(LuaState state) {
     openPackageLib(state);
     openDebugLib(state);
     openLogicLib(state);
+    openBattleLib(state);
     openNarrativeLib(state);
     openQualityLib(state);
 

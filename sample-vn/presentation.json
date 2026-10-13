@@ -1,6 +1,6 @@
 {
   "title": "Harbour Window — Varis SDL3",
-  "content": "content.lua",
+  "content": "content.varis",
   "scene": "harbour",
   "font_size": 28,
   "save": "quicksave.json",

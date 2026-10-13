@@ -45,12 +45,15 @@ SRC_FILES = source/varis/package.d \
             source/varis/narrative/codec.d \
             source/varis/narrative/templates.d source/varis/narrative/translation.d source/varis/narrative/plural.d source/varis/narrative/text.d \
             source/varis/narrative/fingerprint.d \
-            source/varis/narrative/session.d source/varis/narrative/persistence.d source/varis/narrative/observe.d source/varis/narrative/diagnostics.d source/varis/narrative/analysis.d \
+            source/varis/narrative/session.d source/varis/narrative/profile.d source/varis/narrative/persistence.d source/varis/narrative/observe.d source/varis/narrative/diagnostics.d source/varis/narrative/analysis.d \
             source/varis/narrative/registry.d source/varis/narrative/scenes.d \
             source/varis/lib/narrative.d source/varis/lib/quality.d \
             source/varis/lib/logic.d \
             source/varis/narrative/vmops.d source/varis/workbench/page.d source/varis/workbench/server.d source/varis/workbench/inspect.d \
-            source/varis/services/check.d source/varis/services/diagnostic.d source/varis/services/manifest.d source/varis/services/index.d source/varis/services/checks.d source/varis/services/tier.d source/varis/services/lang.d source/varis/services/lsp.d source/varis/services/play.d source/varis/services/loadpass.d source/varis/services/presentation.d source/varis/services/gamehost.d source/varis/services/json.d source/varis/services/catalog.d source/varis/services/xliff.d source/varis/services/l10n.d
+            source/varis/services/check.d source/varis/services/diagnostic.d source/varis/services/manifest.d source/varis/services/index.d source/varis/services/checks.d source/varis/services/tier.d source/varis/services/lang.d source/varis/services/lsp.d source/varis/services/play.d source/varis/services/loadpass.d source/varis/services/presentation.d source/varis/services/gamehost.d source/varis/services/json.d source/varis/services/catalog.d source/varis/services/xliff.d source/varis/services/l10n.d \
+            source/varis/game/hex.d source/varis/game/terrain.d source/varis/game/fog.d source/varis/game/route.d \
+            source/varis/game/kinds.d source/varis/game/types.d source/varis/game/battle.d \
+            source/varis/lib/battle.d
 
 # Per-test timeout for a unit executable (seconds).
 TIMEOUT ?= 300
@@ -175,7 +178,7 @@ varis-sdl: bin
 	pkg-config --exists $(SDL_PACKAGES)
 	mkdir -p $(BUILD_DIR)/sdl
 	$(CC) -std=c11 -Wall -Wextra -Werror $(SDL_CFLAGS) -c tools/sdl/bridge.c -o $(BUILD_DIR)/sdl/bridge.o
-	$(DC) -Isource -Jworkbench -I. -O3 $(SRC_FILES) tools/sdl/main.d tools/sdl/gameplayer.d tools/sdl/ui.d tools/sdl/native.d $(BUILD_DIR)/sdl/bridge.o $(addprefix -L,$(SDL_LIBS)) -of=$(BIN_DIR)/varis-sdl
+	$(DC) -Isource -Jworkbench -I. -O3 $(SRC_FILES) tools/sdl/main.d tools/sdl/gameplayer.d tools/sdl/battleview.d tools/sdl/ui.d tools/sdl/native.d $(BUILD_DIR)/sdl/bridge.o $(addprefix -L,$(SDL_LIBS)) -of=$(BIN_DIR)/varis-sdl
 
 test-sdl: varis-sdl
 	python3 tests/sample_game/sdl_test.py

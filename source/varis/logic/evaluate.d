@@ -598,7 +598,11 @@ private struct Executor {
                         auto returned = VM.callValue(state, aggregate.goal.aggregateExpression, arguments);
                         value = returned.length ? returned[0] : luaNil();
                     }
-                    if (op == "sum") {
+                    if (op == "value") {
+                        // A computed binding (`?x := expression`): one assignment, no goals.
+                        result = value;
+                        rejectNaN(result);
+                    } else if (op == "sum") {
                         if (!isNumber(value))
                             throw new LuaException("sum aggregate requires numeric values");
                         result = VM.opAdd(state, result, value);

@@ -1,22 +1,77 @@
 # Needed extensions
 
-> **Status (October 11, 2026):** this inventory is the main input to Phase 9 of the
-> [roadmap](../ROADMAP.md) (settling the authoring syntax). Milestone 27 triages every entry
-> below as accepted, deferred or rejected; until then these remain proposals.
+> **Decision status (October 13, 2026):** this inventory is the input to Phase 9 of the
+> [roadmap](../ROADMAP.md#phase-9-decisions--october-13-2026). Its owner-approved decision
+> record supersedes the original proposals below: accepted targets are not necessarily
+> implemented. In particular, `leads` is choice-level, queries use `exists { ... }` and
+> `logic.one`, content scene text requires explicit ids, and the v1 scope defers compound
+> relation values, passages, mixed beat streams, timed choices and parser-style input.
+> High-level inventory triage is complete; the disposition table below controls scope.
+> Full grammar, implementation and verification remain prerequisites for the syntax freeze.
 
 This file lists the language and runtime changes that *Saltmarsh Light* (this folder) and Twine- or Ren'Py-style games need, beyond the current [Varis Reference Manual](../docs/README.md). This is a proposal/workaround inventory, not a language specification; entries marked implemented (such as `sticky` and `order`) are defined in the manual. Historical section citations map through [docs/coverage.md](../docs/coverage.md).
 
 The game itself uses only current-spec features. Where it has to work around a gap, the code points here, and [`extensions/proposed.lua`](extensions/proposed.lua) sketches the proposed syntax. Section numbers below (§1.1 and so on) are the ones the code comments cite.
 
+Status of the triage (October 13, 2026, milestone 27): every topic below has a disposition in the
+table; the constructs marked **Implemented** have grammar in
+[docs/syntax.md](../docs/syntax.md) §10 and semantics in the manual; the scene-body and
+input-statement items, and the migration of this game off its workarounds (for example the host
+`sync_periods` that `narrative.set_period` now makes unnecessary), are accepted work that is not
+yet done, and stay here and in milestone 29 until they land.
+
 Current status (October 12, 2026): declarative scenes, characters, stage state, scene
 input/menu beats, format 3 mid-scene saves, scene-line localization and an initial SDL3
 player are implemented; see [manual §6.11](../docs/narrative.md#611--scenes-beats-and-stage-state)
-and [Harbour Window](../sample-vn/README.md). Procedural scene bodies, beat undo, persistent
-data and full presentation parity remain proposed. `varis test` supplies a choice-by-name
+and [Harbour Window](../sample-vn/README.md). The current manual also documents beat undo,
+profile data and input validation. Writer-facing procedural scene bodies remain planned;
+advanced presentation parity is milestone 36 work. `varis test` supplies a choice-by-name
 wrapper; a public `session:choose_by` method remains proposed. Localization catalogs,
 packs and language switching also exist; see manual §§8.4–8.7.
 
 Priority key: **P0** means the game needs a workaround today. **P1** is needed for Twine/Ren'Py-class games. **P2** is quality of life.
+
+## V1 disposition — owner decisions, October 13, 2026
+
+Accepted means in scope, not implemented. Historical examples and descriptions below remain
+motivation; the roadmap decision record controls the final design and the manual controls
+current behavior. Existing implemented facilities remain supported without accepting every
+alternative API or syntax suggested in the historical inventory.
+
+| Inventory topic | Disposition |
+| --- | --- |
+| §1.1 Period changes | Accept transaction-aware `narrative.set_period`. **Implemented (milestone 28).** |
+| §1.2 Sticky/order and navigation | Retain sticky/order; accept choice-level `leads` and `narrative.return_deck`. **Implemented (milestone 28).** |
+| §1.3 Clamping/metadata | Accept explicit quality clamping and read-only metadata. **Implemented (milestone 28):** `adjust … clamp`, `quality.add(…, {clamp = true})`, `quality.metadata`. |
+| §1.4 Narration | Accept ordered events and presentation delivery; defer action `text` syntax. **Implemented (milestone 28):** presentation `events`, `session:events_since`. |
+| §1.5 Binding/disjunction/subqueries | Accept nonrecursive computed bindings, grounded filter `or`, and Boolean `exists`; defer binding-producing alternatives and correlated nested relational subqueries. **Implemented (milestone 28):** `?x := expr`, `(a or b)`, `exists { … }`. |
+| §1.6 Exposed variables | Accept unique exposed values outside instance identity. **Implemented (milestone 28):** `expose ?name`. |
+| §1.7 Handler/callback worlds | Accept originating-session defaults with explicit-world preservation. **Implemented (milestone 28).** |
+| §1.8 Terminal sessions | Accept transactional finish; cross-save data stays in the profile. **Implemented (milestone 28):** `narrative.finish`, `session:ended`. |
+| §1.9 Query/selection conveniences | Accept `exists { ... }` and exact-one `logic.one`; defer unordered first-result selection and public `session:choose_by`; retain author-test selection helpers. **Implemented (milestone 28):** `exists`, `logic.one`. |
+| §1.10 Compound values/destructuring | Defer. |
+| §1.11 Inference performance | Runtime lane, milestone 35; not new Phase 9 syntax work. |
+| §2 Passages/focus mode | Defer a separate passage kind; use scenes and storylet hubs. |
+| §2 Links, variables, history, fragments and initialization | Retain implemented facilities; no separate Twine syntax required for v1. |
+| §2 Lua expressions in templates | Defer; use named relational conditions. |
+| §2 Click-to-replace prose | Host-level, outside v1 language scope. |
+| §2 Undo and §3.4 beat rollback | Required; retain implemented undo and verify readable scenes integrate with it. |
+| §3.1 Scene control flow/effects | Accept readable scene statements over serializable positions; defer arbitrary Lua loops and function definitions. |
+| §3.2 Characters/line identity | Accept explicit scene-scoped text ids in content; retain legacy/generated ids for engine-created scenes. |
+| §3.3 Media/stage | Require structured directives and saveable stage; advanced rendering parity belongs to milestone 36. |
+| §3.5 Persistent data | Retain implemented host-owned profile facilities. |
+| §3.6 Timed choices | Defer new timed-choice syntax; retain existing pause directives. |
+| §4.1 Mixed beat stream | Defer general mixed scene/storylet streams; retain current scene and hub presentations. |
+| §4.2 Events | Accept as §1.4. |
+| §4.3 Disabled choices | Retain implemented `require ... because`. |
+| §4.4–5 Metadata/rich text | Retain implemented facilities; advanced presentation work belongs to milestone 36. |
+| §4.6 Input | Require readable input statements using existing advance/token and validation model; no separate `respond` API required for v1. |
+| §4.7 HUD | Defer `session:status`; hosts compose qualities and metadata. |
+| §4.8 Save slots/headers | Retain implemented facilities. |
+| §4.9 Undo | Required as above. |
+| §4.10 Parser-style input | Defer. |
+| §4.11 Embedding | Milestone 36; retain the scene adapter, general embedding is separate work. |
+| §4.12 Localization | Retain implemented pipeline; require stable ids and menu/character text coverage for the authoring freeze. |
 
 ---
 

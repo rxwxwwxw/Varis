@@ -35,6 +35,11 @@ class ContentDefinition {
     string[] parameters;
     string[] incomingParameters;
     string[] groundedParameters;
+    /// `expose ?name`: values the query matched that templates and effects see, but that are not
+    /// part of the instance identity, cooldowns or history.
+    string[] exposed;
+    /// The enclosing storylet's `expose` names, for a choice (its bindings carry them, hidden).
+    string[] incomingExposed;
     LuaValue availability;
     /// The `require` query of a choice, over storylet and choice parameters; nil when absent.
     LuaValue requirement;
@@ -110,6 +115,45 @@ class ContentRegistry {
     LuaState state;
     SceneDefinition[] scenes;
     CharacterDefinition[] characters;
+    /// Presentation pass-through data (`narrative.meta`): frozen records keyed by `storylet` or
+    /// `storylet.choice`. Never part of the content identity, like wording.
+    LuaValue[string] metadata;
+    /// Named helpers engine scripts expose to content files (`narrative.helper`): not part of any
+    /// identity, and not saved.
+    LuaValue[string] helpers;
+    /// Named text fragments (`narrative.fragment`), expanded where `{>name}` appears when the
+    /// definition is registered, so fingerprints, catalogs and translations see the whole text.
+    string[string] fragments;
+
+    string expandFragments(string text, size_t depth = 0) {
+        import std.string : indexOf;
+
+        if (text.indexOf("{>") < 0)
+            return text;
+        if (depth > 8)
+            throw new LuaException("template fragments nest too deeply (a fragment includes itself?)");
+        string result;
+        size_t i;
+        while (i < text.length) {
+            if (i + 1 < text.length && text[i .. i + 2] == "{{") {
+                result ~= "{{";
+                i += 2;
+            } else if (i + 1 < text.length && text[i .. i + 2] == "{>") {
+                auto end = text[i .. $].indexOf('}');
+                if (end < 0)
+                    throw new LuaException("unterminated template fragment reference");
+                string name = text[i + 2 .. i + end];
+                auto found = name in fragments;
+                if (found is null)
+                    throw new LuaException(
+                            "unknown template fragment '" ~ name ~ "' (define it with narrative.fragment first)");
+                result ~= expandFragments(*found, depth + 1);
+                i += end + 1;
+            } else
+                result ~= text[i++];
+        }
+        return result;
+    }
 
     SceneDefinition* scene(string id) {
         foreach (ref definition; scenes)
@@ -292,6 +336,31 @@ class ContentRegistry {
         validateQualityValue(definition, tuple.values[2]);
     }
 
+    /// Saturate a quality tuple's value at the declared bounds (an absent bound is unrestricted).
+    varis.logic.model.RelTuple clampQualityTuple(varis.logic.model.RelTuple tuple) {
+        validateQualityTupleShape(tuple);
+        auto id = tuple.values[1].match!((Symbol s) => s.name, _ => "");
+        auto definition = quality(id);
+        auto value = tuple.values[2];
+        if (!isNumber(value))
+            throw new LuaException("bounded quality requires a numeric value: " ~ id);
+        if (!isNil(definition.minimum) && luaNumberLess(value, definition.minimum))
+            value = definition.minimum;
+        if (!isNil(definition.maximum) && luaNumberLess(definition.maximum, value))
+            value = definition.maximum;
+        auto values = tuple.values.dup;
+        values[2] = value;
+        return varis.logic.model.RelTuple(values);
+    }
+
+    private void validateQualityTupleShape(varis.logic.model.RelTuple tuple) {
+        if (tuple.length != 3 || !isSymbol(tuple.values[1]))
+            throw new LuaException("quality name must be a symbol");
+        auto id = tuple.values[1].match!((Symbol s) => s.name, _ => "");
+        if (quality(id) is null)
+            throw new LuaException("unknown quality '" ~ id ~ "'");
+    }
+
     string[] nameIds() {
         return names_.keys;
     }
@@ -340,7 +409,14 @@ class ContentRegistry {
         foreach (key, text; messages) {
             TranslationTemplate template_;
             string error;
-            if (parseTranslation(text, template_, error))
+            string expanded;
+            try {
+                expanded = expandFragments(text);
+            } catch (LuaException failure) {
+                problems ~= locale ~ " " ~ key ~ ": " ~ failure.msg;
+                continue;
+            }
+            if (parseTranslation(expanded, template_, error))
                 parsed[key] = template_;
             else
                 problems ~= locale ~ " " ~ key ~ ": " ~ error;
@@ -441,7 +517,7 @@ class ContentRegistry {
         import std.algorithm : canFind;
 
         bool[string] parameters;
-        foreach (parameter; definition.incomingParameters ~ definition.parameters) {
+        foreach (parameter; definition.incomingParameters ~ definition.parameters ~ definition.exposed) {
             if (parameter in parameters)
                 throw new LuaException("duplicate content parameter '" ~ parameter ~ "'");
             parameters[parameter] = true;
@@ -450,6 +526,12 @@ class ContentRegistry {
             if (!definition.groundedParameters.canFind(parameter))
                 throw new LuaException(
                         "unbound " ~ definition.kind ~ " parameter '?" ~ parameter ~ "' in '" ~ definition.id ~ "'");
+        if (definition.kind == "choice" && "leads" in definition.options) {
+            auto leads = definition.option("leads");
+            if (!isSymbol(leads))
+                throw new LuaException("choice 'leads' must name a deck symbol: " ~ definition.id);
+            deck(leads.match!((Symbol s) => s.name, _ => ""));
+        }
         auto priority = definition.option("priority", LuaValue(0L));
         if (!isInteger(priority))
             throw new LuaException("content priority must be an integer: " ~ definition.id);
@@ -472,6 +554,33 @@ class ContentRegistry {
                 throw new LuaException("storylet deck must be a symbol");
             if (!definition.choices.length)
                 throw new LuaException("storylet requires at least one choice: " ~ definition.id);
+            // Passage links `[[label->choice]]` in the text compile to that choice: the target
+            // must name one, so a mistyped link is an error here rather than a dead word.
+            auto linkText = definition.option("text", LuaValue(""));
+            if (isString(linkText)) {
+                import std.string : indexOf;
+
+                string rest = linkText.asString;
+                while (true) {
+                    auto open = rest.indexOf("[[");
+                    if (open < 0)
+                        break;
+                    auto close = rest[open + 2 .. $].indexOf("]]");
+                    if (close < 0)
+                        break;
+                    auto inner = rest[open + 2 .. open + 2 + close];
+                    rest = rest[open + 2 + close + 2 .. $];
+                    auto arrow = inner.indexOf("->");
+                    auto target = arrow < 0 ? inner : inner[arrow + 2 .. $];
+                    bool known;
+                    foreach (choice; definition.choices)
+                        known = known || choice.id == target;
+                    if (!known)
+                        throw new LuaException(
+                                "link [[" ~ inner ~ "]] in storylet '" ~ definition.id
+                                ~ "' names no choice '" ~ target ~ "'");
+                }
+            }
             bool[string] choices;
             foreach (choice; definition.choices) {
                 if (choice.id in choices)
@@ -504,7 +613,7 @@ class ContentRegistry {
             if (!isString(value))
                 throw new LuaException("content template must be a string");
             auto parsed = new NarrativeTemplate(value.match!((string text) => text, _ => ""), definition
-                    .incomingParameters ~ definition.parameters);
+                    .incomingParameters ~ definition.parameters ~ definition.exposed);
             if (field == "title")
                 definition.titleTemplate = parsed;
             else
@@ -515,7 +624,7 @@ class ContentRegistry {
         if (isFunction(definition.requirement))
             definition.becauseTemplate = new NarrativeTemplate(definition.option("because")
                     .match!((string text) => text,
-                        _ => ""), definition.incomingParameters ~ definition.parameters);
+                        _ => ""), definition.incomingParameters ~ definition.parameters ~ definition.exposed);
     }
 
     /// Copy into an already allocated registry shell, preserving capture cycles.
@@ -591,6 +700,20 @@ class ContentRegistry {
         auto sceneProblem = validateScenes(this);
         if (sceneProblem.length)
             throw new LuaException(sceneProblem);
+        foreach (key; metadata.keys) {
+            import std.string : indexOf;
+
+            auto dot = key.indexOf('.');
+            auto owner = storylet(dot < 0 ? key : key[0 .. dot]);
+            bool known = owner !is null;
+            if (known && dot >= 0) {
+                known = false;
+                foreach (choice; owner.choices)
+                    known = known || choice.id == key[dot + 1 .. $];
+            }
+            if (!known)
+                throw new LuaException("narrative.meta names unknown content '" ~ key ~ "'");
+        }
         foreach (definition; storylets_.values ~ actions_.values ~ procedures_.values) {
             try {
                 validateContent(definition);

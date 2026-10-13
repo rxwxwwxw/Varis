@@ -18,7 +18,7 @@ import varis.state;
 import varis.vm;
 import varis.exception : LuaException;
 import varis.lib.auxlib;
-import varis.lib.base : readWholeFile, skipFilePrefix, loadChunk;
+import varis.lib.base : readWholeFile, skipFilePrefix, loadChunk, loadSourceFile;
 import std.array : replace, split, appender;
 import std.process : environment;
 import varis.capi : wrapCFunction, lua_CFunction;
@@ -186,6 +186,12 @@ void openPackageLib(LuaState state) {
                 string path = pathField(L, "path").match!((string s) => s, _ => "");
                 string error;
                 auto filename = searchPath(name, path, ".", "/", error);
+                if (filename is null) {
+                    // The same directories, looking for the Varis source extension. `package.path`
+                    // itself keeps its Lua spelling; a module found only as `.varis` is used.
+                    string varisError;
+                    filename = searchPath(name, path.replace(".lua", ".varis"), ".", "/", varisError);
+                }
                 if (filename is null)
                     return [LuaValue(error)];
                 string content, readError;
@@ -193,7 +199,7 @@ void openPackageLib(LuaState state) {
                 try {
                     if (!readWholeFile(filename, content, readError))
                         throw new LuaException(readError);
-                    fn = loadChunk(L, skipFilePrefix(content), "@" ~ filename, "bt");
+                    fn = loadSourceFile(L, filename, content, "@" ~ filename, "bt");
                 } catch (LuaException failure) {
                     throw new LuaException(
                     "error loading module '" ~ name ~ "' from file '" ~ filename ~ "':\n\t" ~ toLuaString(

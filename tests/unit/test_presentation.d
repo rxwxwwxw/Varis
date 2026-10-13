@@ -118,3 +118,48 @@ mixin UnitMain;
     assert(host.view.stories[0].title == english);
     assert(!host.choose(0, 99)); // No such choice: a status, not a throw.
 }
+
+@("sceneHostBack") unittest {
+    auto host = new SceneHost;
+    assert(host.loadContent(content, "host-test.lua", "start"), host.error);
+    assert(!host.canBack() && !host.back());
+    string before, after;
+    assert(host.save(before));
+    assert(host.advance() && host.advance() && host.view.kind == "input");
+    assert(host.canBack());
+    assert(host.advance(LuaValue("Rowan")) && host.view.kind == "menu");
+    assert(host.back() && host.view.kind == "input");
+    assert(host.advance(LuaValue("Ada")) && host.view.kind == "menu");
+    assert(host.back() && host.back() && host.back());
+    assert(host.view.kind == "background" && !host.canBack());
+    assert(host.save(after) && before == after);
+    assert(host.advance() && host.advance() && host.advance(LuaValue("Wren")));
+    assert(host.advance(host.view.choices[0].id));
+    assert(host.view.text == "Hello Wren.", host.view.text);
+}
+
+@("gameHostBack") unittest {
+    auto host = new GameHost;
+    assert(host.loadProject("sample-rpg", "prologue"), host.error);
+    assert(host.newGame(7), host.error);
+    assert(!host.canBack());
+    while (host.view.inScene) {
+        auto kind = host.view.beat.kind;
+        bool ok;
+        if (kind == "input")
+            ok = host.advance(LuaValue("Rowan"));
+        else if (kind == "menu")
+            ok = host.advance(host.view.beat.choices[0].id);
+        else
+            ok = host.advance();
+        assert(ok, host.error);
+    }
+    assert(host.canBack());
+    auto first = host.view.stories[0].id;
+    auto strength = host.view.values["strength"];
+    assert(host.choose(0, 0), host.error);
+    assert(host.view.stories[0].id != first || host.view.values["strength"] != strength);
+    assert(host.back(), host.error);
+    assert(host.view.stories[0].id == first && host.view.values["strength"] == strength);
+    assert(host.choose(0, 0), host.error); // the restored token is usable again
+}

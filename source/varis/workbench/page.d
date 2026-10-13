@@ -609,7 +609,7 @@ async function openFile(path) {
   showEditorInfo(""); markDirty(); check();
 }
 async function check() {
-  if (!current.endsWith(".lua")) { source.diagnostics([]); return; }
+  if (!current.endsWith(".lua") && !current.endsWith(".varis")) { source.diagnostics([]); return; }
   const version = editVersion;
   const data = await editorRequest("check");
   if (version === editVersion) showProblems(data.diagnostics || []);

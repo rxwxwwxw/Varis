@@ -52,7 +52,8 @@ end
 A storylet requires an availability `when { goals }`, a title, and at least one
 choice. Every header parameter must be grounded by the availability query.
 Each distinct parameter assignment identifies an instance. Other query variables
-are existential and are not exposed to templates or effects.
+are existential and are not exposed to templates or effects, unless the storylet
+names them with `expose` (below).
 
 | Field | Default | Requirement |
 | --- | --- | --- |
@@ -81,6 +82,31 @@ symbol. Mutable tables, functions, threads, userdata, and even portable composit
 sequences are not scalar instance keys. Equal integer/float scalars have the same
 instance identity. Query/hash enumeration order cannot alter identity. Instance
 bindings are immutable and retain the availability world version.
+
+**Exposed values.** `expose ?name` shows a value the availability query matched to
+templates and effects without making it part of the instance:
+
+```lua
+storylet visit(?room)
+    when { room(?room), lamp(?room, ?kind) }
+    expose ?kind
+    title "Visit the {room}"
+    text "A {kind} lamp burns."
+    choice look effect do fact seen(room, kind) end end
+end
+```
+
+The variable must be bound by a positive atom or aggregate of the query and must
+not be a parameter. Several may be listed (`expose ?a, ?b`). An exposed value is
+visible as a placeholder in titles, text and `because`, and as a read-only local
+in effects and `require` queries of the storylet's choices. It is **not** part of
+the instance key, cooldowns, completion history or `bindings`; a presentation
+carries it as `exposed`. For each instance the query must produce exactly one
+distinct value (repeated equal values are fine): several different values for one
+instance is an author-facing `AMBIGUOUS_EXPOSE` error when the storylet is
+presented. Choosing revalidates the exposed values against the current world; a
+changed value makes the token stale. `expose` is also available on choices and
+actions that have their own `when`.
 
 ### 6.3 — Choices, lexical binding, and tokens
 
@@ -181,8 +207,13 @@ from the new state. This continues until no action is eligible.
 
 `once_per :turn` allows each instance once at a numbered turn, `:game` once per
 session, and `:always` removes suppression. Other symbols use the current portable
-value set by `session:set_period`; without a value the action is excluded. An
-instance can run once for each distinct value of that named period.
+value set by `session:set_period` or, from an effect or handler,
+`narrative.set_period(:period, value)`; without a value the action is excluded. An
+instance can run once for each distinct value of that named period. The effect form
+targets the executing session, is transaction-aware (visible at once inside the
+effect, discarded on rollback, visible to later actions after commit) and neither
+advances the turn nor starts a nested action phase; outside an effect or handler it is
+an error, and hosts keep using `session:set_period`.
 
 The default action budget is 1,000 per phase, configurable with `session:limits`.
 `ACTION_LIMIT` preserves earlier successful commits. A budget failure is not a
@@ -198,6 +229,14 @@ deck :exploration { draw = 3, replacement = false }
 `draw` must be a positive integer and `replacement` a Boolean. The implicit
 `:default` deck has draw one and replacement true unless explicitly configured.
 Storylets name a deck; the active deck is the top session stack entry.
+
+A choice can move to another deck with `leads :deck`, which pushes the destination
+after the authored effect, in the same transaction; a failing effect navigates
+nowhere. `narrative.return_deck()` in an effect returns to the previous deck (an
+error at the root). A choice that has `leads` must not also navigate decks in its
+effect (`push_deck`, `pop_deck`, `replace_deck`, `return_deck`): that would navigate
+twice, and the choice is refused when chosen. The destination deck must exist when
+the content is sealed.
 
 Inside effects, `narrative.push_deck` creates a fresh entry,
 `narrative.pop_deck` removes the top but cannot remove the last,
@@ -324,12 +363,26 @@ handler registered with `narrative.on(kind, function(world, kind, args) ... end)
 in its own transaction. An ordinary handler can use `logic (world) do ... end`
 for explicit access to its supplied world.
 
+Inside a handler (and a deferred callback, below) unqualified relation names, `fact`,
+`set`, `adjust`, queries and `quality.*` mean the **session's world**, the one the
+event came from, even when that is not `logic.global`; `logic.global` still names the
+global world explicitly. Other worlds are reached only by naming them.
+
 A failed handler leaves its event queued; earlier handlers/actions remain
 committed. The default event budget is 1,000 per phase, independent of the action
 budget. `EVENT_LIMIT` preserves prior progress and bounds immediate chains.
 
+Committed events are also delivered to the presentation. Each presentation has an
+`events` field: an immutable sequence of `{sequence, turn, kind, args}` records for
+the events committed since the previous successful presentation, in sequence order.
+The sequence numbers are stable, so a host can deduplicate; failed effects emit
+nothing; re-rendering a presentation with `session:render` delivers nothing new; and
+the delivery cursor is saved. `session:events_since(sequence)` returns the same
+records after a given number without consuming anything. The narration convention is
+`narrative.emit(:say, text)` and `args[1]` is the text.
+
 `narrative.defer(function)` schedules a no-argument callback after successful
-commit and cleanup. Savepoint rollback discards it; child commit merges it.
+commit and cleanup. The callback runs with the session's world as the default world. Savepoint rollback discards it; child commit merges it.
 Callback errors propagate after committed state is published, with no rollback
 or automatic retry. Prefer named portable events for persistence/replay rather
 than relying on anonymous external callbacks.
@@ -350,9 +403,18 @@ metadata are errors.
 Definition does not insert facts. `quality.initialize` inserts the initial value
 only if absent; initialized nil is still present. `quality.get` returns the
 actual value or nil, without defaults. `quality.set` and `quality.add` perform
-keyed writes with bounds checked and no clamping. Add requires presence and a
+keyed writes with bounds checked and, by default, no clamping. Add requires presence and a
 numeric current value/delta. Deletion followed by initialization restores initial
 membership. Use a query to distinguish absent membership from an initialized nil.
+
+**Clamping is explicit.** `adjust quality(:player, :hp) by -5 clamp` and
+`quality.add(:player, :hp, -5, {clamp = true})` saturate the result at the declared
+bounds instead of failing; a side with no declared bound is unrestricted. The current
+value must still be present and numeric, and an ordinary `adjust` keeps its bounds
+error. `clamp` on a relation that is not `quality` (no declared bounds) is an error.
+`quality.metadata(:name)` returns the definition as an immutable record
+(`initial`, `minimum`, `maximum`, `visible`, `label`; an absent bound is nil) so a
+host can draw a meter without hard-coding limits.
 
 Constraints apply to all mutation paths, including direct fact/set/adjust,
 `logic.add`, inherited worlds, transactions, and restoration. Derived qualities
@@ -363,6 +425,19 @@ effects use `logic.global`. Inside effects they use lexical call-world metadata:
 the session world in the effect body, an enclosed world block, or an ordinary
 helper's captured world. Aliasing a library function preserves this rule.
 Foreign-world mutations still fail the effect transaction's world check.
+
+### 6.8a — Terminal sessions
+
+`narrative.finish(:ending)` in an effect or handler records the session's ending
+in the same transaction. The current effect completes normally; once it commits the
+session runs no further automatic actions or scheduled events (committed notifications
+still run). `session:ended()` returns the ending symbol, or nil while the session is
+playable. A presentation of a finished session carries `ending`, no storylets or
+choices, and the narration events not yet delivered; `choose`, `advance` and `play` on
+it fail with `SESSION_ENDED`. Finishing twice with the same ending is harmless; a
+different ending in the same session is an error and rolls the effect back. An ending
+is saved, restored by `narrative.load` and may be taken back by `session:undo`.
+Cross-save achievements stay in the profile (6.9a).
 
 ### 6.9 — Portable saves and replay
 
@@ -381,7 +456,9 @@ validated as they were written and are written back as format 2.
 Saves include base tuples, ordered schemas/keys and versions, persistent world
 identity, runtime/content/program fingerprints, turns, deck entries and draw
 history, completion/action policies, periods, schedules/events, RNG and seed,
-execution limits, consumed-token IDs, and replay inputs. Derived tuples are
+execution limits, consumed-token IDs, and replay inputs; an `ending` (6.8a) and an
+`event_cursor` (undelivered narration events, 6.7) appear only when they carry
+something, so other saves are unchanged. Derived tuples are
 recomputed. Query iterators and usable tokens are not portable continuations.
 
 Portable values are nil, Booleans, integers, finite floats, byte strings, symbols,
@@ -419,6 +496,92 @@ external inputs themselves, matching instance keys to new presentation tokens.
 The API does not automatically replay a log. Unrecorded writes, impure code,
 and failed commands with partial scheduler commits need host reconstruction.
 Subscriptions and queued closures must be reestablished after load.
+
+### 6.6a — Conveniences for story authors
+
+**What has been visited.** `session:visited(:storylet)` is the number of committed choices of that
+storylet (any bindings), and `session:last_chosen(:storylet)` the turn of the latest one, or nil.
+Both read data a save already carries, so they survive save and load unchanged and follow undo.
+Effects call `narrative.visited` and `narrative.last_chosen`, which see the effect's tentative
+state. They are plain functions, not relations: to gate a storylet on a visit, have its effect
+record a fact (`fact seen(:market)`) and write `when { seen(:market) }`.
+
+**Pass-through metadata.** `narrative.meta(:storylet [, :choice], table)` attaches presentation
+data (an icon name, tags, a shortcut, a style) before sealing. It appears as the `meta` field
+of that storylet or choice in every presentation, as an immutable record. Metadata is
+presentation data like wording: it is outside the content identity, so changing it never
+invalidates a save, and naming unknown content is an error at seal time.
+
+**Rich text.** `narrative.spans(text)` splits rendered text written in a small markup into an
+immutable sequence of span records: `**strong**`, `*emphasis*`, `[link text](target-id)` and a
+newline are recognized; `\` before `* [ ] ( ) \` gives the literal character; a marker with
+no partner stays text. Records carry `text` plus `strong`, `emphasis` and `link` when set, or
+`break = true` for a line break. Hosts draw spans and never interpret markup themselves. A
+value bound into a template is text like any other, so pass names the player typed through
+`narrative.escape_markup` before they reach rich text.
+
+**Variables.** `var gold = 5` (contextual: two names in a row are not Lua) is sugar for
+`narrative.var(:gold, 5)`, one row of the keyed relation `var(name, value)` in the global
+world. Read it in text as `{$gold}`, in `when` and `require` as `var(:gold, ?v)`, and change
+it with `set var(:gold, 7)` or `adjust var(:gold) by -1`. It is ordinary state, so saves,
+transactions, undo and replay treat it like any fact. A name is declared once.
+
+**Fragments.** `narrative.fragment(:sign_off, "Fair winds.")` names a piece of text and
+`{>sign_off}` includes it in a title, text, `because` or scene line. Fragments are expanded
+when the definition is registered, so define them first; fingerprints, catalogs and
+translations all see the whole text. A translation may use `{>name}` too: it is expanded when
+the translation is registered, so register packs after the fragments exist. Unknown
+fragments and cycles are errors.
+
+**Lua conditions.** `{#if lua n >= 3}…{#else}…{/if}` evaluates a read-only Lua expression over
+the definition's parameters, true by Lua truthiness, next to `{#if query …}`. The expression
+text is part of the template's structure, so editing it changes the content identity as a
+changed query does.
+
+**Passage links.** `[[text->choice]]` and `[[choice]]` in a storylet's `text` compile to the
+choice of that id: a target that names no choice of the storylet is an error at seal. Each
+presented storylet then carries `links`, in text order, records with `text`, `choice` (the
+choice id), `token` and `enabled` (a choice that fails its `require` is a disabled link with
+no token). A front end draws the words as a link and chooses with `token` when it is
+clicked. `narrative.spans` shows the same markup as link spans for drawing the text inline.
+
+### 6.9a — Undo, save headers, and the profile
+
+**Undo.** `session:set_undo_limit(n)` keeps the last `n` states taken just before a
+`choose` or a scene `advance`; the default is 0 (off, no cost). `session:undo()` restores the
+newest one in place and returns the presentation that was current when the undone command
+started, so its tokens are usable again; `undo_depth()` says how many are left, and `undo` with
+none left is an error. What returns is everything a save contains: facts and their schemas'
+keys, the turn, decks and draw history, the random state, periods, events and schedules, the
+replay log, and the scene position with its stage and locals. Granularity follows the commands:
+a hub choice is a turn, a scene advance is a beat. A failed command leaves no undo point.
+
+Three things are deliberately not rolled back. State outside the session is not touched:
+Lua tables a host keeps, files, and `narrative.defer` callbacks that already ran. The
+counters for tokens, decks and schedules keep running, so a save written after an undo differs
+from one in which the command never ran, and tokens issued after the restored point are voided
+(choosing one is `STALE_CHOICE`). The ring is not saved: a loaded session starts with none.
+
+**Save headers.** `session:save{label = "…", meta = value}` adds two informational fields.
+`narrative.save_info(text)` reads them, with the turn, format and whether the save is inside a
+scene, without restoring anything. Neither field is read by `narrative.load` or enters any
+fingerprint, so a host may put a timestamp or a location name in `meta`. Slots are the host's:
+one save text per slot, listed with `save_info`.
+
+**Profile.** `narrative.profile_set`, `profile_get`, `profile_keys`, `profile_save` and
+`profile_load` keep data that survives new games (seen lines, endings, gallery entries). The
+profile belongs to the host: it is never in a session save and never in the replay log, so it
+cannot change what a replay does. To keep that true, reading it is an error inside effects,
+rules, templates and analysis; writing from an effect is allowed and applies after the effect
+commits. Persisting `profile_save()` text is the host's job; the SDL player keeps it in
+`profile.json` beside its saves (`"profile"` in the manifest) and loads it at start.
+
+**Autosave and slots.** `session:set_autosave(function(text) … end)` calls the function with
+the save text after every committed choice or beat advance, at an idle boundary (`nil`
+removes it); an error in the hook propagates after the command has committed. For slots,
+`narrative.save_slot(session, dir, name [, {label=, meta=}])`, `list_slots(dir)` (name, turn,
+label, meta for each save file), `load_slot(dir, name, world_factory)` and `delete_slot(dir,
+name)` keep one `dir/name.json` per slot; names are letters, digits, `_` and `-`.
 
 ### 6.10 — Explanations, subscriptions, and bounded analysis
 
@@ -523,11 +686,12 @@ storylet turn or run the post phase.
 | `background` | Required `tag`; replaces the background. |
 | `audio` | Required `channel`; `tag` starts/replaces it, absent `tag` stops it. |
 | `pause`, `transition`, `screen`, `picture` | Portable structured directives delivered to the host. Only character slots, attributes, background, and audio are persistent stage fields. |
-| `input` | Required `local` name; advance stores its portable scalar input, including nil. |
+| `input` | Required `local` name; advance stores its portable scalar input, including nil. Optional `default` (used when the host passes nil), `min_length` / `max_length` (text, counted in characters) and `min` / `max` (numbers); input that breaks them is rejected with `invalid scene input: …`, leaving the position and token valid. A beat with a bound and no default refuses nil. |
 | `menu` | Nonempty `choices`, each with `id`, `text`, and a scene `target`. Advance requires an exact choice id and jumps to its target. |
 | `ended` | Delivered to the host; advancing it clears the scene stack. |
 | `effect` | Required `name` of a registered `procedure`; `args` (record of portable scalars) and `locals` (record mapping a parameter to the scene local that supplies it) must together name exactly the procedure's parameters. Runs the procedure's effect in the session world, without displaying a beat. |
 | `set` | Required `local` name and portable scalar `value`; updates locals without displaying a beat. |
+| `branch` | Required `local`, `op` (`==`, `~=`, `<`, `<=`, `>`, `>=`), portable scalar `value` and scene `target`: when the comparison holds, behaves as `jump` to the target; otherwise falls through. Written by readable `if` (6.11a). |
 | `jump`, `call` | Required scene `target`; jump replaces the current frame, call pushes a frame and saves the return address. `jump` to `:hub` clears the whole stack. |
 | `"return"` | Pops the frame; falling off a scene does the same. The spelling is a string because `return` is a Lua keyword. |
 
@@ -557,7 +721,8 @@ After the stack empties, presentation resumes the storylet deck; its presentatio
 also includes the retained stage. The engine owns tags, attributes, slots,
 background and audio channel tags; assets, pixels, animation and audio playback
 belong to the host. This version has no arbitrary procedural code between beats,
-beat undo/history, or automatic exploration of scene branches by `narrative.analyze`.
+visible beat history, or automatic exploration of scene branches by `narrative.analyze`
+(taking back a beat is `session:undo`, section 6.9a).
 
 Characters declare allowed attribute values in `attributes`, with optional
 `defaults`. Unknown characters, attribute names, or values are rejected at seal;
@@ -573,6 +738,72 @@ narrative templates with the current locals as bindings. `set_language` and
 `render(presentation, language)` translate scene line text; re-rendering preserves
 the token, captured template trace, position, and stage. Menu labels and character
 metadata are currently delivered as authored text.
+
+### 6.11a — Readable scenes
+
+`scene name() … end` is the writer-facing form of a scene. It lowers, at parse time, to
+`narrative.scene(:name, {beats})` (6.11); the beat tables stay the interface for engine
+scripts and tools. A scene takes no parameters; its locals come from `set` and `input`.
+
+```lua
+scene greeting()
+    background :harbour
+    show mira at :left with expression = :smile
+    input visitor id ask_name "Your name?" with min_length = 1, max_length = 12
+    effect set_name(name = visitor)            -- a procedure; a bare name is a scene local
+    say mira id hello "Welcome, {visitor}."
+    set mood = 1
+    menu
+        option tea "Ask for tea" do
+            narrate id pours "She pours the tea."
+            set mood = 3
+        end
+        option leave "Say goodbye" do set mood = 0 end
+    end
+    if mood >= 3 then
+        say mira with expression = :smile id warm "Stay as long as you like."
+    else
+        say mira id cool "Another time, then."
+    end
+    effect using visitor, mood do              -- an inline procedure over named locals
+        adjust quality(:player, :str) by mood
+    end
+    call farewell
+end
+```
+
+| Statement | Lowers to |
+| --- | --- |
+| `say c [with a = v, …] id x "text"` | a `say` beat, with attribute changes |
+| `narrate id x "text"` | a `narration` beat |
+| `show c at :slot [with …]`, `hide c` | `show`, `hide` |
+| `background :tag`, `audio channel :tag`, `audio channel off` | `background`, `audio` |
+| `pause {…}`, `transition {…}`, `screen {…}`, `picture {…}` | the structured directive of that kind |
+| `input local id x "prompt" [with default/min_length/max_length/min/max = …]` | an `input` beat |
+| `set local = value` | a `set` beat (the value is a portable scalar) |
+| `effect name(p = local, q = 3)` | an `effect` beat: a bare name supplies a scene local, anything else is a literal |
+| `effect using a, b do … end` | a generated `procedure` with those parameters, and an `effect` beat |
+| `menu … option id "text" do … end … end` | a `menu` beat; each option body is a generated scene that rejoins the statements after the menu |
+| `if local op value then … elseif … else … end` | `branch` beats and generated scenes that rejoin |
+| `jump s`, `call s`, `return`, `ended` | the control beats of the same name |
+
+**Text ids.** Every `say`, `narrate` and `input` names its line with `id name`; the id is
+scoped to the scene and registered as `scene.name` (so `id hello` in `greeting` is
+`greeting.hello`, the catalog key `scene.greeting.hello.text`). A missing id and a duplicate
+id inside one scene are syntax errors at the line. Moving or inserting statements keeps
+every line's identity. Option labels are not yet translated.
+
+**Conditions.** `if` compares one scene local with a value: `==` and `~=` use raw equality;
+the orderings need two numbers or two strings, and a nil or mismatched pair is an error
+(`scene condition compares 'x' with a value of another kind`) that leaves the position and
+world as they were. Anything richer belongs in a relation and a procedure.
+
+**Generated scenes** are named `<scene>__<what><n>` and are ordinary scenes (they appear in
+saves as the position). Because a menu option or an `if` branch is its own frame position,
+a save taken inside one round-trips like any other. Changing the statements of a scene
+changes the numbers, so the content identity moves with the structure, as it should; wording
+changes do not move it. The beat list is otherwise unchanged: control beats (`branch`
+included) never reach the host.
 
 A session that has entered a scene saves as `varis-session-3`. It extends format 2
 with validated frames (scene id, zero-based position, scalar locals) and stage
