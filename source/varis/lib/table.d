@@ -102,8 +102,9 @@ private bool shiftRemove(LuaValue t, long size, long pos, out LuaValue removed) 
     removed = arr[cast(size_t) pos - 1];
     import core.stdc.string : memmove;
 
-    memmove(cast(void*)&arr[cast(size_t) pos - 1], cast(const(void)*)&arr[cast(size_t) pos], (n - cast(size_t) pos) * LuaValue
-            .sizeof);
+    // `arr.ptr + pos` may be one past the last element (removing the last one moves nothing).
+    memmove(cast(void*)(arr.ptr + (cast(size_t) pos - 1)), cast(const(void)*)(arr.ptr + cast(size_t) pos),
+            (n - cast(size_t) pos) * LuaValue.sizeof);
     arr[n - 1] = luaNil();
     return true;
 }
