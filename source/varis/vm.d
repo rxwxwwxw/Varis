@@ -116,8 +116,25 @@ private string fastArithmetic(string op) {
         ~ op ~ ` right.asFloat);
             break;
         }
+        if ((left.isFloat || left.isInteger) && (right.isFloat || right.isInteger)) {
+            // Mixed operands: the integer converts to float, as in C Lua.
+            setFloat(registers[instr.a], (left.isFloat ? left.asFloat : cast(double) left.asInteger) `
+        ~ op ~ ` (right.isFloat ? right.asFloat : cast(double) right.asInteger));
+            break;
+        }
     }`;
 }
+
+/// Inline path of `/`: any two numbers divide as floats.
+private enum string fastDivision = q{{
+    auto left = instr.bIsK ? &proto.constants[instr.b] : &registers[instr.b];
+    auto right = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
+    if ((left.isFloat || left.isInteger) && (right.isFloat || right.isInteger)) {
+        setFloat(registers[instr.a], (left.isFloat ? left.asFloat : cast(double) left.asInteger)
+                / (right.isFloat ? right.asFloat : cast(double) right.asInteger));
+        break;
+    }
+}};
 
 private static immutable size_t indexNameHash = hashOf("__index");
 private static immutable size_t newindexNameHash = hashOf("__newindex");
@@ -509,7 +526,11 @@ private enum string sharedOpcodeCases1 = q{
                     mixin(fastArithmetic("*"));
                     execArith(state, proto, registers, instr);
                     break;
-                case OpCode.Div, OpCode.IDiv, OpCode.Mod, OpCode.Pow,
+                case OpCode.Div:
+                    mixin(fastDivision);
+                    execArith(state, proto, registers, instr);
+                    break;
+                case OpCode.IDiv, OpCode.Mod, OpCode.Pow,
                     OpCode.BAnd, OpCode.BOr, OpCode.BXor, OpCode.Shl, OpCode.Shr:
                     execArith(state, proto, registers, instr);
                     break;
