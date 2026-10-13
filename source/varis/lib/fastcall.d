@@ -328,6 +328,103 @@ private int fastStringByte(void* sp, LuaValue[] r, int base, int n) {
     return 1;
 }
 
+private bool plainPattern(string p) {
+    foreach (c; p) {
+        switch (c) {
+        case '^', '$', '*', '+', '?', '.', '(', ')', '[', ']', '%', '-':
+            return false;
+        default:
+            break;
+        }
+    }
+    return true;
+}
+
+/// `string.find` of a plain substring: the third argument an integer or nil, the fourth `true`
+/// or absent. A pattern with magic characters is left to the generic implementation.
+private int fastStringFind(void* sp, LuaValue[] r, int base, int n) {
+    import core.stdc.string : memchr, memcmp;
+
+    if (n < 2 || n > 4 || !r[base + 1].isString || !r[base + 2].isString)
+        return -1;
+    long init = 1;
+    if (n >= 3 && !r[base + 3].isNil) {
+        if (!r[base + 3].isInteger)
+            return -1;
+        init = r[base + 3].asInteger;
+    }
+    string s = r[base + 1].asString;
+    string p = r[base + 2].asString;
+    if (n == 4) {
+        if (!r[base + 4].isBoolean || !r[base + 4].asBool)
+            return -1;
+    } else if (!plainPattern(p))
+        return -1;
+    size_t start = posRelatI(init, s.length) - 1;
+    if (start > s.length) {
+        r[base] = luaNil();
+        return 1;
+    }
+    if (p.length == 0) {
+        r[base] = LuaValue(cast(long)(start + 1));
+        r[base + 1] = LuaValue(cast(long) start);
+        return 2;
+    }
+    size_t last = s.length >= p.length ? s.length - p.length : size_t.max;
+    for (size_t i = start; i <= last && last != size_t.max; ++i) {
+        auto hit = cast(const(char)*) memchr(s.ptr + i, p[0], last - i + 1);
+        if (hit is null)
+            break;
+        i = hit - s.ptr;
+        if (memcmp(s.ptr + i, p.ptr, p.length) == 0) {
+            r[base] = LuaValue(cast(long)(i + 1));
+            r[base + 1] = LuaValue(cast(long)(i + p.length));
+            return 2;
+        }
+    }
+    r[base] = luaNil();
+    return 1;
+}
+
+/// `string.char` of integer arguments in 0..255, up to eight of them.
+private int fastStringChar(void* sp, LuaValue[] r, int base, int n) {
+    if (n < 1 || n > 8)
+        return -1;
+    char[] buffer = new char[n];
+    foreach (k; 0 .. n) {
+        if (!r[base + 1 + k].isInteger)
+            return -1;
+        long c = r[base + 1 + k].asInteger;
+        if (c < 0 || c > 255)
+            return -1;
+        buffer[k] = cast(char) c;
+    }
+    r[base] = LuaValue(cast(string) buffer);
+    return 1;
+}
+
+/// `string.rep(s, n)` without a separator, when the result stays small.
+private int fastStringRep(void* sp, LuaValue[] r, int base, int n) {
+    if (n != 2 || !r[base + 1].isString || !r[base + 2].isInteger)
+        return -1;
+    string s = r[base + 1].asString;
+    long count = r[base + 2].asInteger;
+    if (count <= 0) {
+        r[base] = LuaValue("");
+        return 1;
+    }
+    if (s.length == 0 || count > 4096 || s.length * cast(size_t) count > 65_536)
+        return -1;
+    char[] buffer = new char[s.length * cast(size_t) count];
+    if (s.length == 1)
+        buffer[] = s[0];
+    else
+        for (size_t pos = 0; pos < buffer.length; pos += s.length)
+            buffer[pos .. pos + s.length] = s[];
+    r[base] = LuaValue(cast(string) buffer);
+    return 1;
+}
+
 private int fastTableInsert(void* sp, LuaValue[] r, int base, int n) {
     if (n != 2 || !r[base + 1].isTable)
         return -1;
@@ -381,5 +478,8 @@ void installFastCalls(LuaState state) {
     install(lookup(str, "len"), &fastStringLen);
     install(lookup(str, "sub"), &fastStringSub);
     install(lookup(str, "byte"), &fastStringByte);
+    install(lookup(str, "find"), &fastStringFind);
+    install(lookup(str, "char"), &fastStringChar);
+    install(lookup(str, "rep"), &fastStringRep);
     install(lookup(library("table"), "insert"), &fastTableInsert);
 }

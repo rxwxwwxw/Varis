@@ -167,16 +167,23 @@ private LuaValue[] strGsub(LuaState L, LuaValue[] a) {
     long n = 0;
     bool changed = false;
     auto b = appender!string();
+    // One match state for the whole call (its capture array is large); text between matches is
+    // copied in runs, from `flushed`.
+    auto ms = MatchState(src, pat);
+    size_t flushed = 0;
     while (n < maxS) {
-        auto ms = MatchState(src, pat);
+        ms.level = 0;
+        ms.matchdepth = 200;
         auto e = Pattern.matchLoop(ms, pos, 0);
         if (e != -1 && e != lastMatch) {
             ++n;
+            if (flushed < pos)
+                b.put(src[flushed .. pos]);
             changed = addValue(L, ms, b, pos, e, repl, 3) || changed;
-            pos = lastMatch = cast(size_t) e;
+            pos = lastMatch = flushed = cast(size_t) e;
             // addValue copies the original text when the replacement is kept.
         } else if (pos < src.length) {
-            b.put(src[pos++]);
+            ++pos;
         } else
             break;
         if (anchor)
@@ -184,8 +191,8 @@ private LuaValue[] strGsub(LuaState L, LuaValue[] a) {
     }
     if (!changed)
         return [LuaValue(src), LuaValue(n)];
-    if (pos < src.length)
-        b.put(src[pos .. $]);
+    if (flushed < src.length)
+        b.put(src[flushed .. $]);
     return [LuaValue(b.data), LuaValue(n)];
 }
 
