@@ -571,6 +571,13 @@ peak RSS of the reference game lower.
 
 Exit: `core.numeric_loop`, `core.array_access`, `core.sieve` at or below 1.2×.
 
+**L3 status, October 13, 2026: the exit is met, by a different change.** After the fast loop of
+stage S1 the three workloads are at 1.16×, 1.17× and 1.06× (`make bench-check`). The compact
+encoding itself is not built: only step 1 (fused compare-and-jump) exists, instructions are
+still 32 bytes, and operand kinds are still tested at run time. What a compact encoding would
+still buy has to be measured again from the new baseline before anyone starts it; the earlier
+estimate was made when a third of the loop overhead was the attention test.
+
 **L4 — Call path.**
 
 *Measured October 11, 2026, so nobody repeats these as guesses.* `core.fib` makes 1.35 million
@@ -599,22 +606,33 @@ per-frame scope guards), not further trimming of this one.
 Exit: every C-Lua-comparable core workload at or below 1.0×, or a written account of which ones
 are not and why, with the next stage that addresses each.
 
-**L4 exit account, October 13, 2026.** L4's exit allows "a written account of which workloads are
-not at or below 1.0× and why". The October 13 `make bench-check` run (release build, M1):
+**L4 exit account, October 13, 2026 (refreshed after stage S1's fast loop).** L4's exit allows "a
+written account of which workloads are not at or below 1.0× and why". From the `make bench-check`
+run that followed the fast loop (release build, M1; the earlier account's numbers in brackets):
 
 | Workload | × C Lua | Why it is not at 1.0× | What would address it |
 | --- | ---: | --- | --- |
-| `core.deep_recursion` | 2.47 | Per-call cost (record, frame guards) at 150+ nested frames goes through `executeDeepFrame`'s saved-frame records | A single record-based executor at least as fast as native recursion (not designed) |
-| `core.fib`, `programs.closures`, `core.closures` | 2.24, 2.10, 1.95 | Call path: the guards and record removed together are worth 11 % (above); the rest is per-instruction cost | L3 compact encoding **and** a lean frame, together |
-| `core.coroutine_switch`, `programs.coro` | 1.96, 1.98 | druntime fibers; "Faster coroutines" is not planned (§6) | Frames as records, owner-specified, deferred |
-| `programs.mandel`, `core.numeric_loop`, `core.array_access` | 1.73, 1.43, 1.45 | Dispatch: 32-byte instructions and one flag load per instruction; fused compare-and-jump and mixed arithmetic are in (this section) | L3 |
-| `core.method_dispatch`, `programs.oop` | 1.58 | Method probe misses on the instance then hits the class; X1 inline caches not started | X1 |
-| `core.string_ops`, `programs.strings` | 1.40, 1.03 | `gsub` and `format` build results through an appender and an array of values | native rewrite of those two (L1 remainder) |
-| `core.pcall_error` | 1.23 | One D throw per error raised inside a native | L1 remainder |
+| `core.deep_recursion` | 2.08 (2.47) | Per-call cost at 150+ nested frames, through `executeDeepFrame`'s saved-frame records | A single record-based executor at least as fast as native recursion (not designed) |
+| `core.fib`, `programs.closures`, `core.closures` | 1.93, 1.85, 1.71 (2.24, 2.10, 1.95) | Call path: about 33 ns per call against 17 ns. All of it is inside `executeFrame` (frame entry and exit, call record, 656 bytes of native stack per Lua call); the profile shows no single cost | A lean frame (base pointer into one value stack, a few-word call record, no per-frame guards), which needs L1's errors as values first |
+| `core.coroutine_switch`, `programs.coro` | 1.88, 1.92 (1.96, 1.98) | druntime fibers; "Faster coroutines" is not planned (§6) | Frames as records, owner-specified, deferred |
+| `programs.bintrees`, `programs.queens` | 1.60, 1.49 | Allocation and collection (bintrees); calls and table writes (queens) | Stage M's allocation work; the lean frame |
+| `core.method_dispatch`, `programs.oop` | 1.48, 1.45 (1.58) | Method probe misses on the instance then hits the class | X1 inline cache for the `__index` chain |
+| `programs.mandel` | 1.43 (1.73) | Float arithmetic through tagged values; operand kinds tested per instruction | L3 specialization by operand kind, or X2 |
+| `core.string_ops`, `programs.strings` | 1.37, 1.06 (1.40, 1.03) | `gsub` and `format` build results through an appender and an array of values | native rewrite of those two (L1 remainder) |
+| `core.hash_access`, `programs.varargs` | 1.25, 1.29 | Generic-key hash probes; vararg copies | X1 for computed keys; not analysed further |
+| `core.pcall_error` | 1.20 (1.23) | One D throw per error raised inside a native | L1 remainder |
+| `core.numeric_loop`, `core.array_access`, `programs.matmul`, `core.sieve` | 1.16, 1.17, 1.18, 1.06 (1.43, 1.45, –, 1.16) | What is left of dispatch: 32-byte instructions, run-time operand-kind tests | L3 proper, if a new measurement supports it |
 
-Nothing in the table is fixed by trimming `executeFrame`; each row names the structural change that
-would. That is the account L4's exit asks for. L4 is closed on that basis, and the rows are the
-order of work for L3 and X.
+At or below 1.0×: `core.gc_churn` 0.97, `core.table_insert_remove` 1.01, `core.table_sort` 0.71,
+`core.string_manip` 0.58, `programs.pairs` 0.45, `programs.sort` 0.15.
+
+**Milestone 46 is not complete.** Its stages stand as follows: L2 done; L3's exit met (above); L4
+closed by this account; **L1's exit is not met** ("no `throw` in core modules": natives still
+throw, the adapter does not exist) and its remainder is deferred by §5a; the milestone's own exit
+(every workload at or below 1.0×) is not met and, on calls, is not reachable without the lean
+frame, which depends on L1. The next step that would move the largest rows is therefore L1's
+remainder followed by a record-based executor, in that order; both need the owner's go-ahead
+because §5a records them as deferred.
 
 ### Track X — Lua core beyond C Lua (milestone 47)
 
@@ -704,7 +722,7 @@ Read this before starting any of the stages below; several are no longer worth d
 | L4, calls at 1.0× C Lua | **Not reachable under current decisions.** | The owner kept exact call records and exact register clearing (ROADMAP, decisions of October 12). The measurements in L4 put the per-call cost of what is kept at roughly half of today's overhead, and the existing record-based executor is slower per call than native recursion. Expect 1.5–2× on call-heavy code. Reopen only if the owner allows lazy call records. |
 | Coroutines without fibers | **Deferred, specified.** | The owner's specification is "yield from Lua and across `pcall`". It needs frames kept as records, and today that executor is about 30 % slower per Lua call, so coroutine bodies would get slower while switches got faster. Fibers are also the key for transactions (`activeTransactions[Fiber.getThis()]`), no-yield scopes and per-coroutine debug stacks. Do it only together with a record-based executor that is at least as fast as native recursion. |
 | L1 remainder, natives returning statuses | **Deferred.** | Errors raised by `error` and errors crossing Lua frames no longer throw, and `core.pcall_error` is at 1.3×. What is left costs one throw per error raised inside a native, which is not on any measured hot path. Convert a library when it is rewritten for another reason. |
-| L3, compact execution encoding | **Open, low expected value.** | Loops are at 1.2–1.5× after the 16-byte value; halving the instruction size helps cache density but not the dependency chain of dispatch. Measure on one handler group before converting all of them. |
+| L3, compact execution encoding | **Exit met without it (October 13, 2026); the encoding is open, low expected value.** | Loops are at 1.06–1.18× after the fast loop of stage S1 (they were 1.2–1.5× after the 16-byte value); halving the instruction size helps cache density but not the dependency chain of dispatch. Measure on one handler group, from the new baseline, before converting all of them. |
 | X1–X4 | **Open** (arithmetic: October 13, 2026, mixed integer/float operands and `/` have inline paths in the shared handlers: `programs.mandel` 1.92× → 1.80×; the loops themselves are at the dispatch floor and need L3; string natives: October 13, 2026, `string.find` of a plain pattern, `string.char` and `string.rep` have allocation-light fast entry points and `gsub` reuses one match state and copies runs: `core.string_ops` 1.76× → 1.40×, gate 2.0 → 1.7). | Inline caches for method dispatch (`core.method_dispatch` 1.7×) and string operations (`core.string_ops` 2.1×) are now the largest remaining gaps that are not calls. |
 
 **L4 reopened, measured October 13, 2026 (owner chose "reopen L4 / lazy call records").** Upper
