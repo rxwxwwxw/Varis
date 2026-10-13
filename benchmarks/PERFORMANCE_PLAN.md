@@ -499,6 +499,23 @@ per-frame scope guards), not further trimming of this one.
 Exit: every C-Lua-comparable core workload at or below 1.0×, or a written account of which ones
 are not and why, with the next stage that addresses each.
 
+**L4 exit account, October 13, 2026.** L4's exit allows "a written account of which workloads are
+not at or below 1.0× and why". The October 13 `make bench-check` run (release build, M1):
+
+| Workload | × C Lua | Why it is not at 1.0× | What would address it |
+| --- | ---: | --- | --- |
+| `core.deep_recursion` | 2.47 | Per-call cost (record, frame guards) at 150+ nested frames goes through `executeDeepFrame`'s saved-frame records | A single record-based executor at least as fast as native recursion (not designed) |
+| `core.fib`, `programs.closures`, `core.closures` | 2.24, 2.10, 1.95 | Call path: the guards and record removed together are worth 11 % (above); the rest is per-instruction cost | L3 compact encoding **and** a lean frame, together |
+| `core.coroutine_switch`, `programs.coro` | 1.96, 1.98 | druntime fibers; "Faster coroutines" is not planned (§6) | Frames as records, owner-specified, deferred |
+| `programs.mandel`, `core.numeric_loop`, `core.array_access` | 1.73, 1.43, 1.45 | Dispatch: 32-byte instructions and one flag load per instruction; fused compare-and-jump and mixed arithmetic are in (this section) | L3 |
+| `core.method_dispatch`, `programs.oop` | 1.58 | Method probe misses on the instance then hits the class; X1 inline caches not started | X1 |
+| `core.string_ops`, `programs.strings` | 1.40, 1.03 | `gsub` and `format` build results through an appender and an array of values | native rewrite of those two (L1 remainder) |
+| `core.pcall_error` | 1.23 | One D throw per error raised inside a native | L1 remainder |
+
+Nothing in the table is fixed by trimming `executeFrame`; each row names the structural change that
+would. That is the account L4's exit asks for. L4 is closed on that basis, and the rows are the
+order of work for L3 and X.
+
 ### Track X — Lua core beyond C Lua (milestone 47)
 
 These are things C Lua's design does not do. Each is its own change with its own measurement.

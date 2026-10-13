@@ -22,12 +22,12 @@ gate.time = 0.081
 
 [workload."core.deep_recursion"]
 goal.clua = 1.0
-gate.clua = 3.15
+gate.clua = 2.9
 gate.time = 0.081
 
 [workload."core.fib"]
 goal.clua = 1.0
-gate.clua = 2.63
+gate.clua = 2.5
 gate.time = 0.16
 
 [workload."core.gc_churn"]
@@ -152,7 +152,7 @@ gate.time = 0.089
 
 [workload."programs.mandel"]
 goal.clua = 1.0
-gate.clua = 2.43
+gate.clua = 2.0
 gate.time = 0.047
 
 [workload."programs.matmul"]
@@ -172,7 +172,7 @@ gate.time = 0.16
 
 [workload."programs.queens"]
 goal.clua = 1.0
-gate.clua = 2.57
+gate.clua = 1.9
 gate.time = 0.02
 
 [workload."programs.sort"]
