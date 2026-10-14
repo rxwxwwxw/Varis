@@ -308,13 +308,8 @@ Diagnostic[] checkTier(string path, string content) {
     if (source.length > 1 && source[0] == '#')
         source = "--" ~ source[2 .. $];
     auto parser = new Parser(source, "@" ~ path, true);
-    BlockStmt block;
-    try {
-        block = parser.parse();
-    } catch (LuaException) {
-        return null;
-    }
-    if (parser.problems.length)
+    BlockStmt block = parser.parse();
+    if (block is null || parser.problems.length)
         return null;
     auto walker = new Walker(path);
     walker.block(block);

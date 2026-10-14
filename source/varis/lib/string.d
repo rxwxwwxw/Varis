@@ -669,7 +669,11 @@ void openStringLib(LuaState state) {
             return null;
         }
         bool strip = a.length > 1 && isTruthy(a[1]);
-        return [LuaValue(dumpFunction(L, a[0], strip))];
+        LuaException failure;
+        auto binary = dumpFunction(L, a[0], strip, failure);
+        if (binary is null)
+            return raise(L, failure);
+        return [LuaValue(binary)];
     });
 
     // String functions read their arguments and neither keep nor modify the argument array, so a

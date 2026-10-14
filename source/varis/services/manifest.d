@@ -97,10 +97,8 @@ Manifest loadManifest(string directory) {
     }
     manifest.present = true;
     auto parser = new Parser(content, "@" ~ manifest.path);
-    BlockStmt block;
-    try {
-        block = parser.parse();
-    } catch (LuaException failure) {
+    BlockStmt block = parser.parse();
+    if (block is null) {
         int line = parser.hasErrorToken ? parser.errorToken.loc.line : 0;
         manifest.problems ~= makeDiagnostic("error", "manifest", manifest.path, line,
                 parser.hasErrorToken ? parser.errorToken.loc.column : 0, line,

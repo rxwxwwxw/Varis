@@ -128,7 +128,6 @@ bool loadSourceFile(LuaState state, string filename, string content, string chun
 }
 
 /// Loads a chunk of text or binary code. Returns false with the error object in `error` on failure.
-/// The frontend and the undumper report by throwing; this is where that stops.
 bool loadChunk(LuaState state, string code, string chunkName, string mode, out LuaFunction fn, out LuaValue error) {
     import std.string : indexOf;
 
@@ -137,14 +136,20 @@ bool loadChunk(LuaState state, string code, string chunkName, string mode, out L
         error = LuaValue("attempt to load a " ~ (binary ? "binary" : "text") ~ " chunk (mode is '" ~ mode ~ "')");
         return false;
     }
-    try {
-        if (binary) {
-            import varis.dump : undumpFunction;
+    if (binary) {
+        import varis.dump : undumpFunction;
 
-            fn = undumpFunction(state, code, chunkName);
-        } else
-            fn = state.loadString(code, chunkName);
-    } catch (LuaException failure) {
+        LuaException failure;
+        fn = undumpFunction(state, code, chunkName, failure);
+        if (fn is null) {
+            error = failure.errorObject;
+            return false;
+        }
+        return true;
+    }
+    LuaException failure;
+    fn = state.compileString(code, chunkName, failure);
+    if (fn is null) {
         error = failure.errorObject;
         return false;
     }

@@ -115,6 +115,15 @@ class Lexer {
     int line = 1;
     int column = 1;
     string[string] literalPool;
+    /// The first lexical error since the last `takeError`. Scanning stops at the point of the
+    /// error and returns an end-of-input token; nothing is thrown.
+    LuaException error;
+
+    LuaException takeError() {
+        auto failure = error;
+        error = null;
+        return failure;
+    }
 
     string internLiteral(string s) {
         if (auto p = s in literalPool) {
@@ -169,7 +178,10 @@ class Lexer {
 
     Token peekToken() {
         if (!hasLookahead) {
-            lookaheadToken = scanToken();
+            auto scanned = scanToken();
+            if (error !is null)
+                return scanned; // an error token is not remembered
+            lookaheadToken = scanned;
             hasLookahead = true;
         }
         return lookaheadToken;
@@ -210,6 +222,8 @@ class Lexer {
                     advance(); // '-'
                     advance(); // '-'
                     skipComment();
+                    if (error !is null)
+                        return Token(TokenType.EOF, "<eof>", 0, 0, currentLoc());
                     continue;
                 }
             }
@@ -439,7 +453,7 @@ class Lexer {
             }
         }
         lexError("unfinished long string (starting at line " ~ startLine.to!string ~ ")", "<eof>");
-        assert(0);
+        return failToken(loc);
     }
 
     private string formatSourceName() const {
@@ -447,6 +461,8 @@ class Lexer {
     }
 
     private void lexError(string msg, string nearToken = "") {
+        if (error !is null)
+            return;
         string src = formatSourceName();
         string nearText;
         if (nearToken.length == 0 || nearToken == "<eof>") {
@@ -454,15 +470,21 @@ class Lexer {
         } else {
             nearText = "'" ~ nearToken ~ "'";
         }
-        throw new LuaException(LuaValue(format("%s:%d: %s near %s", src, line, msg, nearText)));
+        error = new LuaException(LuaValue(format("%s:%d: %s near %s", src, line, msg, nearText)));
     }
 
-    private void esccheck(bool condition, string msg, size_t tokenStart) {
-        if (!condition) {
-            if (!isAtEnd())
-                advance();
-            lexError(msg, source[tokenStart .. cursor]);
-        }
+    private Token failToken(SourceLoc loc) {
+        return Token(TokenType.EOF, "<eof>", 0, 0, loc);
+    }
+
+    /// False (after recording the error) when `condition` does not hold.
+    private bool esccheck(bool condition, string msg, size_t tokenStart) {
+        if (condition)
+            return true;
+        if (!isAtEnd())
+            advance();
+        lexError(msg, source[tokenStart .. cursor]);
+        return false;
     }
 
     private Token readShortString(char quote) {
@@ -475,11 +497,14 @@ class Lexer {
             char c = peek();
             if (c == '\n' || c == '\r') {
                 lexError("unfinished string", source[tokenStart .. cursor]);
+                return failToken(loc);
             }
             if (c == '\\') {
                 advance();
-                if (isAtEnd())
+                if (isAtEnd()) {
                     lexError("unfinished string", "<eof>");
+                    return failToken(loc);
+                }
                 char esc = peek();
                 switch (esc) {
                 case 'a':
@@ -538,28 +563,35 @@ class Lexer {
                     break;
                 case 'x': // \xXX hexadecimal byte
                     advance();
-                    esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
+                    if (!esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart))
+                        return failToken(loc);
                     char h1 = advance();
-                    esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
+                    if (!esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart))
+                        return failToken(loc);
                     char h2 = advance();
                     int bVal = (hexVal(h1) << 4) | hexVal(h2);
                     buf ~= cast(char) bVal;
                     break;
                 case 'u': // \u{XXX} UTF-8 codepoint
                     advance();
-                    esccheck(peek() == '{', "missing '{'", tokenStart);
+                    if (!esccheck(peek() == '{', "missing '{'", tokenStart))
+                        return failToken(loc);
                     advance(); // consume '{'
-                    esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
+                    if (!esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart))
+                        return failToken(loc);
                     ulong cp = 0;
                     while (!isAtEnd() && peek() != '}') {
-                        esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart);
+                        if (!esccheck(isHexDigit(peek()), "hexadecimal digit expected", tokenStart))
+                            return failToken(loc);
                         char hc = advance();
                         if (cp > (0x7FFFFFFFu >> 4)) {
                             lexError("UTF-8 value too large", source[tokenStart .. cursor]);
+                            return failToken(loc);
                         }
                         cp = (cp << 4) | hexVal(hc);
                     }
-                    esccheck(peek() == '}', "missing '}'", tokenStart);
+                    if (!esccheck(peek() == '}', "missing '}'", tokenStart))
+                        return failToken(loc);
                     advance(); // consume '}'
                     if (cp < 0x80) {
                         buf ~= cast(char) cp;
@@ -586,12 +618,14 @@ class Lexer {
                             dVal = dVal * 10 + (advance() - '0');
                             count++;
                         }
-                        esccheck(dVal <= 255, "decimal escape too large", tokenStart);
+                        if (!esccheck(dVal <= 255, "decimal escape too large", tokenStart))
+                            return failToken(loc);
                         buf ~= cast(char) dVal;
                     } else {
                         if (!isAtEnd())
                             advance();
                         lexError("invalid escape sequence", source[tokenStart .. cursor]);
+                        return failToken(loc);
                     }
                     break;
                 }
@@ -602,6 +636,7 @@ class Lexer {
 
         if (isAtEnd()) {
             lexError("unfinished string", "<eof>");
+            return failToken(loc);
         }
 
         advance(); // consume closing quote

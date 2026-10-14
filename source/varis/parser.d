@@ -60,21 +60,95 @@ class Parser {
             }
     }
 
+    /// The first syntax error found since the last recovery, or null. Parsing never throws: an
+    /// error is recorded here, the rest of the input reads as end-of-input so that every
+    /// production returns at once, and `parse` hands back null (normal mode). In recovery mode
+    /// `guardedStatement` and `tryAdvance` note the error, restore the stream and go on.
+    LuaException failure;
+    private Token stashedCurrent;
+    private Token[] stashedLookahead;
+
+    /// The latched error of a failed parse (null when it succeeded).
+    LuaException error() {
+        return failure;
+    }
+
+    private static Token endOfInput(SourceLoc loc) {
+        auto token = Token(TokenType.EOF, "<eof>", 0, 0, loc);
+        token.raw = "<eof>";
+        token.endLine = loc.line;
+        token.endColumn = loc.column;
+        return token;
+    }
+
+    /// Records `problem` (the first one wins) and makes the rest of the input read as its end.
+    private void fail(LuaException problem) {
+        if (failure !is null)
+            return;
+        failure = problem;
+        stashedCurrent = current;
+        stashedLookahead = lookahead;
+        current = endOfInput(current.loc);
+        lookahead = null;
+    }
+
+    /// Forgets the recorded error and puts the token stream back as it was when it happened.
+    private void clearFailure() {
+        if (failure is null)
+            return;
+        failure = null;
+        current = stashedCurrent;
+        lookahead = stashedLookahead;
+        stashedLookahead = null;
+    }
+
+    /// A lexical error found while reading a token becomes this parser's error.
+    private bool lexerFailed() {
+        if (lexer.error is null)
+            return false;
+        fail(lexer.takeError());
+        return true;
+    }
+
     Token peekToken(size_t k = 0) {
+        if (failure !is null)
+            return endOfInput(current.loc);
         while (lookahead.length <= k) {
-            lookahead ~= lexer.nextToken();
+            auto next = lexer.nextToken();
+            if (lexerFailed())
+                return endOfInput(current.loc);
+            lookahead ~= next;
         }
         return lookahead[k];
     }
 
+    /// The type of the token after the parser's lookahead, straight from the lexer.
+    private TokenType lexerPeekType() {
+        if (failure !is null)
+            return TokenType.EOF;
+        auto next = lexer.peekToken();
+        if (lexerFailed())
+            return TokenType.EOF;
+        return next.type;
+    }
+
     private void advance() {
-        previous = current;
+        if (failure !is null)
+            return;
+        Token next;
         if (lookahead.length > 0) {
-            current = lookahead[0];
+            next = lookahead[0];
             lookahead = lookahead[1 .. $];
         } else {
-            current = lexer.nextToken();
+            previous = current;
+            next = lexer.nextToken();
+            if (lexerFailed())
+                return; // `current` stays the token before the bad one, as a raised error left it
+            current = next;
+            return;
         }
+        previous = current;
+        current = next;
     }
 
     private bool check(TokenType type) const {
@@ -119,7 +193,7 @@ class Parser {
     }
 
     private void syntaxErrorNoNear(string msg, int line) {
-        throw new LuaException(LuaValue(format("%s:%d: %s", formatSourceName(), line, msg)));
+        fail(new LuaException(LuaValue(format("%s:%d: %s", formatSourceName(), line, msg))));
     }
 
     private bool[] varargContext;
@@ -138,10 +212,8 @@ class Parser {
 
     /// enterlevel: bounds recursive descent like LUAI_MAXCCALLS in lparser.c.
     private void enterLevel() {
-        if (++nestingLevel > 195) {
-            auto failure = new LuaException(LuaValue("C stack overflow"));
-            throw failure;
-        }
+        if (++nestingLevel > 195)
+            fail(new LuaException(LuaValue("C stack overflow")));
     }
 
     /// The token a syntax error was reported at; tools read it to give the error a range.
@@ -150,10 +222,12 @@ class Parser {
     bool hasErrorToken;
 
     private void syntaxError(string msg, Token tok) {
+        if (failure !is null)
+            return; // the first error stands
         errorToken = tok;
         hasErrorToken = true;
-        throw new LuaException(LuaValue(format("%s:%d: %s near %s", formatSourceName(), tok.loc.line, msg, formatNear(
-                tok))));
+        fail(new LuaException(LuaValue(format("%s:%d: %s near %s", formatSourceName(), tok.loc.line, msg, formatNear(
+                tok)))));
     }
 
     private Token consume(TokenType type, string message) {
@@ -208,15 +282,15 @@ class Parser {
     /// `advance` that records a lexical error instead of raising it, and always makes progress.
     private bool tryAdvance() {
         auto before = lexer.cursor;
-        try {
-            advance();
+        advance();
+        if (failure is null)
             return true;
-        } catch (LuaException failure) {
-            note(failure);
-            if (lexer.cursor <= before)
-                lexer.cursor = before + 1;
-            return false;
-        }
+        auto problem = failure;
+        clearFailure();
+        note(problem);
+        if (lexer.cursor <= before)
+            lexer.cursor = before + 1;
+        return false;
     }
 
     /// Is the current token the first of its line, and does it start a statement or definition?
@@ -259,14 +333,14 @@ class Parser {
             default:
                 break;
             }
-            try {
-                auto next = peekToken(0).type;
-                return next == TokenType.LParen || next == TokenType.Dot || next == TokenType.Colon || next == TokenType
-                    .Equal
-                    || next == TokenType.Comma;
-            } catch (LuaException) {
+            auto next = peekToken(0).type;
+            if (failure !is null) {
+                clearFailure(); // a bad token ahead is reported when the parser reaches it
                 return false;
             }
+            return next == TokenType.LParen || next == TokenType.Dot || next == TokenType.Colon || next == TokenType
+                .Equal
+                || next == TokenType.Comma;
         default:
             return false;
         }
@@ -289,18 +363,19 @@ class Parser {
         auto savedStarts = functionStartLines.length;
         auto savedNesting = nestingLevel;
         auto savedDeclarative = inDeclarative;
-        try {
-            return isReturn ? parseReturnStmt() : parseStatement();
-        } catch (LuaException failure) {
-            note(failure);
-            varargContext.length = savedVararg;
-            activeLocals.length = savedLocals;
-            functionStartLines.length = savedStarts;
-            nestingLevel = savedNesting;
-            inDeclarative = savedDeclarative;
-            synchronize(start);
-            return null;
-        }
+        auto statement = isReturn ? parseReturnStmt() : parseStatement();
+        if (failure is null)
+            return statement;
+        auto problem = failure;
+        clearFailure();
+        note(problem);
+        varargContext.length = savedVararg;
+        activeLocals.length = savedLocals;
+        functionStartLines.length = savedStarts;
+        nestingLevel = savedNesting;
+        inDeclarative = savedDeclarative;
+        synchronize(start);
+        return null;
     }
 
     private BlockStmt parseChunkRecovering() {
@@ -339,9 +414,10 @@ class Parser {
             return parseChunkRecovering();
         auto loc = current.loc;
         auto block = parseBlock();
-        if (!check(TokenType.EOF)) {
+        if (failure is null && !check(TokenType.EOF))
             syntaxError("<eof> expected", current);
-        }
+        if (failure !is null)
+            return null; // the error is in `failure` (see `error`)
         block.endLine = previous.loc.line > 0 ? previous.loc.line : 1;
         return block;
     }
@@ -1047,6 +1123,7 @@ class Parser {
             expr.end = SourceLoc(previous.endLine, previous.endColumn);
         } else {
             syntaxError("unexpected symbol", current);
+            expr = new LiteralNilExpr(loc); // never used: the error is latched and the input has ended
         }
 
         // Suffixes: field access (.name), index ([exp]), method call (:name(...)), function call ((...))
@@ -1122,7 +1199,7 @@ class Parser {
                 consume(TokenType.Equal, "'=' expected");
                 auto val = parseExpr();
                 fields ~= TableField(key, val);
-            } else if (check(TokenType.Identifier) && lexer.peekToken().type == TokenType.Equal) {
+            } else if (check(TokenType.Identifier) && lexerPeekType() == TokenType.Equal) {
                 // Name = exp
                 auto keyName = consume(TokenType.Identifier, "<name> expected").text;
                 consume(TokenType.Equal, "'=' expected");
@@ -2124,7 +2201,7 @@ class Parser {
                 return new QueryExpr([atomGoal], false, loc);
             }
             syntaxError("simple query must be a positive relation atom", current);
-            return null;
+            return new LiteralNilExpr(loc);
         }
     }
 }

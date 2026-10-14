@@ -177,17 +177,21 @@ bool inspectExpression(LuaState state, long frameIndex, string text, out LuaValu
         return false;
     }
     Expr expression;
-    try {
-        auto block = new Parser("return " ~ text, "=inspect").parse();
+    {
+        auto parser = new Parser("return " ~ text, "=inspect");
+        auto block = parser.parse();
+        if (block is null) {
+            auto failure = parser.error;
+            error = failure !is null && failure.errorObject.isString ? failure.errorObject.asString
+                : "invalid expression";
+            return false;
+        }
         auto returned = block.statements.length == 1 ? cast(ReturnStmt) block.statements[0] : null;
         if (returned is null || returned.values.length != 1) {
             error = "enter one expression";
             return false;
         }
         expression = returned.values[0];
-    } catch (LuaException failure) {
-        error = failure.errorObject.isString ? failure.errorObject.asString : "invalid expression";
-        return false;
     }
     Inspector inspector;
     inspector.state = state;

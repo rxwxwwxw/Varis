@@ -70,8 +70,9 @@ class Compiler {
 
     private void resolveGoto(PendingGoto jump, JumpLabel label) {
         if (label.locals.length > jump.visibleLocals) {
-            throw fail("<goto " ~ jump.name ~ "> at line " ~ jump.line.to!string ~ " jumps into the scope of local '"
+            compileError("<goto " ~ jump.name ~ "> at line " ~ jump.line.to!string ~ " jumps into the scope of local '"
                     ~ label.locals[jump.visibleLocals].name ~ "'");
+            return;
         }
         int first = int.max;
         foreach (local; jump.locals[label.locals.length .. $]) {
@@ -127,7 +128,7 @@ class Compiler {
 
     int allocReg() {
         if (freeReg + 1 >= 255)
-            throw fail("function or expression needs too many registers");
+            compileError("function or expression needs too many registers");
         int r = freeReg++;
         if (freeReg > proto.maxStackSize) {
             proto.maxStackSize = freeReg;
@@ -230,7 +231,7 @@ class Compiler {
 
     int addLocal(string name) {
         if (locals.length >= 200)
-            throw fail("too many local variables (limit is 200) in " ~ functionDescription());
+            compileError("too many local variables (limit is 200) in " ~ functionDescription());
         int reg = allocReg();
         locals ~= LocalVar(name, reg, currentScopeDepth);
         proto.debugLocals ~= DebugLocal(name, reg, currentPc(), int.max, currentScopeDepth);
@@ -286,7 +287,7 @@ class Compiler {
             }
         }
         if (proto.upvalues.length >= 255)
-            throw fail("too many upvalues (limit is 255) in " ~ functionDescription());
+            compileError("too many upvalues (limit is 255) in " ~ functionDescription());
         proto.upvalues ~= UpvalDesc(name, inStack, index);
         return cast(int)(proto.upvalues.length - 1);
     }
@@ -303,6 +304,10 @@ class Compiler {
         if (block.endLine > 0)
             currentLine = block.endLine;
         emit(OpCode.Return, 0, 1); // default return 0 values
+        if (failure !is null) {
+            failure.locate(sourceName, failureLine);
+            return null; // the error is in `failure`
+        }
         return proto;
     }
 
@@ -333,8 +338,10 @@ class Compiler {
         foreach (index, stmt; block.statements) {
             if (auto label = as!LabelStmt(stmt)) {
                 for (auto visible = current; visible !is null; visible = visible.parent) {
-                    if (auto prior = label.label in visible.labels)
-                        throw fail("label '" ~ label.label ~ "' already defined on line " ~ prior.line.to!string);
+                    if (auto prior = label.label in visible.labels) {
+                        compileError("label '" ~ label.label ~ "' already defined on line " ~ prior.line.to!string);
+                        break;
+                    }
                 }
                 current.labels[label.label] = JumpLabel(currentPc(),
                         index >= endLabels ? entryLocals.dup : locals.dup, label.loc.line);
@@ -350,7 +357,7 @@ class Compiler {
                     jump.visibleLocals = entryLocals.length;
                 outer.pending ~= jump;
             } else
-                throw fail("no visible label '" ~ jump.name ~ "' for <goto> at line " ~ jump.line.to!string);
+                compileError("no visible label '" ~ jump.name ~ "' for <goto> at line " ~ jump.line.to!string);
         }
     }
 
@@ -426,7 +433,8 @@ class Compiler {
 
         if (auto s = as!BreakStmt(stmt)) {
             if (loopDepth <= 0) {
-                throw fail("break outside loop at line " ~ currentLine.to!string);
+                compileError("break outside loop at line " ~ currentLine.to!string);
+                return;
             }
             emit(OpCode.Close, loopCloseRegisters[$ - 1]);
             loopBreakJumps ~= emitJump();
@@ -474,8 +482,10 @@ class Compiler {
             return;
         }
         if (as!RollbackStmt(stmt) !is null) {
-            if (transactionDepth == 0)
-                throw new LuaException("rollback outside a transaction");
+            if (transactionDepth == 0) {
+                rawError("rollback outside a transaction");
+                return;
+            }
             emit(OpCode.Rollback);
             return;
         }
@@ -521,7 +531,7 @@ class Compiler {
             return;
         }
 
-        throw new LuaException("unsupported statement type");
+        rawError("unsupported statement type");
     }
 
     private bool isVarargOrCall(Expr expr) {
@@ -625,14 +635,40 @@ class Compiler {
         }
     }
 
-    /// Builds a compile-time error located at this compiler's current line.
-    LuaException fail(string message) {
+    /// The first compile error of this function and everything nested in it (held by the root
+    /// compiler), or null. Compilation does not unwind on an error: it records it, goes on
+    /// without crashing, and `compileChunk`/`contextPrototype` report it.
+    LuaException failure;
+    private int failureLine; // the root's current line when the error was found
+
+    private Compiler rootCompiler() {
+        auto compiler = this;
+        while (compiler.parent !is null)
+            compiler = compiler.parent;
+        return compiler;
+    }
+
+    private void latchError(LuaException problem) {
+        auto root = rootCompiler();
+        if (root.failure !is null)
+            return;
+        root.failure = problem;
+        root.failureLine = root.currentLine;
+    }
+
+    /// Records a compile-time error located at this compiler's current line.
+    void compileError(string message) {
         import varis.exception : shortSourceName;
 
-        auto failure = new LuaException(
+        auto problem = new LuaException(
                 LuaValue(shortSourceName(proto.sourceName) ~ ":" ~ currentLine.to!string ~ ": " ~ message));
-        failure.needsLocation = false;
-        return failure;
+        problem.needsLocation = false;
+        latchError(problem);
+    }
+
+    /// Records an error that the entry point locates (`needsLocation` as `LuaException` makes it).
+    private void rawError(string message) {
+        latchError(new LuaException(message));
     }
 
     private void checkWritable(string name, Compiler origin = null) {
@@ -641,17 +677,22 @@ class Compiler {
         int register = resolveLocal(name);
         if (register >= 0) {
             foreach_reverse (local; locals) {
-                if (local.reg == register && local.isConst)
-                    throw origin.fail("attempt to assign to const variable '" ~ name ~ "'");
+                if (local.reg == register && local.isConst) {
+                    origin.compileError("attempt to assign to const variable '" ~ name ~ "'");
+                    return;
+                }
             }
-            if (register in readOnlyRegisters)
-                throw origin.fail("cannot assign read-only narrative parameter '" ~ name ~ "'");
+            if (register in readOnlyRegisters) {
+                origin.compileError("cannot assign read-only narrative parameter '" ~ name ~ "'");
+                return;
+            }
         } else if (parent !is null)
             parent.checkWritable(name, origin);
     }
 
     /// Compile a function with an implicit world and immutable parameter inputs.
-    static Prototype contextPrototype(BlockStmt body, string[] names, string[] groundedNames = []) {
+    static Prototype contextPrototype(BlockStmt body, string[] names, string[] groundedNames,
+            out LuaException error) {
         auto compiler = new Compiler(null, "narrative context");
         compiler.proto.numParams = cast(int) names.length + 1;
         compiler.enterScope();
@@ -664,6 +705,10 @@ class Compiler {
         compiler.compileBlock(body);
         compiler.emit(OpCode.Return, 0, 1);
         compiler.exitScope();
+        if (compiler.failure !is null) {
+            error = compiler.failure;
+            return null;
+        }
         return compiler.proto;
     }
 
@@ -796,8 +841,10 @@ class Compiler {
         } else if (auto fieldExpr = as!FieldExpr(target)) {
             tableExpr = fieldExpr.table;
             fieldName = fieldExpr.field;
-        } else
-            throw fail("syntax error");
+        } else {
+            compileError("syntax error");
+            return t;
+        }
         t.table = compileRK(tableExpr, false);
         if (copyLocals && !t.table.temp) {
             int copy = allocReg();
@@ -1592,7 +1639,8 @@ class Compiler {
 
         if (auto lv = as!LogicVarExpr(expr)) {
             if (lv.isAnonymous) {
-                throw new LuaException("anonymous variable '?_' not permitted in procedural guard");
+                rawError("anonymous variable '?_' not permitted in procedural guard");
+                return;
             }
             int localReg = resolveLocal(lv.name);
             if (localReg >= 0) {
@@ -1604,10 +1652,11 @@ class Compiler {
                 emit(OpCode.GetUpval, targetReg, upvalue);
                 return;
             }
-            throw new LuaException(format("logic variable '?%s' not bound", lv.name));
+            rawError(format("logic variable '?%s' not bound", lv.name));
+            return;
         }
 
-        throw new LuaException("unsupported expression type");
+        rawError("unsupported expression type");
     }
 
     private static bool isComparison(BinaryOp op) {
@@ -1897,13 +1946,17 @@ class Compiler {
             bool grounded;
             foreach (candidate; template_.groundedParameters)
                 grounded = grounded || candidate == name;
-            if (!grounded)
-                throw new LuaException("'expose ?" ~ name ~ "' in '" ~ definition.name
+            if (!grounded) {
+                rawError("'expose ?" ~ name ~ "' in '" ~ definition.name
                         ~ "' is not bound by a positive relation atom or aggregate of its 'when' query");
+                return template_;
+            }
             foreach (parameter; definition.parameters)
-                if (parameter == name)
-                    throw new LuaException("'expose ?" ~ name ~ "' in '" ~ definition.name
+                if (parameter == name) {
+                    rawError("'expose ?" ~ name ~ "' in '" ~ definition.name
                             ~ "' repeats a parameter; a parameter is already visible");
+                    return template_;
+                }
         }
         foreach (i, field; definition.fieldNames) {
             int register = allocReg();
@@ -2040,8 +2093,10 @@ class Compiler {
     }
 
     private void compileRelationDecl(RelationDeclStmt s) {
-        if (s.arity < 0)
-            throw new LuaException("relation arity must be nonnegative");
+        if (s.arity < 0) {
+            rawError("relation arity must be nonnegative");
+            return;
+        }
         int kName = addConstant(LuaValue(s.name));
         int schemaIndex;
         if (s.named) {
@@ -2065,8 +2120,10 @@ class Compiler {
     }
 
     private void compileLocalRelationDecl(LocalRelationDeclStmt s) {
-        if (s.arity < 0)
-            throw new LuaException("relation arity must be nonnegative");
+        if (s.arity < 0) {
+            rawError("relation arity must be nonnegative");
+            return;
+        }
         int rRel = allocReg();
         int kName = addConstant(LuaValue(s.name));
         int wReg = resolveLocal("@world");
@@ -2138,7 +2195,8 @@ class Compiler {
             if (lv.name in groundedLogicParameters)
                 return;
             if (lv.isAnonymous) {
-                throw new LuaException("anonymous variable '?_' not permitted in procedural guard");
+                rawError("anonymous variable '?_' not permitted in procedural guard");
+                return;
             }
             import std.algorithm : canFind;
 
@@ -2336,10 +2394,10 @@ class Compiler {
                 gt.compOp = comp.op;
                 gt.leftTerm = compileTermTemplate(comp.left, varMap, varNames, constRegs);
                 gt.rightTerm = compileTermTemplate(comp.right, varMap, varNames, constRegs);
-                if (gt.leftTerm.kind == TermKind.Anonymous || gt.rightTerm.kind == TermKind.Anonymous) {
-                    throw new LuaException("anonymous variable '?_' not permitted in a comparison");
-                }
-                templates ~= gt;
+                if (gt.leftTerm.kind == TermKind.Anonymous || gt.rightTerm.kind == TermKind.Anonymous)
+                    rawError("anonymous variable '?_' not permitted in a comparison");
+                else
+                    templates ~= gt;
             } else if (auto guard = as!AstGuardGoal(g)) {
                 GoalTemplate gt;
                 gt.kind = GoalKind.Guard;

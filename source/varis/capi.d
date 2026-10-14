@@ -68,7 +68,7 @@ LuaNativeFunction wrapCFunction(lua_CFunction f, string name = "") {
             active.length = active.length - 1;
         int n = f(cast(lua_State*) cast(void*) c);
         if (n < 0 || cast(size_t) n > c.stack.length)
-            throw new LuaException("C function returned an invalid number of results");
+            return raise(c.state, "C function returned an invalid number of results");
         return c.stack[$ - n .. $].dup;
     }, name);
 }
@@ -366,6 +366,9 @@ export void lua_rawseti(lua_State* L, int idx, lua_Integer n) {
         t.rawset(LuaValue(n), v);
 }
 
+// A C function that calls a `luaL_check*` function never expects it to return on an error
+// (C Lua leaves by longjmp): these exported entry points are the one place that still unwinds
+// by exception, through the C frames, until a C-API host protocol is designed.
 export void luaL_checkversion_(lua_State* L, lua_Number ver, size_t sz) {
     if (ver != 504.0 || sz != 8 * 16 + 8)
         throw new LuaException("version mismatch: core and library have incompatible numeric types");

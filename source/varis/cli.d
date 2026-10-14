@@ -196,13 +196,13 @@ private bool dofile(LuaState state, string name) {
 }
 
 private bool dostring(LuaState state, string code, string name) {
-    try {
-        auto fn = state.loadString(code, name);
-        return report(docall(state, LuaValue(fn), []));
-    } catch (LuaException failure) {
+    LuaException failure;
+    auto fn = state.compileString(code, name, failure);
+    if (fn is null) {
         lMessage(progname, toLuaString(failure.errorObject));
         return false;
     }
+    return report(docall(state, LuaValue(fn), []));
 }
 
 private bool dolibrary(LuaState state, string globname) {
@@ -329,16 +329,18 @@ private bool handleLuaInit(LuaState state) {
     return dostring(state, text, name);
 }
 
-private LuaValue[] pushArgs(LuaState state) {
+/// The script arguments, or false (with the message in `error`) when `arg` is not a table.
+private bool pushArgs(LuaState state, out LuaValue[] result, out string error) {
     auto argValue = state.getGlobal("arg");
-    if (!isTable(argValue))
-        throw new LuaException("'arg' is not a table");
+    if (!isTable(argValue)) {
+        error = "'arg' is not a table";
+        return false;
+    }
     auto t = argValue.match!((LuaTable x) => x, _ => null);
     auto n = t.rawLen();
-    LuaValue[] result;
     foreach (i; 1 .. n + 1)
         result ~= t.rawgetInt(i);
-    return result;
+    return true;
 }
 
 private bool handleScript(LuaState state, string[] argv, int script) {
@@ -351,7 +353,13 @@ private bool handleScript(LuaState state, string[] argv, int script) {
         lMessage(progname, error);
         return false;
     }
-    return report(docall(state, LuaValue(fn), pushArgs(state)));
+    LuaValue[] scriptArgs;
+    string argError;
+    if (!pushArgs(state, scriptArgs, argError)) {
+        lMessage(progname, argError);
+        return false;
+    }
+    return report(docall(state, LuaValue(fn), scriptArgs));
 }
 
 // --- REPL --------------------------------------------------------------------
@@ -417,22 +425,20 @@ private void doREPL(LuaState state) {
             break;
         LuaFunction fn;
         string error;
-        try {
-            fn = state.loadString("return " ~ line ~ ";", "=stdin");
-        } catch (LuaException) {
+        LuaException failure;
+        fn = state.compileString("return " ~ line ~ ";", "=stdin", failure);
+        if (fn is null) {
             while (true) {
-                try {
-                    fn = state.loadString(line, "=stdin");
+                fn = state.compileString(line, "=stdin", failure);
+                if (fn !is null)
                     break;
-                } catch (LuaException failure) {
-                    auto msg = toLuaString(failure.errorObject);
-                    string more;
-                    if (!incomplete(msg) || !pushLine(state, false, more)) {
-                        error = msg;
-                        break;
-                    }
-                    line ~= "\n" ~ more;
+                auto msg = toLuaString(failure.errorObject);
+                string more;
+                if (!incomplete(msg) || !pushLine(state, false, more)) {
+                    error = msg;
+                    break;
                 }
+                line ~= "\n" ~ more;
             }
         }
         if (fn is null) {

@@ -33,6 +33,7 @@ private __gshared long luacIntValue = luacInt;
 private struct Writer {
     char[] output;
     bool strip;
+    bool failed; // a value that cannot be dumped was met
 
     void byte_(ubyte b) {
         output ~= cast(char) b;
@@ -79,12 +80,14 @@ private void dumpConstant(ref Writer w, LuaValue v) {
         w.byte_(5);
         w.text(v.match!((string s) => s, _ => ""));
     } else
-        throw new LuaException("unable to dump given function");
+        w.failed = true;
 }
 
 private void dumpProto(ref Writer w, Prototype p, string parentSource) {
-    if (p.ruleTemplates.length || p.queryTemplates.length || p.relationSchemas.length || p.contentTemplates.length)
-        throw new LuaException("unable to dump given function");
+    if (p.ruleTemplates.length || p.queryTemplates.length || p.relationSchemas.length || p.contentTemplates.length) {
+        w.failed = true;
+        return;
+    }
     w.text(w.strip || p.sourceName == parentSource ? "" : p.sourceName);
     w.integer(p.lineDefined);
     w.integer(p.lastLineDefined);
@@ -145,14 +148,20 @@ private void dumpProto(ref Writer w, Prototype p, string parentSource) {
         }
     }
     w.varint(p.subPrototypes.length);
-    foreach (sub; p.subPrototypes)
+    foreach (sub; p.subPrototypes) {
         dumpProto(w, sub, p.sourceName);
+        if (w.failed)
+            return;
+    }
 }
 
-string dumpFunction(LuaState state, LuaValue fn, bool strip) {
+/// The binary form of a Lua function. Null, with `error` set, when it cannot be dumped.
+string dumpFunction(LuaState state, LuaValue fn, bool strip, out LuaException error) {
     auto closure = fn.match!((LuaFunction f) => cast(LuaClosure) f, _ => null);
-    if (closure is null)
-        throw new LuaException("unable to dump given function");
+    if (closure is null) {
+        error = new LuaException("unable to dump given function");
+        return null;
+    }
     Writer w;
     w.strip = strip;
     w.raw(signature);
@@ -167,6 +176,10 @@ string dumpFunction(LuaState state, LuaValue fn, bool strip) {
     w.raw(varisBody);
     w.byte_(cast(ubyte) closure.proto.upvalues.length);
     dumpProto(w, closure.proto, strip ? "=?" : "");
+    if (w.failed) {
+        error = new LuaException("unable to dump given function");
+        return null;
+    }
     // the main prototype always carries its source
     return cast(string) w.output;
 }
@@ -175,14 +188,21 @@ private struct Reader {
     string data;
     size_t pos;
     string name;
+    /// The first problem found. Reading stops at it (every later read yields a zero and the
+    /// position is the end), so the readers need not unwind: `undumpFunction` reports it.
+    LuaException failure;
 
-    LuaException error(string why) {
-        return new LuaException(name ~ ": bad binary format (" ~ why ~ ")");
+    void fail(string why) {
+        if (failure is null)
+            failure = new LuaException(name ~ ": bad binary format (" ~ why ~ ")");
+        pos = data.length;
     }
 
     ubyte byte_() {
-        if (pos >= data.length)
-            throw error("truncated chunk");
+        if (pos >= data.length) {
+            fail("truncated chunk");
+            return 0;
+        }
         return cast(ubyte) data[pos++];
     }
 
@@ -195,8 +215,10 @@ private struct Reader {
             if (!(b & 0x80))
                 break;
             shift += 7;
-            if (shift > 63)
-                throw error("integer overflow");
+            if (shift > 63) {
+                fail("integer overflow");
+                return 0;
+            }
         }
         return result;
     }
@@ -208,30 +230,38 @@ private struct Reader {
 
     int smallInt() {
         long v = integer();
-        if (v < int.min || v > int.max)
-            throw error("integer overflow");
+        if (v < int.min || v > int.max) {
+            fail("integer overflow");
+            return 0;
+        }
         return cast(int) v;
     }
 
     size_t count() {
         auto n = varint();
-        if (n > data.length * 8 + 1024)
-            throw error("corrupted chunk");
+        if (n > data.length * 8 + 1024) {
+            fail("corrupted chunk");
+            return 0;
+        }
         return cast(size_t) n;
     }
 
     string text() {
         auto n = varint();
-        if (n > data.length - pos)
-            throw error("truncated chunk");
+        if (n > data.length - pos) {
+            fail("truncated chunk");
+            return null;
+        }
         auto s = data[pos .. pos + cast(size_t) n];
         pos += cast(size_t) n;
         return s.idup;
     }
 
     double number() {
-        if (data.length - pos < 8)
-            throw error("truncated chunk");
+        if (data.length - pos < 8) {
+            fail("truncated chunk");
+            return 0;
+        }
         double d;
         (cast(char*)&d)[0 .. 8] = data[pos .. pos + 8];
         pos += 8;
@@ -239,11 +269,14 @@ private struct Reader {
     }
 
     void expect(string s, string why) {
-        if (data.length - pos < s.length)
-            throw error("truncated chunk");
+        if (data.length - pos < s.length) {
+            fail("truncated chunk");
+            return;
+        }
         if (data[pos .. pos + s.length] != s)
-            throw error(why);
-        pos += s.length;
+            fail(why);
+        else
+            pos += s.length;
     }
 }
 
@@ -262,13 +295,16 @@ private LuaValue undumpConstant(ref Reader r) {
     case 5:
         return LuaValue(r.text());
     default:
-        throw r.error("corrupted chunk");
+        r.fail("corrupted chunk");
+        return luaNil();
     }
 }
 
 private Prototype undumpProto(ref Reader r, string parentSource, int depth) {
-    if (depth > 200)
-        throw r.error("too many nested functions");
+    if (depth > 200) {
+        r.fail("too many nested functions");
+        return null;
+    }
     auto p = new Prototype();
     auto source = r.text();
     p.sourceName = source.length ? source : parentSource;
@@ -282,8 +318,10 @@ private Prototype undumpProto(ref Reader r, string parentSource, int depth) {
     p.code.length = ncode;
     foreach (ref instr; p.code) {
         auto op = r.varint();
-        if (op > cast(ulong) OpCode.AdjustClamp)
-            throw r.error("corrupted chunk");
+        if (op > cast(ulong) OpCode.AdjustClamp) {
+            r.fail("corrupted chunk");
+            return null;
+        }
         instr.op = cast(OpCode) op;
         instr.a = r.smallInt();
         instr.b = r.smallInt();
@@ -301,8 +339,11 @@ private Prototype undumpProto(ref Reader r, string parentSource, int depth) {
         live = v == 0 ? int.max : cast(int)(v - 1);
     }
     auto nk = r.count();
-    foreach (i; 0 .. nk)
+    foreach (i; 0 .. nk) {
+        if (r.failure !is null)
+            return null;
         p.constants ~= undumpConstant(r);
+    }
     auto nup = r.count();
     foreach (i; 0 .. nup) {
         UpvalDesc u;
@@ -336,43 +377,68 @@ private Prototype undumpProto(ref Reader r, string parentSource, int depth) {
         p.callWorlds[pc] = r.smallInt();
     }
     auto nsub = r.count();
-    foreach (i; 0 .. nsub)
-        p.subPrototypes ~= undumpProto(r, p.sourceName, depth + 1);
-    return p;
+    foreach (i; 0 .. nsub) {
+        if (r.failure !is null)
+            return null;
+        auto sub = undumpProto(r, p.sourceName, depth + 1);
+        if (sub is null)
+            return null;
+        p.subPrototypes ~= sub;
+    }
+    return r.failure is null ? p : null;
 }
 
-LuaFunction undumpFunction(LuaState state, string data, string chunkName) {
+/// Loads a binary chunk. Null, with `error` set, when it is malformed.
+LuaFunction undumpFunction(LuaState state, string data, string chunkName, out LuaException error) {
     Reader r;
     r.data = data;
     r.name = chunkName.length && (chunkName[0] == '@' || chunkName[0] == '=') ? chunkName[1 .. $] : chunkName.length && chunkName[0] == '\x1b' ? "binary string" : chunkName;
     r.expect(signature, "not a binary chunk");
-    if (r.byte_() != versionByte)
-        throw r.error("version mismatch");
-    if (r.byte_() != formatByte)
-        throw r.error("format mismatch");
-    r.expect(luacData, "corrupted chunk");
-    if (r.byte_() != 4)
-        throw r.error("Instruction size mismatch");
-    if (r.byte_() != 8)
-        throw r.error("lua_Integer size mismatch");
-    if (r.byte_() != 8)
-        throw r.error("lua_Number size mismatch");
-    if (r.data.length - r.pos < 8)
-        throw r.error("truncated chunk");
-    long storedInt;
-    (cast(char*)&storedInt)[0 .. 8] = r.data[r.pos .. r.pos + 8];
-    r.pos += 8;
-    if (storedInt != luacInt)
-        throw r.error("integer format mismatch");
-    if (r.number() != luacNum)
-        throw r.error("float format mismatch");
-    r.expect(varisBody, "incompatible binary body (not produced by varis)");
+    if (r.failure is null && r.byte_() != versionByte)
+        r.fail("version mismatch");
+    if (r.failure is null && r.byte_() != formatByte)
+        r.fail("format mismatch");
+    if (r.failure is null)
+        r.expect(luacData, "corrupted chunk");
+    if (r.failure is null && r.byte_() != 4)
+        r.fail("Instruction size mismatch");
+    if (r.failure is null && r.byte_() != 8)
+        r.fail("lua_Integer size mismatch");
+    if (r.failure is null && r.byte_() != 8)
+        r.fail("lua_Number size mismatch");
+    if (r.failure is null && r.data.length - r.pos < 8)
+        r.fail("truncated chunk");
+    if (r.failure is null) {
+        long storedInt;
+        (cast(char*)&storedInt)[0 .. 8] = r.data[r.pos .. r.pos + 8];
+        r.pos += 8;
+        if (storedInt != luacInt)
+            r.fail("integer format mismatch");
+    }
+    if (r.failure is null && r.number() != luacNum)
+        r.fail("float format mismatch");
+    if (r.failure is null)
+        r.expect(varisBody, "incompatible binary body (not produced by varis)");
+    if (r.failure !is null) {
+        error = r.failure;
+        return null;
+    }
     auto nupvalues = r.byte_();
     auto proto = undumpProto(r, chunkName.length && (chunkName[0] == '@' || chunkName[0] == '=') ? chunkName : "=?", 0);
-    if (proto.upvalues.length != nupvalues)
-        throw r.error("corrupted chunk");
-    if (r.pos != data.length)
-        throw r.error("corrupted chunk");
+    if (proto is null || r.failure !is null) {
+        error = r.failure !is null ? r.failure : new LuaException(r.name ~ ": bad binary format (corrupted chunk)");
+        return null;
+    }
+    if (proto.upvalues.length != nupvalues) {
+        r.fail("corrupted chunk");
+        error = r.failure;
+        return null;
+    }
+    if (r.pos != data.length) {
+        r.fail("corrupted chunk");
+        error = r.failure;
+        return null;
+    }
     UpValue[] upvalues;
     foreach (i; 0 .. proto.upvalues.length) {
         auto up = new UpValue(null, -1);

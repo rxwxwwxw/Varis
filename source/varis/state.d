@@ -765,28 +765,38 @@ class LuaState {
         }
     }
 
-    /// Parse, compile, and return a callable Lua function from source code
-    LuaFunction loadString(string code, string sourceName = "=stdin") {
+    /// Parse and compile source code into a callable function. On a syntax or compile error the
+    /// result is null and `error` holds it: the frontend does not throw.
+    LuaFunction compileString(string code, string sourceName, out LuaException error) {
         import varis.parser : Parser;
         import varis.compiler : Compiler;
         import varis.vm : LuaClosure, UpValue;
 
         auto parser = new Parser(code, sourceName);
         auto ast = parser.parse();
+        if (ast is null) {
+            error = parser.error;
+            return null;
+        }
         auto compiler = new Compiler(null, "main");
-        import varis.opcode : Prototype;
-
-        Prototype proto;
-        try {
-            proto = compiler.compileChunk(ast, sourceName);
-        } catch (LuaException error) {
-            error.locate(sourceName, compiler.currentLine);
-            throw error;
+        auto proto = compiler.compileChunk(ast, sourceName);
+        if (proto is null) {
+            error = compiler.failure;
+            return null;
         }
         auto environment = new UpValue(null, -1);
         environment.closedVal = LuaValue(globals);
         environment.isClosed = true;
         return new LuaClosure(proto, [environment]);
+    }
+
+    /// `compileString` for host code that wants an exception (the thin throwing wrapper).
+    LuaFunction loadString(string code, string sourceName = "=stdin") {
+        LuaException error;
+        auto fn = compileString(code, sourceName, error);
+        if (fn is null)
+            throw error;
+        return fn;
     }
 
     /// Load and immediately execute Lua source code

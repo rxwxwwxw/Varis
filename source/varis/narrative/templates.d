@@ -229,7 +229,13 @@ class NarrativeTemplate {
                     throw new LuaException("template condition must be {#if query ...} or {#if lua ...}");
                 // `lua EXPR`: a read-only Lua expression over the parameters, true by Lua truthiness.
                 auto parser = new Parser(luaExpression ? "return (" ~ condition[4 .. $] ~ ")" : "return " ~ condition);
-                auto prototype = Compiler.contextPrototype(parser.parse(), parameters, parameters);
+                auto conditionBlock = parser.parse();
+                if (conditionBlock is null)
+                    throw parser.error; // the narrative layer still reports by exception
+                LuaException compileFailure;
+                auto prototype = Compiler.contextPrototype(conditionBlock, parameters, parameters, compileFailure);
+                if (prototype is null)
+                    throw compileFailure;
                 node.condition = LuaValue(new LuaClosure(prototype));
                 node.luaCondition = luaExpression;
                 node.conditionSource = normalizeCondition(condition);

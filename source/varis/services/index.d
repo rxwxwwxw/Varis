@@ -1164,12 +1164,7 @@ FileIndex indexFile(string path, string content) {
     if (source.length > 1 && source[0] == '#')
         source = "--" ~ source[2 .. $];
     auto parser = new Parser(source, "@" ~ path, true);
-    BlockStmt block;
-    try {
-        block = parser.parse();
-    } catch (LuaException failure) {
-        parser.problems ~= Parser.Problem("syntax error", 0, 0, 0, 0);
-    }
+    BlockStmt block = parser.parse(); // recovery mode: a tree even after errors
     foreach (ref problem; parser.problems)
         result.problems ~= makeDiagnostic("error", "syntax", path, problem.line, problem.column, problem.endLine,
                 problem.endColumn, messageText(path, problem.message));
