@@ -451,7 +451,9 @@ private enum string frameLoopBody = q{
                     mixin(sharedOpcodeCases1);
 
                 case OpCode.TailCall: {
-                        checkCallable(state, registers[instr.a]);
+                        if (!checkCallable(state, registers[instr.a])) {
+                    mixin(reportedFailure);
+                }
                         if (isNativeFunction(registers[instr.a])) {
                             // A C function is called in place, as a regular call (lua 5.4 precallC):
                             // its errors are attributed to this frame and call site.
@@ -780,7 +782,9 @@ private enum string deepFrameLoopBody = q{
                             mixin(sharedOpcodeCases1);
 
                         case OpCode.TailCall: {
-                                checkCallable(state, registers[instr.a]);
+                                if (!checkCallable(state, registers[instr.a])) {
+                    mixin(reportedFailure);
+                }
                                 auto target = registers[instr.a];
                                 int count = instr.b == 0 ? top - instr.a - 1 : instr.b - 1;
                                 LuaValue[] callArgs; // set when the callee needs a private argument array
@@ -1433,7 +1437,9 @@ private enum string sharedOpcodeCases2 = q{
 
                     // Generic For
                 case OpCode.TForCall:
-                    execTForCall(state, registers, instr.a, instr.c, frameThread.hookFunction is null);
+                    if (!execTForCall(state, registers, instr.a, instr.c, frameThread.hookFunction is null)) {
+                        mixin(reportedFailure);
+                    }
                     break;
 
                 case OpCode.TForLoop:
@@ -2695,7 +2701,8 @@ struct VM {
         auto callee = registers[a];
         LuaValue[] callArgs = numArgs <= 0 ? [] : callee.isFunction && callee.asFunction.borrowsArgs ? registers[a + 1 .. a + 1 + numArgs] : registers[a + 1 .. a + 1 + numArgs]
             .dup;
-        checkCallable(state, callee);
+        if (!checkCallable(state, callee))
+            return null;
         auto previous = state.callWorldObject;
         if (proto.callSites.length != proto.code.length)
             proto.buildCallSites();
@@ -2710,7 +2717,7 @@ struct VM {
     }
 
     pragma(inline, false)
-    private static void execTForCall(LuaState state, LuaValue[] registers, int a, int wanted, bool noHook) {
+    private static bool execTForCall(LuaState state, LuaValue[] registers, int a, int wanted, bool noHook) {
         auto iterFn = registers[a];
         if (noHook && wanted >= 1 && iterFn.isFunction && registers[a + 1].isTable) {
             // `pairs`/`ipairs` loops: step the traversal directly, with no call, argument array
@@ -2731,7 +2738,7 @@ struct VM {
                         for (int i = 0; i < wanted; ++i)
                             registers[a + 4 + i] = luaNil();
                     }
-                    return;
+                    return true;
                 }
             } else if (iterator is state.fastIpairsIter && registers[a + 2].isInteger) {
                 long index = cast(long)(cast(ulong) registers[a + 2].asInteger + 1);
@@ -2747,14 +2754,16 @@ struct VM {
                         for (int i = 2; i < wanted; ++i)
                             registers[a + 4 + i] = luaNil();
                     }
-                    return;
+                    return true;
                 }
             }
         }
         if (!isFunction(iterFn)) {
             auto mt = state.getMetatable(iterFn);
-            if (mt is null || isNil(mt.rawget(LuaValue("__call"))))
-                throw new LuaException("attempt to call a " ~ objectTypeName(state, iterFn) ~ " value (for iterator 'for iterator')");
+            if (mt is null || isNil(mt.rawget(LuaValue("__call")))) {
+                state.raisedError = new LuaException("attempt to call a " ~ objectTypeName(state, iterFn) ~ " value (for iterator 'for iterator')");
+                return false;
+            }
         }
         auto iterState = registers[a + 1];
         auto iterVar = registers[a + 2];
@@ -2762,12 +2771,15 @@ struct VM {
         if (iterFn.isFunction && iterFn.asFunction.borrowsArgs) {
             // Natives that only read their arguments (coroutine.wrap generators) get a stack pair.
             LuaValue[2] pair = [iterState, iterVar];
-            tResults = callValue(state, iterFn, pair[], false, "for iterator", "for iterator");
+            tResults = callValue(state, iterFn, pair[], false, "for iterator", "for iterator", false, true);
         } else
-            tResults = callValue(state, iterFn, [iterState, iterVar], false, "for iterator", "for iterator");
+            tResults = callValue(state, iterFn, [iterState, iterVar], false, "for iterator", "for iterator", false, true);
+        if (state.raisedError !is null)
+            return false;
         for (int i = 0; i < wanted; ++i) {
             registers[a + 4 + i] = (i < tResults.length) ? tResults[i] : luaNil();
         }
+        return true;
     }
 
     pragma(inline, false)
@@ -2967,16 +2979,18 @@ struct VM {
         return false;
     }
 
-    /// Raises the "attempt to call" error (with variable info) for values that cannot be called.
-    private static void checkCallable(LuaState state, LuaValue callee) {
+    /// Reports the "attempt to call" error (with variable info) for a value that cannot be
+    /// called: false, with the error in `state.raisedError`.
+    private static bool checkCallable(LuaState state, LuaValue callee) {
         if (isFunction(callee))
-            return;
+            return true;
         auto mt = state.getMetatable(callee);
         if (mt !is null && !isNil(mt.rawget(LuaValue("__call"))))
-            return;
+            return true;
         auto failure = new LuaException("attempt to call a " ~ objectTypeName(state, callee) ~ " value");
         failure.culprit = 1;
-        throw failure;
+        state.raisedError = failure;
+        return false;
     }
 
     private static LuaException indexError(LuaState state, LuaValue tableVal, bool viaMeta = false) {
