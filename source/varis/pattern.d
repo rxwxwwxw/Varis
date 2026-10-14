@@ -11,10 +11,8 @@
 module varis.pattern;
 
 import varis.types;
-import varis.exception : LuaException;
 import std.ascii : isAlpha, isControl, isDigit, isGraphical, isLower, isPunctuation, isWhite, isUpper, isAlphaNum, isHexDigit, toLower;
 import std.format : format;
-import std.array : Appender;
 
 enum LUA_MAXCAPTURES = 32;
 enum CAP_UNFINISHED = -1;
@@ -32,6 +30,9 @@ struct MatchState {
     ptrdiff_t matchdepth;
     int level;
     Capture[LUA_MAXCAPTURES] capture;
+    /// Set (never thrown) when the pattern is malformed or too complex; matching then unwinds
+    /// by returning -1 and the caller reports `error`.
+    string error;
 
     this(string src, string pattern) {
         this.src = src;
@@ -46,7 +47,8 @@ struct Pattern {
     static int checkCapture(ref MatchState ms, int l) {
         l -= '1';
         if (l < 0 || l >= ms.level || ms.capture[l].len == CAP_UNFINISHED) {
-            throw new LuaException(format("invalid capture index %%%d", l + 1));
+            ms.error = format("invalid capture index %%%d", l + 1);
+            return -1;
         }
         return l;
     }
@@ -56,7 +58,8 @@ struct Pattern {
             if (ms.capture[level].len == CAP_UNFINISHED)
                 return level;
         }
-        throw new LuaException("invalid pattern capture");
+        ms.error = "invalid pattern capture";
+        return -1;
     }
 
     static size_t classend(ref MatchState ms, size_t p) {
@@ -64,7 +67,8 @@ struct Pattern {
         switch (c) {
         case '%':
             if (p == ms.pattern.length) {
-                throw new LuaException("malformed pattern (ends with '%')");
+                ms.error = "malformed pattern (ends with '%')";
+                return ms.pattern.length;
             }
             return p + 1;
         case '[':
@@ -72,15 +76,18 @@ struct Pattern {
                 p++;
             do {
                 if (p >= ms.pattern.length) {
-                    throw new LuaException("malformed pattern (missing ']')");
+                    ms.error = "malformed pattern (missing ']')";
+                    return ms.pattern.length;
                 }
                 if (ms.pattern[p++] == '%' && p < ms.pattern.length) {
                     p++;
                 }
             }
             while (p < ms.pattern.length && ms.pattern[p] != ']');
-            if (p >= ms.pattern.length)
-                throw new LuaException("malformed pattern (missing ']')");
+            if (p >= ms.pattern.length) {
+                ms.error = "malformed pattern (missing ']')";
+                return ms.pattern.length;
+            }
             return p + 1;
         default:
             return p;
@@ -171,7 +178,8 @@ struct Pattern {
 
     static ptrdiff_t matchBalance(ref MatchState ms, size_t s, size_t p) {
         if (p >= ms.pattern.length - 1) {
-            throw new LuaException("malformed pattern (missing arguments to '%b')");
+            ms.error = "malformed pattern (missing arguments to '%b')";
+            return -1;
         }
         if (s >= ms.src.length || ms.src[s] != ms.pattern[p])
             return -1;
@@ -196,7 +204,7 @@ struct Pattern {
         }
         while (i >= 0) {
             ptrdiff_t res = matchLoop(ms, s + i, ep + 1);
-            if (res != -1)
+            if (res != -1 || ms.error.length)
                 return res;
             i--;
         }
@@ -206,7 +214,7 @@ struct Pattern {
     static ptrdiff_t minExpand(ref MatchState ms, size_t s, size_t p, size_t ep) {
         while (true) {
             ptrdiff_t res = matchLoop(ms, s, ep + 1);
-            if (res != -1)
+            if (res != -1 || ms.error.length)
                 return res;
             if (singleMatch(ms, s, p, ep)) {
                 s++;
@@ -218,8 +226,10 @@ struct Pattern {
 
     static ptrdiff_t startCapture(ref MatchState ms, size_t s, size_t p, ptrdiff_t what) {
         int level = ms.level;
-        if (level >= LUA_MAXCAPTURES)
-            throw new LuaException("too many captures");
+        if (level >= LUA_MAXCAPTURES) {
+            ms.error = "too many captures";
+            return -1;
+        }
         ms.capture[level].init = cast(ptrdiff_t) s;
         ms.capture[level].len = what;
         ms.level = level + 1;
@@ -231,6 +241,8 @@ struct Pattern {
 
     static ptrdiff_t endCapture(ref MatchState ms, size_t s, size_t p) {
         int l = captureToClose(ms);
+        if (l < 0)
+            return -1;
         ms.capture[l].len = cast(ptrdiff_t) s - ms.capture[l].init;
         ptrdiff_t res = matchLoop(ms, s, p);
         if (res == -1)
@@ -240,6 +252,8 @@ struct Pattern {
 
     static ptrdiff_t matchCapture(ref MatchState ms, size_t s, int l) {
         l = checkCapture(ms, l);
+        if (l < 0)
+            return -1;
         size_t len = cast(size_t) ms.capture[l].len;
         if (ms.src.length - s >= len &&
                 ms.src[s .. s + len] == ms.src[ms.capture[l].init .. ms.capture[l].init + len]) {
@@ -249,8 +263,10 @@ struct Pattern {
     }
 
     static ptrdiff_t matchLoop(ref MatchState ms, size_t s, size_t p) {
-        if (--ms.matchdepth == 0)
-            throw new LuaException("pattern too complex");
+        if (--ms.matchdepth == 0) {
+            ms.error = "pattern too complex";
+            return -1;
+        }
         scope (exit)
             ++ms.matchdepth;
 
@@ -283,9 +299,12 @@ struct Pattern {
                     } else if (nextC == 'f') {
                         p += 2;
                         if (p >= ms.pattern.length || ms.pattern[p] != '[') {
-                            throw new LuaException("missing '[' after '%f' in pattern");
+                            ms.error = "missing '[' after '%f' in pattern";
+                            return -1;
                         }
                         size_t ep = classend(ms, p);
+                        if (ms.error.length)
+                            return -1;
                         char previous = (s == 0) ? '\0' : ms.src[s - 1];
                         char current = (s == ms.src.length) ? '\0' : ms.src[s];
                         if (!matchBracketClass(previous, ms.pattern, p, ep - 1) &&
@@ -307,6 +326,8 @@ struct Pattern {
                 goto default;
             default:
                 size_t ep = classend(ms, p);
+                if (ms.error.length)
+                    return -1;
                 char suffix = (ep < ms.pattern.length) ? ms.pattern[ep] : '\0';
                 bool m = singleMatch(ms, s, p, ep);
 
@@ -321,7 +342,7 @@ struct Pattern {
                 switch (suffix) {
                 case '?':
                     ptrdiff_t res = matchLoop(ms, s + 1, ep + 1);
-                    if (res != -1)
+                    if (res != -1 || ms.error.length)
                         return res;
                     p = ep + 1;
                     continue;
@@ -339,82 +360,5 @@ struct Pattern {
             }
         }
         return cast(ptrdiff_t) s;
-    }
-
-    /// Extract captured values into LuaValue[]
-    static LuaValue[] getCaptures(ref MatchState ms, size_t matchStart, size_t matchEnd) {
-        if (ms.level == 0) {
-            return [LuaValue(ms.src[matchStart .. matchEnd])];
-        }
-
-        LuaValue[] result;
-        for (int i = 0; i < ms.level; ++i) {
-            if (ms.capture[i].len == CAP_UNFINISHED)
-                throw new LuaException("unfinished capture");
-            if (ms.capture[i].len == CAP_POSITION) {
-                result ~= LuaValue(cast(long)(ms.capture[i].init + 1));
-            } else {
-                size_t cInit = cast(size_t) ms.capture[i].init;
-                size_t cLen = cast(size_t) ms.capture[i].len;
-                result ~= LuaValue(ms.src[cInit .. cInit + cLen]);
-            }
-        }
-        return result;
-    }
-
-    /// Find pattern in string (1-based Lua indexing)
-    static struct FindResult {
-        bool matched;
-        size_t startIdx; // 1-based
-        size_t endIdx; // 1-based
-        LuaValue[] captures;
-    }
-
-    static FindResult find(string s, string pattern, size_t init = 1, bool plain = false, bool anchorCaret = true) {
-        if (init < 1)
-            init = 1;
-        size_t sIdx = init - 1;
-        if (sIdx > s.length)
-            return FindResult(false);
-
-        if (plain) {
-            import std.string : indexOf;
-
-            ptrdiff_t found = s[sIdx .. $].indexOf(pattern);
-            if (found != -1) {
-                size_t start = sIdx + cast(size_t) found + 1;
-                size_t end = start + pattern.length - 1;
-                return FindResult(true, start, end, []);
-            }
-            return FindResult(false);
-        }
-
-        bool anchor = anchorCaret && (pattern.length > 0 && pattern[0] == '^');
-        size_t pOffset = anchor ? 1 : 0;
-
-        do {
-            MatchState ms = MatchState(s, pattern[pOffset .. $]);
-            ptrdiff_t res = matchLoop(ms, sIdx, 0);
-            if (res != -1) {
-                auto caps = getCaptures(ms, sIdx, cast(size_t) res);
-                return FindResult(true, sIdx + 1, cast(size_t) res, ms.level > 0 ? caps : []);
-            }
-            if (anchor)
-                break;
-            sIdx++;
-        }
-        while (sIdx <= s.length);
-
-        return FindResult(false);
-    }
-
-    /// Match pattern in string, returning captures or whole match
-    static LuaValue[] match(string s, string pattern, size_t init = 1) {
-        auto fr = find(s, pattern, init, false);
-        if (!fr.matched)
-            return [];
-        if (fr.captures.length > 0)
-            return fr.captures;
-        return [LuaValue(s[fr.startIdx - 1 .. fr.endIdx])];
     }
 }

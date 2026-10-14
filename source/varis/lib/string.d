@@ -118,6 +118,10 @@ private LuaValue[] strFindAux(LuaState L, LuaValue[] a, bool find) {
     do {
         auto ms = MatchState(s, pat);
         auto res = Pattern.matchLoop(ms, s1, 0);
+        if (ms.error.length) {
+            failText(L, ms.error);
+            return null;
+        }
         if (res != -1) {
             LuaValue[] result;
             if (find)
@@ -209,6 +213,10 @@ private LuaValue[] strGsub(LuaState L, LuaValue[] a) {
         ms.level = 0;
         ms.matchdepth = 200;
         auto e = Pattern.matchLoop(ms, pos, 0);
+        if (ms.error.length) {
+            failText(L, ms.error);
+            return null;
+        }
         if (e != -1 && e != lastMatch) {
             ++n;
             if (flushed < pos)
@@ -631,6 +639,10 @@ void openStringLib(LuaState state) {
             for (; position <= s.length; ++position) {
                 auto ms = MatchState(s, p);
                 auto e = Pattern.matchLoop(ms, position, 0);
+                if (ms.error.length) {
+                    failText(cast(LuaState) st, ms.error);
+                    return null;
+                }
                 if (e != -1 && e != lastMatch) {
                     size_t start = position;
                     position = lastMatch = e;
