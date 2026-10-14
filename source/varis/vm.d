@@ -3118,8 +3118,27 @@ struct VM {
                 state.raisedError = reported;
                 return null;
             }
-            if (auto closure = cast(LuaClosure) fn)
-                return execute(state, closure, args, name, nameKind);
+            if (auto closure = cast(LuaClosure) fn) {
+                if (!statusReturn || state is null)
+                    return execute(state, closure, args, name, nameKind);
+                // The error of a Lua function comes back as a value (see callProtected).
+                auto previousWorld = state.callWorldObject;
+                scope (exit)
+                    state.callWorldObject = previousWorld;
+                TailRequest tail;
+                tail.returnErrors = true;
+                auto results = executeFrame(state, closure, args, tail, false, name, nameKind);
+                if (tail.error is null && tail.pending) {
+                    bool placed;
+                    size_t placedCount;
+                    results = runTailCalls(state, tail, placed, placedCount);
+                }
+                if (tail.error !is null) {
+                    state.raisedError = tail.error;
+                    return null;
+                }
+                return results;
+            }
             return fn.call(cast(void*) state, args);
         }
 
