@@ -793,7 +793,9 @@ private enum string deepFrameLoopBody = q{
                                     // A callable object: resolve __call chains, then treat the result as above.
                                     callArgs = count > 0 ? registers[instr.a + 1 .. instr.a + 1 + count].dup : [
                                     ];
-                                    resolveCallable(state, target, callArgs);
+                                    if (!resolveCallable(state, target, callArgs)) {
+                                        mixin(reportedFailure);
+                                    }
                                     replaceFrame = target.isFunction && target.asFunction.isLuaClosure;
                                     if (!replaceFrame) {
                                         // Native handler: called in place, its results are this frame's results.
@@ -821,8 +823,9 @@ private enum string deepFrameLoopBody = q{
                                     debugLimit = instr.a;
                                     forcedReturn = doCall(state, closure, proto, registers, instr.a, count, cast(int)(
                                             ip - codeBase) - 1);
-                                    if (state.raisedError !is null)
-                                        throw state.takeRaised(); // see the Call handler below
+                                    if (state.raisedError !is null) {
+                                        mixin(reportedFailure);
+                                    }
                                     debugLimit = proto.maxStackSize;
                                     useForcedReturn = true;
                                     goto case OpCode.Return;
@@ -892,7 +895,8 @@ private enum string deepFrameLoopBody = q{
                                         raised.originKind = site.kind;
                                         state.dispatchError(raised);
                                         state.popCall();
-                                        throw raised;
+                                        state.raisedError = raised;
+                                        mixin(reportedFailure);
                                     }
                                     if (calleeFunction.fastCall !is null && frameThread.hookFunction is null) {
                                         // Hot built-ins run straight on the registers (see varis.lib.fastcall).
@@ -994,10 +998,9 @@ private enum string deepFrameLoopBody = q{
                                     // that no array holding result values stays referenced from this frame.
                                     resultTop = callAndPlace(state, closure, proto, registers, instr.a, numArgs, numWantedResults, cast(
                                             int)(ip - codeBase) - 1);
-                                // This executor's frame handler is exception-based: an error reported
-                                // as a value is thrown here, at its boundary.
-                                if (resultTop == callRaised)
-                                    throw state.takeRaised();
+                                if (resultTop == callRaised) {
+                                    mixin(reportedFailure);
+                                }
                                 debugLimit = proto.maxStackSize;
                                 if (resultTop < 0) {
                                     // Variable results did not fit: grow, then copy the stashed values.
@@ -1693,7 +1696,8 @@ struct VM {
             if (callee.isFunction && callee.asFunction.isLuaClosure)
                 closure = cast(LuaClosure) cast(void*) callee.asFunction;
             else {
-                resolveCallable(state, callee, args);
+                if (!resolveCallable(state, callee, args))
+                    throw state.takeRaised(); // the boundary of this array-returning function
                 auto function_ = callee.match!((LuaFunction fn) => fn, _ => null);
                 if (function_ is null || !function_.isLuaClosure) {
                     // A native reached through `__call`: it runs with the lexical world of the
@@ -3023,11 +3027,10 @@ struct VM {
             if (!callSite && cThread !is null)
                 --cThread.cCalls;
 
-        try {
-            resolveCallable(state, callee, args);
-        } catch (LuaException failure) {
+        if (!resolveCallable(state, callee, args)) {
             import std.string : startsWith;
 
+            auto failure = state.takeRaised();
             if (nameKind.length && failure.msg.startsWith("attempt to call")) {
                 failure.errorObject = LuaValue(toLuaString(failure.errorObject) ~ " (" ~ nameKind ~ " '" ~ name ~ "')");
                 failure.msg = toLuaString(failure.errorObject);
@@ -3036,6 +3039,10 @@ struct VM {
                 if (state.callStack.length)
                     failure.locate(state.callStack[$ - 1].source, state.callStack[$ - 1].line);
                 state.dispatchError(failure);
+            }
+            if (statusReturn && state !is null) {
+                state.raisedError = failure;
+                return null;
             }
             throw failure;
         }
@@ -3157,17 +3164,24 @@ struct VM {
         return found;
     }
 
-    private static void resolveCallable(LuaState state, ref LuaValue callee, ref LuaValue[] args) {
+    /// Follows `__call` until a function is reached. False, with the error in `state.raisedError`
+    /// (a `state` that is null cannot report: such a call is a host's, which has no frame).
+    private static bool resolveCallable(LuaState state, ref LuaValue callee, ref LuaValue[] args) {
         for (int depth = 0; !isFunction(callee); ++depth) {
-            if (depth >= 2000)
-                throw new LuaException("'__call' chain too long; possible loop");
+            if (depth >= 2000) {
+                state.raisedError = new LuaException("'__call' chain too long; possible loop");
+                return false;
+            }
             auto metatable = state.getMetatable(callee);
             auto method = metatable is null ? luaNil() : metatable.rawget(LuaValue("__call"));
-            if (isNil(method))
-                throw new LuaException(format("attempt to call a %s value", typeName(callee)));
+            if (isNil(method)) {
+                state.raisedError = new LuaException(format("attempt to call a %s value", typeName(callee)));
+                return false;
+            }
             args = [callee] ~ args;
             callee = method;
         }
+        return true;
     }
 
     // -------------------------------------------------------------------------
