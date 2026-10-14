@@ -369,14 +369,21 @@ class LuaTable {
         return found < 0 ? luaNil() : nodes[found].value;
     }
 
-    /// Raw set without metamethod invocation
+    /// The message of the error a store under `key` raises, or null when the key is valid.
+    /// Lua-facing code checks this first and reports the error as a value.
+    static string keyProblem(ref const LuaValue key) {
+        if (key.isNil)
+            return "table index is nil";
+        if (key.isFloat && isNaN(key.asFloat))
+            return "table index is NaN";
+        return null;
+    }
+
+    /// Raw set without metamethod invocation. For host code: an invalid key throws (see
+    /// `keyProblem` for the by-value form).
     void rawset(LuaValue key, LuaValue val) {
-        if (isNil(key)) {
-            throw new LuaException("table index is nil");
-        }
-        if (isFloat(key) && isNaN(key.match!((double d) => d, _ => 0.0))) {
-            throw new LuaException("table index is NaN");
-        }
+        if (auto problem = keyProblem(key))
+            throw new LuaException(problem);
 
         key = normalizeKey(key);
 
@@ -603,8 +610,9 @@ class LuaTable {
         return idx;
     }
 
-    /// Get next key-value pair for iteration (pairs/next). Throws for an invalid key.
-    bool next(LuaValue currentKey, out LuaValue nextKey, out LuaValue nextVal) {
+    /// Get next key-value pair for iteration (pairs/next): 1 (entry found), 0 (end of traversal) or
+    /// -1 (the key is not in the table: "invalid key to 'next'").
+    int nextEntry(LuaValue currentKey, out LuaValue nextKey, out LuaValue nextVal) {
         size_t nodeStart = 0;
         if (!isNil(currentKey)) {
             currentKey = normalizeKey(currentKey);
@@ -614,7 +622,7 @@ class LuaTable {
                     if (!isNil(arrayPart[i])) {
                         nextKey = LuaValue(cast(long)(i + 1));
                         nextVal = arrayPart[i];
-                        return true;
+                        return 1;
                     }
                 }
             } else {
@@ -622,7 +630,7 @@ class LuaTable {
                 if (found < 0)
                     found = findDeadNode(currentKey);
                 if (found < 0)
-                    throw new LuaException("invalid key to 'next'");
+                    return -1;
                 nodeStart = cast(size_t) found + 1;
             }
         } else {
@@ -630,7 +638,7 @@ class LuaTable {
                 if (!isNil(slot)) {
                     nextKey = LuaValue(cast(long)(i + 1));
                     nextVal = slot;
-                    return true;
+                    return 1;
                 }
             }
         }
@@ -638,10 +646,19 @@ class LuaTable {
             if (!isNil(nodes[i].value)) {
                 nextKey = nodes[i].key;
                 nextVal = nodes[i].value;
-                return true;
+                return 1;
             }
         }
-        return false;
+        return 0;
+    }
+
+    /// `nextEntry` for host code that wants an exception on an invalid key. Lua-facing code
+    /// uses `nextEntry` and reports the error as a value.
+    bool next(LuaValue currentKey, out LuaValue nextKey, out LuaValue nextVal) {
+        int status = nextEntry(currentKey, nextKey, nextVal);
+        if (status < 0)
+            throw new LuaException("invalid key to 'next'");
+        return status > 0;
     }
 
     /// `next` without exceptions or allocation, for the interpreter's `for ... in pairs(t)` fast

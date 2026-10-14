@@ -1151,11 +1151,15 @@ private enum string sharedOpcodeCases1 = q{
                             }
                         }
                     }
-                    execGetGlobal(state, closure, proto, registers, instr, cast(int)(ip - codeBase) - 1);
+                    if (!execGetGlobal(state, closure, proto, registers, instr, cast(int)(ip - codeBase) - 1)) {
+                        mixin(reportedFailure);
+                    }
                     break;
 
                 case OpCode.SetGlobal:
-                    execSetGlobal(state, closure, proto, registers, instr, cast(int)(ip - codeBase) - 1);
+                    if (!execSetGlobal(state, closure, proto, registers, instr, cast(int)(ip - codeBase) - 1)) {
+                        mixin(reportedFailure);
+                    }
                     break;
 
                 case OpCode.GetUpval:
@@ -1196,7 +1200,9 @@ private enum string sharedOpcodeCases1 = q{
                             }
                         }
                     }
-                    execGetTable(state, proto, registers, instr, cast(int)(ip - codeBase) - 1);
+                    if (!execGetTable(state, proto, registers, instr, cast(int)(ip - codeBase) - 1)) {
+                        mixin(reportedFailure);
+                    }
                     break;
 
                 case OpCode.SetTable: {
@@ -1221,7 +1227,9 @@ private enum string sharedOpcodeCases1 = q{
                             }
                         }
                     }
-                    execSetTable(state, proto, registers, instr, cast(int)(ip - codeBase) - 1);
+                    if (!execSetTable(state, proto, registers, instr, cast(int)(ip - codeBase) - 1)) {
+                        mixin(reportedFailure);
+                    }
                     break;
 
                 case OpCode.SetList:
@@ -1229,7 +1237,9 @@ private enum string sharedOpcodeCases1 = q{
                     break;
 
                 case OpCode.Self:
-                    execSelf(state, proto, registers, instr, cast(int)(ip - codeBase) - 1);
+                    if (!execSelf(state, proto, registers, instr, cast(int)(ip - codeBase) - 1)) {
+                        mixin(reportedFailure);
+                    }
                     break;
 
                     // Arithmetic, bitwise and concatenation operations. Same-type integer/float
@@ -1940,6 +1950,12 @@ struct VM {
         // the out-of-line helpers arrive through the catch below. Either way the frame's handler
         // after the try block runs once.
         LuaException raisedError;
+        // What a handler does when an out-of-line helper reported its error as a value: straight
+        // to the frame's handler, without a throw.
+        enum string reportedFailure = q{
+            raisedError = state.takeRaised();
+            break interpret;
+        };
         try {
             if (frameThread.hookFunction !is null)
                 state.debugHook(transferred ? "tail call" : "call", -1, registers[0 .. proto.numParams], true);
@@ -2185,6 +2201,10 @@ struct VM {
         LuaValue[] forcedReturn;
         bool useForcedReturn;
         Throwable pendingThrow;
+        enum string reportedFailure = q{
+            incoming = state.takeRaised();
+            break deepInterpret;
+        };
 
         for (;;) {
             Throwable propagate;
@@ -2348,7 +2368,7 @@ struct VM {
     // loop's stack conservatively, and Lua values copied into its locals would be kept alive.
 
     pragma(inline, false)
-    private static void execGetGlobal(LuaState state, LuaClosure closure, Prototype proto, LuaValue[] registers, ref const Instruction instr, int pc) {
+    private static bool execGetGlobal(LuaState state, LuaClosure closure, Prototype proto, LuaValue[] registers, ref const Instruction instr, int pc) {
         int c = instr.c;
         if (proto.constants[instr.b].isString) {
             auto environment = c > 0 ? &registers[c - 1] : c < 0 ? closure.upvalues[-c - 1].ptr() : null;
@@ -2359,21 +2379,21 @@ struct VM {
                         .lookupHints[pc], found);
                 if (status == 1) {
                     copyValue(registers[instr.a], *found);
-                    return;
+                    return true;
                 }
                 if (status == 0) {
                     registers[instr.a] = luaNil();
-                    return;
+                    return true;
                 }
             }
         }
         auto name = proto.constants[instr.b].match!((string s) => s, _ => toLuaString(proto.constants[instr.b]));
         auto environment = c > 0 ? registers[c - 1] : c < 0 ? closure.upvalues[-c - 1].get() : LuaValue(state.globals);
-        registers[instr.a] = getTable(state, environment, LuaValue(name));
+        return tryGetTable(state, environment, LuaValue(name), registers[instr.a]);
     }
 
     pragma(inline, false)
-    private static void execSetGlobal(LuaState state, LuaClosure closure, Prototype proto, LuaValue[] registers, ref const Instruction instr, int pc) {
+    private static bool execSetGlobal(LuaState state, LuaClosure closure, Prototype proto, LuaValue[] registers, ref const Instruction instr, int pc) {
         if (proto.constants[instr.b].isString) {
             int c = instr.c;
             auto environment = c > 0 ? &registers[c - 1] : c < 0 ? closure.upvalues[-c - 1].ptr() : null;
@@ -2384,18 +2404,19 @@ struct VM {
                 // An existing non-nil field is overwritten directly: no __newindex applies.
                 if (found !is null && !found.isNil) {
                     copyValue(*found, *source);
-                    return;
+                    return true;
                 }
             }
         }
         auto name = proto.constants[instr.b].match!((string s) => s, _ => toLuaString(proto.constants[instr.b]));
         int c = instr.c;
         auto environment = c > 0 ? registers[c - 1] : c < 0 ? closure.upvalues[-c - 1].get() : LuaValue(state.globals);
-        setTable(state, environment, LuaValue(name), instr.aIsK ? proto.constants[instr.a] : registers[instr.a]);
+        return trySetTable(state, environment, LuaValue(name), instr.aIsK ? proto
+                .constants[instr.a] : registers[instr.a]);
     }
 
     pragma(inline, false)
-    private static void execGetTable(LuaState state, Prototype proto, LuaValue[] registers, ref const Instruction instr, int pc) {
+    private static bool execGetTable(LuaState state, Prototype proto, LuaValue[] registers, ref const Instruction instr, int pc) {
         auto keyPtr = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
         if (registers[instr.b].isTable) {
             auto tbl = registers[instr.b].asTable;
@@ -2405,27 +2426,27 @@ struct VM {
                         .lookupHints[pc], found);
                 if (status == 1) {
                     copyValue(registers[instr.a], *found);
-                    return;
+                    return true;
                 }
                 if (status == 0) {
                     registers[instr.a] = luaNil();
-                    return;
+                    return true;
                 }
             } else if (keyPtr.isInteger) {
                 long index = keyPtr.asInteger;
                 if (index >= 1 && index <= cast(long) tbl.arrayPart.length && !tbl.arrayPart[cast(
                             size_t)(index - 1)].isNil) {
                     copyValue(registers[instr.a], tbl.arrayPart[cast(size_t)(index - 1)]);
-                    return;
+                    return true;
                 }
             }
         }
         auto keyVal = *keyPtr;
-        registers[instr.a] = getTable(state, registers[instr.b], keyVal);
+        return tryGetTable(state, registers[instr.b], keyVal, registers[instr.a]);
     }
 
     pragma(inline, false)
-    private static void execSetTable(LuaState state, Prototype proto, LuaValue[] registers, ref const Instruction instr, int pc) {
+    private static bool execSetTable(LuaState state, Prototype proto, LuaValue[] registers, ref const Instruction instr, int pc) {
         auto keyPtr = instr.bIsK ? &proto.constants[instr.b] : &registers[instr.b];
         auto valPtr = instr.cIsK ? &proto.constants[instr.c] : &registers[instr.c];
         if (instr.bIsK && keyPtr.isString && registers[instr.a].isTable && !valPtr.isNil) {
@@ -2434,13 +2455,13 @@ struct VM {
             // An existing non-nil field is overwritten directly: __newindex does not apply.
             if (found !is null && !found.isNil) {
                 copyValue(*found, *valPtr);
-                return;
+                return true;
             }
             // A new field of a table without a __newindex handler is a raw store.
             auto handler = tbl.metatable is null ? null : tbl.metatable.findStringHashed("__newindex", newindexNameHash);
             if (tbl.metatable is null || handler is null || handler.isNil) {
                 tbl.rawsetStringHashed(keyPtr.asString, proto.constantHashes[instr.b], *valPtr);
-                return;
+                return true;
             }
         }
         if (registers[instr.a].isTable && keyPtr.isInteger) {
@@ -2449,18 +2470,18 @@ struct VM {
             if (tbl.metatable is null && index >= 1 && index <= cast(long) tbl.arrayPart.length
                     && !valPtr.isNil) {
                 copyValue(tbl.arrayPart[cast(size_t)(index - 1)], *valPtr);
-                return;
+                return true;
             }
         }
         auto keyVal = *keyPtr;
         auto valVal = *valPtr;
-        setTable(state, registers[instr.a], keyVal, valVal);
+        return trySetTable(state, registers[instr.a], keyVal, valVal);
     }
 
     pragma(inline, false)
-    private static void execSetList(LuaValue[] registers, int a, int b, int c, int top) {
+    private static bool execSetList(LuaValue[] registers, int a, int b, int c, int top) {
         if (!isTable(registers[a]))
-            return;
+            return true;
         auto tbl = registers[a].match!((LuaTable t) => t, _ => null);
         int rStart = b;
         long listIdx = c;
@@ -2468,12 +2489,13 @@ struct VM {
         if (endReg > rStart && listIdx >= 1 && cast(size_t)(listIdx - 1) <= tbl.arrayPart.length)
             tbl.ensureArray(cast(size_t)(listIdx - 1 + endReg - rStart));
         for (int k = rStart; k < endReg; ++k) {
-            tbl.rawset(LuaValue(listIdx++), registers[k]);
+            tbl.rawset(LuaValue(listIdx++), registers[k]); // integer keys: never invalid
         }
+        return true;
     }
 
     pragma(inline, false)
-    private static void execSelf(LuaState state, Prototype proto, LuaValue[] registers, ref const Instruction instr, int pc) {
+    private static bool execSelf(LuaState state, Prototype proto, LuaValue[] registers, ref const Instruction instr, int pc) {
         if (instr.cIsK && proto.constants[instr.c].isString && registers[instr.b].isTable) {
             auto tbl = registers[instr.b].asTable;
             LuaValue* found;
@@ -2485,7 +2507,7 @@ struct VM {
                     copyValue(registers[instr.a], *found);
                 else
                     registers[instr.a] = luaNil();
-                return;
+                return true;
             }
         }
         // `text:method(...)`: look the method up in the string metatable's __index table with the
@@ -2501,13 +2523,13 @@ struct VM {
                 if (status == 1) {
                     copyValue(registers[instr.a + 1], registers[instr.b]);
                     copyValue(registers[instr.a], *found);
-                    return;
+                    return true;
                 }
             }
         }
         registers[instr.a + 1] = registers[instr.b];
         auto keyVal = instr.cIsK ? proto.constants[instr.c] : registers[instr.c];
-        registers[instr.a] = getTable(state, registers[instr.b], keyVal);
+        return tryGetTable(state, registers[instr.b], keyVal, registers[instr.a]);
     }
 
     pragma(inline, false)
@@ -2788,66 +2810,98 @@ struct VM {
     // Helper Operations & Metamethod Dispatch
     // -------------------------------------------------------------------------
 
+    /// Indexing for host code: an error is thrown. The interpreter uses `tryGetTable`.
     static LuaValue getTable(LuaState state, LuaValue tableVal, LuaValue keyVal, bool viaMeta = false) {
+        LuaValue result;
+        if (!tryGetTable(state, tableVal, keyVal, result, viaMeta))
+            throw state.takeRaised();
+        return result;
+    }
+
+    /// `tableVal[keyVal]` with metamethods. On an error the result is false and the error sits in
+    /// `state.raisedError` (nothing is thrown by this function itself; an error escaping a Lua
+    /// metamethod still arrives as an exception until the executor boundary is converted).
+    static bool tryGetTable(LuaState state, LuaValue tableVal, LuaValue keyVal, out LuaValue result, bool viaMeta = false) {
         auto current = tableVal;
         for (int loop = 0; loop < 2000; ++loop) {
             LuaValue meta;
             if (current.typeOf() == LuaType.Table) {
                 auto t = current.match!((LuaTable tbl) => tbl, _ => null);
                 auto res = t.rawget(keyVal);
-                if (!isNil(res))
-                    return res;
+                if (!isNil(res)) {
+                    result = res;
+                    return true;
+                }
                 if (t.metatable is null)
-                    return luaNil();
+                    return true;
                 meta = t.metatable.rawget(LuaValue("__index"));
                 if (isNil(meta))
-                    return luaNil();
+                    return true;
             } else {
                 meta = metaField(state, current, "__index");
-                if (isNil(meta))
-                    throw indexError(state, current, viaMeta || loop > 0);
+                if (isNil(meta)) {
+                    state.raisedError = indexError(state, current, viaMeta || loop > 0);
+                    return false;
+                }
             }
             if (isFunction(meta)) {
-                auto resList = callValue(state, meta, [current, keyVal], false, "index", "metamethod");
-                return resList.length > 0 ? resList[0] : luaNil();
+                auto resList = callValue(state, meta, [current, keyVal], false, "index", "metamethod", false, true);
+                if (state.raisedError !is null)
+                    return false;
+                if (resList.length > 0)
+                    result = resList[0];
+                return true;
             }
             current = meta;
         }
-        throw new LuaException("'__index' chain too long; possible loop");
+        state.raisedError = new LuaException("'__index' chain too long; possible loop");
+        return false;
     }
 
+    /// Assignment for host code: an error is thrown. The interpreter uses `trySetTable`.
     static void setTable(LuaState state, LuaValue tableVal, LuaValue keyVal, LuaValue valVal, bool viaMeta = false) {
+        if (!trySetTable(state, tableVal, keyVal, valVal, viaMeta))
+            throw state.takeRaised();
+    }
+
+    /// `tableVal[keyVal] = valVal` with metamethods; false with the error in `state.raisedError`.
+    static bool trySetTable(LuaState state, LuaValue tableVal, LuaValue keyVal, LuaValue valVal, bool viaMeta = false) {
         auto current = tableVal;
         for (int loop = 0; loop < 2000; ++loop) {
             LuaValue meta;
             if (current.typeOf() == LuaType.Table) {
                 auto t = current.match!((LuaTable tbl) => tbl, _ => null);
-                if (t.metatable is null) {
-                    t.rawset(keyVal, valVal);
-                    return;
+                bool raw = t.metatable is null;
+                if (!raw) {
+                    raw = !isNil(t.rawget(keyVal));
+                    if (!raw) {
+                        meta = t.metatable.rawget(LuaValue("__newindex"));
+                        raw = isNil(meta);
+                    }
                 }
-                auto existing = t.rawget(keyVal);
-                if (!isNil(existing)) {
+                if (raw) {
+                    if (auto problem = LuaTable.keyProblem(keyVal)) {
+                        state.raisedError = new LuaException(problem);
+                        return false;
+                    }
                     t.rawset(keyVal, valVal);
-                    return;
-                }
-                meta = t.metatable.rawget(LuaValue("__newindex"));
-                if (isNil(meta)) {
-                    t.rawset(keyVal, valVal);
-                    return;
+                    return true;
                 }
             } else {
                 meta = metaField(state, current, "__newindex");
-                if (isNil(meta))
-                    throw indexError(state, current, viaMeta || loop > 0);
+                if (isNil(meta)) {
+                    state.raisedError = indexError(state, current, viaMeta || loop > 0);
+                    return false;
+                }
             }
             if (isFunction(meta)) {
-                callValue(state, meta, [current, keyVal, valVal], false, "newindex", "metamethod");
-                return;
+                callValue(state, meta, [current, keyVal, valVal], false, "newindex", "metamethod", false, true);
+                return state.raisedError is null;
             }
             current = meta;
         }
-        throw new LuaException("'__newindex' chain too long; possible loop");
+        state.raisedError = new LuaException("'__newindex' chain too long; possible loop");
+        return false;
     }
 
     /// Raises the "attempt to call" error (with variable info) for values that cannot be called.

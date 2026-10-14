@@ -518,7 +518,10 @@ void openBaseLib(LuaState state) {
         if (!argTable(s, a, 1, t))
             return null;
         LuaValue nextK, nextV;
-        if (t.next(argAt(a, 2), nextK, nextV))
+        int status = t.nextEntry(argAt(a, 2), nextK, nextV);
+        if (status < 0)
+            return raise(s, "invalid key to 'next'");
+        if (status > 0)
             return [nextK, nextV];
         return [luaNil()];
     });
