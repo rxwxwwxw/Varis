@@ -338,8 +338,9 @@ private enum string restoreCallerCode = q{
         }
 };
 
-/// Raises the Lua/native stack overflow errors before any state of the frame being entered exists.
-private void checkStackLimits(LuaThread frameThread, size_t sp, size_t slots) {
+/// The Lua/native stack overflow error for entering a frame of `slots` registers, or null. It is
+/// checked before any state of the frame being entered exists.
+private LuaException stackLimitError(LuaThread frameThread, size_t sp, size_t slots) {
     // Approximate (see LuaThread.stackUse): small frames are charged a flat amount each.
     size_t total = frameThread.stackUse() + (slots > LuaThread.smallFrameSlots ? slots : LuaThread.smallFrameCharge);
     if (total > luaMaxStack || (frameThread.nativeStackLimit != 0 && sp < frameThread.nativeSoftLimit)) {
@@ -348,13 +349,20 @@ private void checkStackLimits(LuaThread frameThread, size_t sp, size_t slots) {
         if (nativeHard || total > luaMaxStack + 200) {
             auto nested = new LuaException("error in error handling");
             nested.needsLocation = false;
-            throw nested;
+            return nested;
         }
         if ((nativeSoft || total > luaMaxStack) && !frameThread.overflowed) {
             frameThread.overflowed = true;
-            throw new LuaException("stack overflow");
+            return new LuaException("stack overflow");
         }
     }
+    return null;
+}
+
+/// `stackLimitError` for a frame entry that is itself a boundary (an exception is how it leaves).
+private void checkStackLimits(LuaThread frameThread, size_t sp, size_t slots) {
+    if (auto failure = stackLimitError(frameThread, sp, slots))
+        throw failure;
 }
 
 /// Sets every value to nil with one memset (`LuaValue.init` is all zero bytes; the element-wise
@@ -930,7 +938,10 @@ private enum string deepFrameLoopBody = q{
                                     auto calleeProto = callee.proto;
                                     if (!calleeProto.prepared)
                                         prepareForExecution(calleeProto);
-                                    checkStackLimits(frameThread, sp, cast(size_t) calleeProto.maxStackSize + 1);
+                                    if (auto overflow = stackLimitError(frameThread, sp, cast(size_t) calleeProto.maxStackSize + 1)) {
+                                        state.raisedError = overflow;
+                                        mixin(reportedFailure);
+                                    }
                                     import varis.gc : stackHygiene, scrubDeadStack;
 
                                     if (stackHygiene)
@@ -1626,13 +1637,14 @@ struct VM {
             ++cThread.cCalls;
             if (cThread.cCalls == 200) {
                 --cThread.cCalls;
-                throw new LuaException("C stack overflow");
+                failure = new LuaException("C stack overflow");
+                return null;
             }
             if (cThread.cCalls >= 220) {
                 --cThread.cCalls;
-                auto nested = new LuaException("error in error handling");
-                nested.needsLocation = false;
-                throw nested;
+                failure = new LuaException("error in error handling");
+                failure.needsLocation = false;
+                return null;
             }
         }
         scope (exit)
@@ -3012,15 +3024,17 @@ struct VM {
         auto cThread = state is null ? null : state.currentThread();
         if (!callSite && cThread !is null) {
             ++cThread.cCalls;
-            if (cThread.cCalls == 200) {
+            if (cThread.cCalls == 200 || cThread.cCalls >= 220) {
+                bool stackOverflow = cThread.cCalls == 200;
                 --cThread.cCalls;
-                throw new LuaException("C stack overflow");
-            }
-            if (cThread.cCalls >= 220) {
-                --cThread.cCalls;
-                auto nested = new LuaException("error in error handling");
-                nested.needsLocation = false;
-                throw nested;
+                auto overflow = new LuaException(stackOverflow ? "C stack overflow" : "error in error handling");
+                if (!stackOverflow)
+                    overflow.needsLocation = false;
+                if (statusReturn) {
+                    state.raisedError = overflow;
+                    return null;
+                }
+                throw overflow;
             }
         }
         scope (exit)
