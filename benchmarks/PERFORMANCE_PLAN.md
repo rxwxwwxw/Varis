@@ -102,9 +102,9 @@ meaning and ratchet policy are in the [benchmark guide](README.md#targets).
 
 ### Track L — Lua core to parity (milestone 46)
 
-**L1 is authorized; its runtime part is done (October 13, 2026).** A Lua error travels
-by value everywhere the interpreter and the libraries handle one. `raise(state, error)` /
-`state.raisedError` provide the channel. Done:
+**L1 is done (October 13, 2026): the exit below is met.** A Lua error travels by value
+everywhere the interpreter, the libraries and the frontend handle one.
+`raise(state, error)` / `state.raisedError` provide the channel. Converted:
 
 - every native library in `lib/` (no `throw`; `os.exit(code, true)` reports an `ExitSignal`
   that `takeRaised` turns into the `ExitRequest` unwind);
@@ -119,24 +119,30 @@ by value everywhere the interpreter and the libraries handle one. `raise(state, 
 - close handlers (`closeValuesFrom` returns a status) and both executors:
   `executeFrame`/`executeDeepFrame` return a Lua error in `TailRequest.error` and never throw
   it; `callValue(..., statusReturn: true)` runs a Lua function the same way, so a
-  metamethod, iterator or comparator that fails reaches its caller through the slot.
+  metamethod, iterator, comparator or coroutine body that fails reaches its caller through
+  the slot;
+- the frontend and loaders: the lexer (`Lexer.error`), the parser (`Parser.failure`: the rest
+  of the input reads as end of input, recovery mode restores the token stream), the compiler
+  (`Compiler.failure`, held by the root compiler; compilation finishes without effect) and
+  the binary-chunk reader/writer. `LuaState.compileString`, `undumpFunction`,
+  `dumpFunction` and `Compiler.contextPrototype` return null with the error.
 
-What still throws, and why it stays for now:
+What still throws, and why it is not a language error in a core module:
 
-- **Host adapters** (the "thin throwing wrapper" of open decision 8): `VM.execute`,
-  `VM.getTable`/`setTable`, `callValue` without `statusReturn`, `checkStackLimits` at a frame
-  entry that is itself a boundary, `LuaNativeFunction.call`, `LuaTable.rawset`/`next`.
-  Hundreds of D callers rely on them; each is one throw at the outermost edge.
-- **Unwinding that is control flow, not an error**: `CoroutineClose` (closing a suspended
-  coroutine), `ExitRequest`. Both cross native frames of a Fiber; converting them means
-  threading a "closing" status through yields and `pcall`, which needs its own design.
-- **The frontend and loaders**: lexer, parser, compiler (syntax and compile errors), `dump.d`
-  (binary chunks), `capi.d`, `cli.d`. They run at load time, not per instruction; `loadChunk`
-  already turns their exception into a status at its boundary. Converting them is a separate
-  change (a latched error with a sticky end-of-input token) and was not part of the
-  authorization; the owner decides whether it belongs to L1's exit.
-- The world-model and narrative layers throw `LuaException` from natives; the executor's
-  frame handler still catches those (the adapter).
+- **Host adapters** (the "thin throwing wrapper" of open decision 8), each one throw at the
+  outermost edge for D callers that want an exception: `VM.execute`,
+  `VM.getTable`/`setTable`, `callValue` without `statusReturn`, `LuaNativeFunction.call`,
+  `LuaState.loadString`, `LuaTable.rawset`/`next`, `checkStackLimits` at a frame entry that is
+  itself a boundary.
+- **Unwinding that is control flow**: `CoroutineClose` (closing a suspended coroutine; it
+  must cross the native frames of a Fiber), `ExitRequest`, and non-Lua `Exception`s passing
+  through a frame. Their frame handlers run the same cleanup as for an error.
+- **The C API** (`capi.d`): `luaL_check*` are called from C functions that never expect them
+  to return on an error (C Lua leaves by `longjmp`); they unwind through the C frames.
+- **Misconfiguration and exhaustion**: the world-model hooks not installed (`declarativeOp`,
+  `unwrapWorld`) and an array part past `maxArrayElements` ("not enough memory").
+- The world-model and narrative layers (above the core) still throw `LuaException` from
+  natives; the frame handler's `catch` adapts them.
 
 Continue in this dependency order:
 
@@ -161,9 +167,8 @@ native reentry; do not remove an adapter while callers still rely on it.
 
 **L1 exit:** no language-error `throw` in core modules, no exception-driven executor
 cleanup, preserved messages/tracebacks/close behavior, and measured caught-error and
-deep-recursion gates. Status October 13, 2026: executor cleanup and every runtime
-language error are by value; the remaining throws are the adapters, control-flow unwinds
-and frontend listed above. The original target was below 2× for those workloads; use the
+deep-recursion gates. Status October 13, 2026: met; the remaining throws are the adapters
+and control-flow unwinds listed above. The original target was below 2× for those workloads; use the
 current stricter gates where applicable. This does not substitute for milestone 46's
 all-workload parity exit.
 
