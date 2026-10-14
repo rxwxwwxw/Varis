@@ -131,7 +131,18 @@ class VarisFiber : Fiber {
             import varis.vm : VM;
             import varis.state : LuaState;
 
-            returnResults = VM.callValue(cast(LuaState) luaStatePtr, LuaValue(targetFunction), resumeArgs, false, "", "", true);
+            auto owner = cast(LuaState) luaStatePtr;
+            auto results = VM.callValue(owner, LuaValue(targetFunction), resumeArgs, false, "", "", true, true);
+            if (owner.raisedError !is null) {
+                // The body failed: its error came back as a value.
+                auto e = owner.takeRaised();
+                hasError = true;
+                errorMessage = e.msg;
+                errorObject = e.errorObject;
+                if (!closing)
+                    Fiber.yield();
+            } else
+                returnResults = results;
         } catch (CoroutineClose signal) {
             hasError = signal.failed;
             errorObject = signal.errorObject;
@@ -178,13 +189,16 @@ class VarisFiber : Fiber {
     }
 
     /// Yield from inside the running fiber
-    void yieldExecution(LuaValue[] results) {
-        if (!isYieldAllowed || isNoYieldScope() || isReadOnlyEvaluation() || isNotificationDispatch()) {
-            throw new LuaException("attempt to yield across a C-call boundary");
-        }
+    /// False, with nothing yielded, when the running code may not yield (the caller reports the
+    /// "attempt to yield across a C-call boundary" error). A close request still unwinds by
+    /// `CoroutineClose`: it must cross the native frames of this fiber.
+    bool yieldExecution(LuaValue[] results) {
+        if (!isYieldAllowed || isNoYieldScope() || isReadOnlyEvaluation() || isNotificationDispatch())
+            return false;
         this.yieldResults = results;
         Fiber.yield();
         if (closing)
             throw new CoroutineClose();
+        return true;
     }
 }

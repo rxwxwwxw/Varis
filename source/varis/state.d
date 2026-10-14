@@ -122,7 +122,9 @@ struct CallInfo {
         return null;
     }
 
-    string setLocal(long index, LuaValue value) {
+    /// Assigns local `index`; null when there is none. `failure` is set (and the result null)
+    /// when the local is a read-only narrative parameter.
+    string setLocal(long index, LuaValue value, out string failure) {
         if (registers is null) {
             if (index <= 0 || index > cArgs.length)
                 return null;
@@ -149,8 +151,10 @@ struct CallInfo {
         foreach (local; proto.debugLocals) {
             if (local.startPC <= targetPc && targetPc < local.endPC && (local.name.length == 0 || local.name[0] != '@')) {
                 if (--remaining == 0) {
-                    if (local.readOnly)
-                        throw new LuaException("attempt to modify read-only narrative parameter '" ~ local.name ~ "'");
+                    if (local.readOnly) {
+                        failure = "attempt to modify read-only narrative parameter '" ~ local.name ~ "'";
+                        return null;
+                    }
                     (*registers)[local.register] = value;
                     return local.name;
                 }
@@ -694,8 +698,8 @@ class LuaState {
         }
     }
 
-    /// Set metatable for a given value
-    void setMetatable(LuaValue val, LuaTable mt) {
+    /// Set metatable for a given value. False when the type cannot carry one (a symbol).
+    bool setMetatable(LuaValue val, LuaTable mt) {
         final switch (val.typeOf()) {
         case LuaType.Table:
             val.match!((LuaTable t) { t.metatable = mt; }, (_) {});
@@ -725,8 +729,9 @@ class LuaState {
             lightUserDataMetatable = mt;
             break;
         case LuaType.Symbol:
-            throw new LuaException("cannot set metatable on this type");
+            return false;
         }
+        return true;
     }
 
     /// Perform a protected call (pcall) on a function

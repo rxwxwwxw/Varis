@@ -238,7 +238,12 @@ void openDebugLib(LuaState state) {
                     failText(s, "bad argument #3 to 'setlocal' (value expected)");
                     return null;
                 }
-                name = frame.setLocal(index, args[2]);
+                string failure;
+                name = frame.setLocal(index, args[2], failure);
+                if (failure.length) {
+                    failText(s, failure);
+                    return null;
+                }
                 return [name is null ? luaNil() : LuaValue(name)];
             }
             LuaValue value;
@@ -407,7 +412,10 @@ void openDebugLib(LuaState state) {
             return null;
         }
         auto mt = isTable(a[1]) ? a[1].match!((LuaTable t) => t, _ => null) : null;
-        L.setMetatable(a[0], mt);
+        if (!L.setMetatable(a[0], mt)) {
+            failText(L, "cannot set metatable on this type");
+            return null;
+        }
         if (mt !is null && !isNil(mt.rawget(LuaValue("__gc"))))
             L.markForFinalization(a[0]);
         if (a[0].typeOf() == LuaType.Table) {

@@ -195,7 +195,8 @@ void openCoroutineLib(LuaState state) {
             return raise(L, new LuaException("attempt to yield from outside a coroutine"));
         if (!currentFib.isYieldAllowed)
             return raise(L, new LuaException("attempt to yield across a C-call boundary"));
-        currentFib.yieldExecution(a);
+        if (!currentFib.yieldExecution(a))
+            return raise(L, new LuaException("attempt to yield across a C-call boundary"));
         return currentFib.resumeArgs;
     });
 
