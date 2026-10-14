@@ -44,8 +44,8 @@ a token and serves one page with the layout of §3.
 | Problems | Project-wide static/compile diagnostics include unsaved drafts; clicking a diagnostic opens its file and line. The load pass is available through the CLI; bounded story analysis also has a UI action. |
 | Localization | Language selector re-renders the retained presentation; translation panel lists messages, previews plural/select branches and saves drafts. |
 
-The page uses HTTP request/response (text/query requests plus JSON editor requests).
-The server also supports WebSocket requests and pushed events (§6), through the same handlers. The vendored editor requires no Node or
+The page connects to the server via WebSocket (`/ws?token=...`) with HTTP fallback for requests
+and listens for pushed events (§6). The vendored editor requires no Node or
 network access at build or runtime; maintenance instructions and third-party notices are in
 [workbench/README.md](workbench/README.md). Resizable panels and command history persist
 in browser storage. The hand-written loopback server and bottom-left workspace follow
@@ -65,10 +65,10 @@ Language selection is retained on reload without a new presentation or random dr
   message is `{"id", "method", "path", "query", "body"}` served by the same handlers as HTTP and
   answered `{"id", "status", "body"}`; the server pushes `{"event":"hello"}` on connect and
   `{"event":"stopped","data":...}` when the debugger stops. Ping/pong, close, fragmentation and
-  64-bit lengths are handled; client frames must be masked. HTTP remains the transport the page
-  uses. Events: `hello`, `stopped`, `output` (the text of a command or run), `workspaceChanged` (after
-  anything that can alter state), `fileChanged` and `publishDiagnostics` (after a save, with the
-  file's check result). Milestone 42's protocol scope is complete.
+  64-bit lengths are handled; client frames must be masked. The browser page connects to `/ws`,
+  routes requests through it, and handles pushed events: `hello`, `stopped`, `workspaceChanged` (refreshing
+  workspace state) and `publishDiagnostics` (updating open file diagnostics). `output` and `fileChanged`
+  are pushed to WebSocket listeners. Milestone 42's protocol and client integration scope is complete.
 - **43 UI delivered:** CodeMirror, inline diagnostics and breakpoint gutters, resizable
   panels, persistent command history and browser coverage. The fix → Run → reconstructed
   presentation workflow is covered by the browser test.
@@ -222,8 +222,8 @@ generates two executors from one handler source. The **fast** executor contains 
 code. The **instrumented** executor checks, per instruction, a per-function table of breakpoint
 positions and the stepping state. A function runs on the instrumented executor when a debugger is
 attached. The debugger as built (milestone 44, done) uses a line hook on the instrumented loop; a
-per-function breakpoint table is not built, and status-returning errors are not complete. Once errors are values (ROADMAP D7), "stop where the error happened" is a status
-check, not an exception filter.
+per-function breakpoint table is not built. With errors traveling by value (milestone 46, stage L1 landed),
+"stop where the error happened" is handled at the status-return point in the frame handler before unwinding.
 
 Stopping inside an effect means stopping inside an open transaction. While stopped, the workspace
 shows the transaction's tentative state; continuing commits or rolls back exactly as it would

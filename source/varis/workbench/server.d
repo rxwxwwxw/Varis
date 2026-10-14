@@ -695,7 +695,8 @@ private void webSocketMessage(int socket, string text) {
             foreach (i, key; query.keys) {
                 auto value = query.items[i];
                 request.query[key] = value.kind == JsonValue.Kind.string_ ? value.text
-                    : value.kind == JsonValue.Kind.number ? numberJson(cast(long) value.number) : "";
+                    : value.kind == JsonValue.Kind.number ? numberJson(cast(long) value.number) : value.kind == JsonValue
+                        .Kind.bool_ ? (value.boolean ? "true" : "false") : "";
             }
     request.query["token"] = debugger.token;
     if (request.path.length == 0 || request.path[0] != '/') {

@@ -128,7 +128,75 @@ HTML"
 <script>
 const token = new URLSearchParams(location.search).get("token") || "";
 const $ = id => document.getElementById(id);
+
+let ws = null;
+let wsRequestId = 0;
+const wsPending = new Map();
+let wsConnecting = false;
+let lastStopKey = "";
+
+function connectWebSocket() {
+  if (typeof WebSocket === "undefined" || wsConnecting) return;
+  const protocol = location.protocol === "https:" ? "wss:" : "ws:";
+  wsConnecting = true;
+  try {
+    const socket = new WebSocket(protocol + "//" + location.host + "/ws?token=" + encodeURIComponent(token));
+    socket.onopen = () => { ws = socket; wsConnecting = false; };
+    socket.onmessage = event => {
+      try {
+        const msg = JSON.parse(event.data);
+        if (msg.id !== undefined && wsPending.has(msg.id)) {
+          const { resolve, reject } = wsPending.get(msg.id);
+          wsPending.delete(msg.id);
+          if (msg.status >= 400) {
+            reject(new Error(typeof msg.body === "string" ? msg.body : (msg.body?.error || "Error " + msg.status)));
+          } else {
+            resolve(msg.body);
+          }
+          return;
+        }
+        if (msg.event === "stopped") {
+          showOutcome(msg.data);
+        } else if (msg.event === "workspaceChanged") {
+          if ($("debugBar").hidden) refreshWorkspace();
+        } else if (msg.event === "publishDiagnostics") {
+          if (msg.data && msg.data.path === current && typeof source !== "undefined") {
+            if (msg.data.result && msg.data.result.diagnostics) showProblems(msg.data.result.diagnostics);
+          }
+        }
+      } catch (e) {}
+    };
+    socket.onerror = () => {};
+    socket.onclose = () => {
+      ws = null;
+      wsConnecting = false;
+      for (const [id, { reject }] of wsPending) {
+        reject(new Error("WebSocket closed"));
+      }
+      wsPending.clear();
+      setTimeout(connectWebSocket, 3000);
+    };
+  } catch (e) {
+    wsConnecting = false;
+  }
+}
+connectWebSocket();
+
 async function api(path, params, body) {
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    return new Promise((resolve, reject) => {
+      const id = ++wsRequestId;
+      wsPending.set(id, { resolve, reject });
+      const envelope = {
+        id,
+        method: body === undefined ? "GET" : "POST",
+        path,
+        query: params || {}
+      };
+      if (body !== undefined) envelope.body = body;
+      ws.send(JSON.stringify(envelope));
+    });
+  }
   const query = new URLSearchParams(Object.assign({ token }, params || {}));
   const response = await fetch(path + "?" + query, body === undefined ? {} : { method: "POST", body });
   const type = response.headers.get("Content-Type") || "";
@@ -185,8 +253,11 @@ async function submit(text) {
 // An evaluation either finishes or stops at a breakpoint; a resumed one reports the same way.
 async function showOutcome(result) {
   if (result.stopped) {
-    $("debugBar").hidden = false;
     const why = result.reason === "error" ? " (error: " + result.message + ")" : "";
+    const key = result.file + ":" + result.line + ":" + (result.reason || "") + ":" + (result.message || "");
+    if (lastStopKey === key && !$("debugBar").hidden) return;
+    lastStopKey = key;
+    $("debugBar").hidden = false;
     $("where").textContent = "stopped at " + result.file + ":" + result.line + why;
     logLine("stopped at " + result.file + ":" + result.line + why + "\n", "err");
     if (result.file !== current && [...$("files").options].some(o => o.value === result.file)) await openFile(result.file);
@@ -194,6 +265,7 @@ async function showOutcome(result) {
     showLocals();
     return;
   }
+  lastStopKey = "";
   if (result.session) renderStory(result);
   $("debugBar").hidden = true; source.stoppedLine(0);
   if (result.output) logLine(result.output);

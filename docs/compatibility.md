@@ -273,7 +273,7 @@ no hook, debugger request or analysis requires instrumentation.
 
 The server also exposes `/ws?token=...`, using the same request handlers as HTTP.
 It pushes `hello`, `stopped`, `output`, `workspaceChanged`, `fileChanged` and
-`publishDiagnostics` events. The browser page uses HTTP request/response.
+`publishDiagnostics` events; the browser page connects to `/ws` for requests and live event updates.
 
 In projects with manifest entry/session fields, Start creates a seeded playtest (`s` and
 `w` in the workspace). Reload and Run rebuild in a fresh state and replay story-panel

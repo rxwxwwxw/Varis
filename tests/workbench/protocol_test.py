@@ -564,6 +564,7 @@ end}
         reply = ws.request(1, "/api/eval", body="1 + 2")
         assert reply["status"] == 200 and reply["body"] == {"ok": True, "incomplete": False, "output": "3\n", "error": ""}, reply
         assert ws.request("a", "/api/workspace")["body"]["variables"] is not None
+        assert ws.request("b", "/api/facts", query={"world": "w", "name": "at", "start": 0, "count": 10, "derived": False})["status"] == 200
         assert ws.request(3, "/nope")["status"] in (200, 404)
         # Pushed events: output and workspaceChanged after a command; fileChanged and
         # publishDiagnostics after a save.
