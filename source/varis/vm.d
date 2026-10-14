@@ -388,7 +388,10 @@ private enum string frameLoopBody = q{
                             budgetPrepaid = false;
                         else {
                             if (!state.analysisBudget.remaining)
-                                throw new LuaException("ANALYSIS_STEP_LIMIT: VM instruction budget exhausted");
+                                {
+                                    state.raisedError = new LuaException("ANALYSIS_STEP_LIMIT: VM instruction budget exhausted");
+                                    mixin(reportedFailure);
+                                }
                             state.analysisBudget.remaining--;
                         }
                     }
@@ -412,7 +415,10 @@ private enum string frameLoopBody = q{
                     }
                     if (vmInterrupt) {
                         vmInterrupt = false;
-                        throw new LuaException("interrupted!");
+                        {
+                            state.raisedError = new LuaException("interrupted!");
+                            mixin(reportedFailure);
+                        }
                     }
                     auto thread = frameThread;
                     if (thread !is null && !thread.hookActive) {
@@ -691,7 +697,10 @@ private enum string frameLoopBody = q{
                     mixin(sharedOpcodeCases2);
 
                 default:
-                    throw new LuaException(format("unknown opcode: %s", op));
+                    {
+                        state.raisedError = new LuaException(format("unknown opcode: %s", op));
+                        mixin(reportedFailure);
+                    }
                 }
 };
 
@@ -707,7 +716,10 @@ private enum string deepFrameLoopBody = q{
                                     budgetPrepaid = false;
                                 else {
                                     if (!state.analysisBudget.remaining)
-                                        throw new LuaException("ANALYSIS_STEP_LIMIT: VM instruction budget exhausted");
+                                        {
+                                            state.raisedError = new LuaException("ANALYSIS_STEP_LIMIT: VM instruction budget exhausted");
+                                            mixin(reportedFailure);
+                                        }
                                     state.analysisBudget.remaining--;
                                 }
                             }
@@ -731,7 +743,10 @@ private enum string deepFrameLoopBody = q{
                             }
                             if (vmInterrupt) {
                                 vmInterrupt = false;
-                                throw new LuaException("interrupted!");
+                                {
+                                    state.raisedError = new LuaException("interrupted!");
+                                    mixin(reportedFailure);
+                                }
                             }
                             auto thread = frameThread;
                             if (thread !is null && !thread.hookActive) {
@@ -1095,7 +1110,10 @@ private enum string deepFrameLoopBody = q{
                             mixin(sharedOpcodeCases2);
 
                         default:
-                            throw new LuaException(format("unknown opcode: %s", op));
+                            {
+                                state.raisedError = new LuaException(format("unknown opcode: %s", op));
+                                mixin(reportedFailure);
+                            }
                         }
 };
 
@@ -1466,7 +1484,10 @@ private enum string sharedOpcodeCases2 = q{
                         foreach (local; proto.debugLocals)
                             if (local.register == instr.a && local.startPC <= cast(int)(ip - codeBase) - 1 && cast(int)(ip - codeBase) - 1 < local.endPC)
                                 variable = local.name;
-                        throw new LuaException("variable '" ~ variable ~ "' got a non-closable value");
+                        {
+                            state.raisedError = new LuaException("variable '" ~ variable ~ "' got a non-closable value");
+                            mixin(reportedFailure);
+                        }
                     }
                     toClose ~= instr.a;
                     break;
@@ -1475,7 +1496,10 @@ private enum string sharedOpcodeCases2 = q{
                     Object transactionWorld = instr.a < 0 ? state.globalWorldObject
                         : unwrapWorld(registers[instr.a]);
                     if (beginFrameScopeHook is null)
-                        throw new LuaException("transactions need the world model");
+                        {
+                            state.raisedError = new LuaException("transactions need the world model");
+                            mixin(reportedFailure);
+                        }
                     frameTransactions ~= FrameTransaction(beginFrameScopeHook(transactionWorld), cast(int)(ip - codeBase), instr.b, instr.c);
                     break;
                 case OpCode.EndTransaction:
@@ -1490,7 +1514,10 @@ private enum string sharedOpcodeCases2 = q{
                     if (vmSlowMode && state.analysisBudget !is null) {
                         // The target's instruction is charged before the commits, as it always was.
                         if (!state.analysisBudget.remaining)
-                            throw new LuaException("ANALYSIS_STEP_LIMIT: VM instruction budget exhausted");
+                            {
+                                state.raisedError = new LuaException("ANALYSIS_STEP_LIMIT: VM instruction budget exhausted");
+                                mixin(reportedFailure);
+                            }
                         state.analysisBudget.remaining--;
                         budgetPrepaid = true;
                     }
@@ -1503,7 +1530,10 @@ private enum string sharedOpcodeCases2 = q{
                     break;
                 case OpCode.Rollback:
                     if (!frameTransactions.length)
-                        throw new LuaException("rollback outside a transaction");
+                        {
+                            state.raisedError = new LuaException("rollback outside a transaction");
+                            mixin(reportedFailure);
+                        }
                     auto rolledBack = frameTransactions[$ - 1];
                     closeValuesFrom(rolledBack.firstRegister);
                     rolledBack.transaction.finish(false);
