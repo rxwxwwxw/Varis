@@ -16,7 +16,7 @@ import varis.state;
 import varis.vm;
 import varis.fiber : VarisFiber, currentLuaFiber;
 import core.thread : Fiber;
-import varis.exception : LuaException;
+import varis.exception : LuaException, isControlSignal;
 import varis.lib.auxlib;
 import std.conv : to;
 import std.format : format;
@@ -169,7 +169,11 @@ bool tostringValue(LuaState state, LuaValue value, out string text, out LuaExcep
     if (mt !is null) {
         auto meta = mt.rawget(LuaValue("__tostring"));
         if (!isNil(meta)) {
-            auto results = VM.callValue(state, meta, [value]);
+            auto results = VM.callValue(state, meta, [value], false, "", "", false, true);
+            if (state.raisedError !is null) {
+                error = state.takeRaised(); // an error raised by `__tostring`
+                return false;
+            }
             auto result = results.length ? results[0] : luaNil();
             if (!isString(result) && !isNumber(result)) {
                 error = new LuaException("'__tostring' must return a string");
@@ -473,8 +477,11 @@ void openBaseLib(LuaState state) {
             }
             LuaException protectedFailure;
             auto results = VM.callProtected(s, a[0], a.length > 1 ? a[1 .. $] : [], protectedFailure);
-            if (protectedFailure !is null)
+            if (protectedFailure !is null) {
+                if (isControlSignal(protectedFailure))
+                    return raise(s, protectedFailure); // an exit or a coroutine close is not caught
                 return [LuaValue(false), protectedFailure.errorObject];
+            }
             return successResults(results);
         } catch (LuaException e) {
             return [LuaValue(false), e.errorObject];
@@ -504,6 +511,8 @@ void openBaseLib(LuaState state) {
             LuaException protectedFailure;
             auto results = VM.callProtected(s, a[0], a.length > 2 ? a[2 .. $] : [], protectedFailure);
             if (protectedFailure !is null) {
+                if (isControlSignal(protectedFailure))
+                    return raise(s, protectedFailure);
                 s.dispatchError(protectedFailure);
                 return [LuaValue(false), protectedFailure.errorObject];
             }
@@ -540,7 +549,9 @@ void openBaseLib(LuaState state) {
         auto meta = mt is null ? luaNil() : mt.rawget(LuaValue("__pairs"));
         if (isNil(meta))
             return [nextFunction, a[0], luaNil()];
-        auto results = VM.callValue(s, meta, [a[0]]);
+        auto results = VM.callValue(s, meta, [a[0]], false, "", "", false, true);
+        if (s.raisedError !is null)
+            return null;
         while (results.length < 3)
             results ~= luaNil();
         return results[0 .. 3];
@@ -605,6 +616,8 @@ void openBaseLib(LuaState state) {
             return null;
         if (!argAny(s, a, 3))
             return null;
+        if (auto problem = LuaTable.keyProblem(a[1]))
+            return raise(s, problem);
         t.rawset(a[1], a[2]);
         return [a[0]];
     });
@@ -678,20 +691,22 @@ void openBaseLib(LuaState state) {
             import std.array : appender;
 
             auto source = appender!string();
-            try {
-                while (true) {
-                    auto piece = VM.callValue(s, a[0], []);
-                    if (!piece.length || isNil(piece[0]))
-                        break;
-                    if (!isString(piece[0]) && !isNumber(piece[0]))
-                        return [luaNil(), LuaValue("reader function must return a string")];
-                    string fragment = toLuaString(piece[0]);
-                    if (!fragment.length)
-                        break;
-                    source.put(fragment);
+            while (true) {
+                auto piece = VM.callValue(s, a[0], [], false, "", "", false, true);
+                if (s.raisedError !is null) {
+                    auto e = s.takeRaised();
+                    if (isControlSignal(e))
+                        return raise(s, e); // an exit or a coroutine close is not caught
+                    return [luaNil(), e.errorObject];
                 }
-            } catch (LuaException e) {
-                return [luaNil(), e.errorObject];
+                if (!piece.length || isNil(piece[0]))
+                    break;
+                if (!isString(piece[0]) && !isNumber(piece[0]))
+                    return [luaNil(), LuaValue("reader function must return a string")];
+                string fragment = toLuaString(piece[0]);
+                if (!fragment.length)
+                    break;
+                source.put(fragment);
             }
             code = source.data;
         }
@@ -769,6 +784,6 @@ void openBaseLib(LuaState state) {
             : loadSourceFile(s, resolved, content, chunkName, "bt", fn, loadError);
         if (!loaded)
             return raise(s, new LuaException(loadError));
-        return VM.callValue(s, LuaValue(fn), []);
+        return VM.callValue(s, LuaValue(fn), [], false, "", "", false, true);
     });
 }

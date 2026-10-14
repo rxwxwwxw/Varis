@@ -99,8 +99,10 @@ class LuaException : Exception {
     }
 }
 
-/// What `os.exit(code, true)` reports as a value (`raise`); `LuaState.takeRaised` turns it into
-/// the `ExitRequest` unwind where the executor takes a native's error, so `pcall` never sees it.
+/// What `os.exit(code, true)` reports as a value (`raise`). It travels like an error through
+/// every frame (each runs its close handlers) but `pcall`, `xpcall` and coroutine boundaries
+/// pass it on instead of catching it. `hostForm` turns it into `ExitRequest` where a D caller
+/// can only be told by exception.
 final class ExitSignal : LuaException {
     int status;
     this(int status) {
@@ -118,4 +120,50 @@ class ExitRequest : Error {
         super("exit requested");
         this.status = status;
     }
+}
+
+/// Closing a coroutine (or an unprotected coroutine failing) unwinds its Lua frames: by value,
+/// like an error, and passed on by `pcall`. `errorObject` is what the close handlers receive;
+/// `failed` says the coroutine's result is an error.
+final class CloseSignal : LuaException {
+    bool failed;
+    this(LuaValue error = LuaValue.init, bool failed = false) {
+        super(error);
+        this.failed = failed;
+    }
+}
+
+/// The host-exception form of `CloseSignal`: what D code that cannot take a status sees.
+class CoroutineClose : Throwable {
+    LuaValue errorObject;
+    bool failed;
+    this(LuaValue error = LuaValue.init, bool failed = false) {
+        super("coroutine close");
+        this.errorObject = error;
+        this.failed = failed;
+    }
+}
+
+/// An error that no `pcall` may swallow.
+bool isControlSignal(const LuaException e) {
+    return (cast(const ExitSignal) e) !is null || (cast(const CloseSignal) e) !is null;
+}
+
+/// The exception a throwing host adapter raises for `e`: the exit and close signals become
+/// the non-Lua exceptions the D callers never catch as Lua errors.
+Throwable hostForm(LuaException e) {
+    if (auto exit = cast(ExitSignal) e)
+        return new ExitRequest(exit.status);
+    if (auto close = cast(CloseSignal) e)
+        return new CoroutineClose(close.errorObject, close.failed);
+    return e;
+}
+
+/// The by-value form of a control exception that reached a frame as an exception.
+LuaException valueForm(Throwable t) {
+    if (auto exit = cast(ExitRequest) t)
+        return new ExitSignal(exit.status);
+    if (auto close = cast(CoroutineClose) t)
+        return new CloseSignal(close.errorObject, close.failed);
+    return null;
 }

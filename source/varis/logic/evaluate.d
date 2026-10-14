@@ -25,7 +25,7 @@ module varis.logic.evaluate;
 import varis.types;
 import varis.state;
 import varis.vm;
-import varis.exception : LuaException;
+import varis.exception : LuaException, hostForm;
 import varis.logic.model;
 import varis.logic.world;
 import varis.logic.validate;
@@ -607,7 +607,7 @@ private struct Executor {
                             throw new LuaException("sum aggregate requires numeric values");
                         result = VM.opAdd(state, result, value);
                         if (state.raisedError !is null)
-                            throw state.takeRaised();
+                            throw hostForm(state.takeRaised());
                         // Reject NaN before it reaches a result binding.
                         rejectNaN(result);
                     } else if (op == "min" || op == "max") {

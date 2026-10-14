@@ -319,7 +319,9 @@ void openPackageLib(LuaState state) {
                 raise(L, new LuaException("module '" ~ name ~ "' not found:" ~ message));
                 return null;
             }
-            auto results = VM.callValue(L, searcher, [LuaValue(name)]);
+            auto results = VM.callValue(L, searcher, [LuaValue(name)], false, "", "", false, true);
+            if (L.raisedError !is null)
+                return null;
             if (results.length && isFunction(results[0])) {
                 loader = results[0];
                 extra = results.length > 1 ? results[1] : luaNil();
@@ -328,7 +330,9 @@ void openPackageLib(LuaState state) {
             if (results.length && (isString(results[0]) || isNumber(results[0])))
                 message ~= "\n\t" ~ toLuaString(results[0]);
         }
-        auto results = VM.callValue(L, loader, [LuaValue(name), extra]);
+        auto results = VM.callValue(L, loader, [LuaValue(name), extra], false, "", "", false, true);
+        if (L.raisedError !is null)
+            return null;
         if (results.length && !isNil(results[0]))
             loaded.rawset(LuaValue(name), results[0]);
         else if (isNil(loaded.rawget(LuaValue(name))))

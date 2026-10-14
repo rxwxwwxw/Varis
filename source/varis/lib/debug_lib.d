@@ -13,7 +13,7 @@ module varis.lib.debug_lib;
 import varis.types;
 import varis.table;
 import varis.state;
-import varis.exception : LuaException, shortSourceName;
+import varis.exception : LuaException, shortSourceName, isControlSignal;
 import varis.vm : LuaClosure, VM;
 import varis.lib.auxlib;
 
@@ -544,10 +544,17 @@ void openDebugLib(LuaState state) {
                     auto line = fromStringz(buffer.ptr).idup;
                     if (line == "cont\n")
                         return cast(LuaValue[])[];
-                    try {
-                        auto fn = s.loadString(line, "=(debug command)");
-                        VM.callValue(s, LuaValue(fn), []);
-                    } catch (LuaException failure) {
+                    LuaException failure;
+                    auto fn = s.compileString(line, "=(debug command)", failure);
+                    if (fn !is null) {
+                        VM.callValue(s, LuaValue(fn), [], false, "", "", false, true);
+                        if (s.raisedError !is null) {
+                            failure = s.takeRaised();
+                            if (isControlSignal(failure))
+                                return raise(s, failure);
+                        }
+                    }
+                    if (failure !is null) {
                         auto text = toLuaString(failure.errorObject) ~ "\n";
                         fwrite(text.ptr, 1, text.length, stderr);
                         fflush(stderr);

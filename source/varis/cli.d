@@ -13,7 +13,7 @@ module varis.cli;
 
 import varis;
 import varis.vm : VM;
-import varis.exception : ExitRequest;
+import varis.exception : ExitRequest, ExitSignal;
 import varis.lib.base : readWholeFile, skipFilePrefix, loadChunk, tostringValue;
 import core.stdc.stdio : fputs, fwrite, fflush, stdout, stderr, stdin, fgets;
 import core.stdc.stdlib : getenv;
@@ -111,6 +111,9 @@ extern (C) private void interruptHandler(int signum) nothrow @nogc {
     vmAttention = true;
 }
 
+/// Set when `os.exit(code, true)` ran: the exit status, once the state has been closed.
+private ExitSignal exitRequested;
+
 private CallResult docall(LuaState state, LuaValue fn, LuaValue[] args) {
     import core.stdc.signal : signal, SIGINT, SIG_DFL;
 
@@ -132,7 +135,17 @@ private CallResult docall(LuaState state, LuaValue fn, LuaValue[] args) {
         if (thread !is null)
             thread.popBoundary();
     try {
-        return CallResult(true, VM.callValue(state, fn, args), luaNil());
+        auto values = VM.callValue(state, fn, args, false, "", "", false, true);
+        if (state.raisedError !is null) {
+            auto error = state.takeRaised();
+            if (auto exit = cast(ExitSignal) error) {
+                exitRequested = exit;
+                return CallResult(false, [], luaNil());
+            }
+            state.dispatchError(error);
+            return CallResult(false, [], error.errorObject);
+        }
+        return CallResult(true, values, luaNil());
     } catch (LuaException error) {
         state.dispatchError(error);
         return CallResult(false, [], error.errorObject);
@@ -144,7 +157,7 @@ private CallResult docall(LuaState state, LuaValue fn, LuaValue[] args) {
 }
 
 private bool report(CallResult result) {
-    if (!result.ok) {
+    if (!result.ok && exitRequested is null) {
         string msg = messageText(result.error);
         if (msg is null)
             msg = "(error message not a string)";
@@ -446,6 +459,8 @@ private void doREPL(LuaState state) {
             continue;
         }
         auto result = docall(state, LuaValue(fn), []);
+        if (exitRequested !is null)
+            break;
         if (result.ok) {
             if (result.values.length) {
                 auto printResult = docall(state, state.getGlobal("print"), result.values);
@@ -482,14 +497,13 @@ int main(string[] argv) {
             // os.exit(code, true): pending to-be-closed variables are already closed.
             result = request.status;
             if (state !is null) {
-                try {
-                    state.close();
-                } catch (ExitRequest again) {
+                if (auto again = cast(ExitSignal) state.close())
                     result = again.status;
-                }
             }
             fflush(stdout);
         }
+        if (exitRequested !is null)
+            result = exitRequested.status;
     }, mainStackBytes);
     mainFiber.call();
     return result;
@@ -663,7 +677,8 @@ private int runMain(string[] argv, ref LuaState state) {
                 ok = dofile(state, null);
         }
     }
-    state.close();
+    if (auto again = cast(ExitSignal) state.close())
+        exitRequested = again;
     fflush(stdout);
     return ok ? 0 : 1;
 }

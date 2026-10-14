@@ -282,13 +282,19 @@ class LuaState {
     LuaException raisedError;
 
     final LuaException takeRaised() {
-        import varis.exception : ExitSignal, ExitRequest;
-
         auto error = raisedError;
         raisedError = null;
-        if (auto exit = cast(ExitSignal) error)
-            throw new ExitRequest(exit.status);
         return error;
+    }
+
+    /// An exit or close signal that arose where it cannot be returned (an error handler, a
+    /// `__gc` finalizer, `close`): the interpreter raises it at its next safepoint.
+    LuaException deferredControl;
+
+    final void deferControl(LuaException signal) {
+        if (deferredControl is null)
+            deferredControl = signal;
+        vmAttention = true;
     }
     /// Called once per raised Lua error, in the innermost Lua frame, while the frame and its
     /// callers are still alive (before unwinding). Tools use it to stop on errors; it must not
@@ -401,11 +407,14 @@ class LuaState {
     }
 
     /// Runs pending finalizers in reverse order of marking (lua_close).
-    void close() {
+    /// Closes the state: runs the pending finalizers. Returns the exit signal a finalizer raised
+    /// (`os.exit(code, true)`), else null.
+    LuaException close() {
         import varis.vm : VM;
 
         closing = true;
         inFinalizer = true;
+        LuaException control;
         while (finalizers.length) {
             auto object = finalizers[$ - 1];
             finalizers.length--;
@@ -413,9 +422,13 @@ class LuaState {
             auto gc = mt is null ? luaNil() : mt.rawget(LuaValue("__gc"));
             if (!isFunction(gc))
                 continue;
-            try {
-                VM.callValue(this, gc, [object]);
-            } catch (LuaException e) {
+            VM.callValue(this, gc, [object], false, "", "", false, true);
+            if (raisedError !is null) {
+                auto e = takeRaised();
+                if (isControlSignal(e)) {
+                    control = e; // `close` returns it to the host; the other finalizers still run
+                    continue;
+                }
                 string text = isString(e.errorObject) ? toLuaString(e.errorObject) : "error object is not a string";
                 warning("error in ", true);
                 warning("__gc", true);
@@ -425,6 +438,7 @@ class LuaState {
             }
         }
         inFinalizer = false;
+        return control;
     }
 
     // Symbol interning pool shared across state
@@ -482,8 +496,14 @@ class LuaState {
                 fiber.isYieldAllowed = previous && !fiber.closing;
         }
         try {
-            auto results = VM.callValue(this, boundary.handler, [error.errorObject]);
-            error.errorObject = results.length ? results[0] : luaNil();
+            auto results = VM.callValue(this, boundary.handler, [error.errorObject], false, "", "", false, true);
+            if (raisedError !is null) {
+                auto failure = takeRaised();
+                if (isControlSignal(failure))
+                    deferControl(failure); // delivered at the next safepoint
+                error.errorObject = LuaValue("error in error handling");
+            } else
+                error.errorObject = results.length ? results[0] : luaNil();
         } catch (Exception) {
             error.errorObject = LuaValue("error in error handling");
         }
@@ -502,13 +522,15 @@ class LuaState {
         return shortSourceName(frames[index].source) ~ ":" ~ frames[index].line.to!string ~ ": ";
     }
 
-    void debugHook(string event, int line = -1, LuaValue[] transfer = null, bool hasTransfer = false) {
+    /// Runs the debug hook for `event`. False when the hook function failed: its error is in
+    /// `raisedError`.
+    bool debugHook(string event, int line = -1, LuaValue[] transfer = null, bool hasTransfer = false) {
         auto thread = currentThread();
         if (thread is null || thread.hookFunction is null || thread.hookActive)
-            return;
+            return true;
         int mask = event == "call" || event == "tail call" ? 1 : event == "return" ? 2 : event == "line" ? 4 : 8;
         if (!(thread.hookMask & mask))
-            return;
+            return true;
         import varis.vm : VM;
         import varis.fiber : VarisFiber, currentLuaFiber;
 
@@ -535,7 +557,8 @@ class LuaState {
         }
         VM.callValue(this, LuaValue(thread.hookFunction), [
             LuaValue(event), line >= 0 ? LuaValue(line) : luaNil()
-        ], false, "?", "hook");
+        ], false, "?", "hook", false, true);
+        return raisedError is null;
     }
 
     final void pushCall(LuaFunction fn, string source = "", int line = 1, bool tailCall = false, string name = "", string nameKind = "",

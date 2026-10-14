@@ -66,6 +66,13 @@ private bool resumeThread(LuaState L, LuaThread th, LuaValue[] args, out LuaValu
     }
     callFiber(fib);
 
+    if (fib.exitSignal !is null) {
+        // `os.exit(code, true)` ran in the coroutine: it ends it and goes on in the resumer.
+        th.status = "dead";
+        L.raisedError = fib.exitSignal;
+        fib.exitSignal = null;
+        return false;
+    }
     if (fib.hasError || fib.state == Fiber.State.TERM) {
         th.status = "dead";
         if (fib.hasError) {
@@ -107,6 +114,7 @@ private final class WrapFunction : LuaNativeFunction {
     VarisFiber fiber;
     /// A resume the fast path ran and that failed: the generic call that follows reports it.
     bool failurePending;
+    LuaException pendingExit;
     LuaValue pendingError;
     bool pendingRanAndFailed;
     this(NativeDelegate fn, string name) {
@@ -119,6 +127,12 @@ private final class WrapFunction : LuaNativeFunction {
 private LuaException wrapFailure(LuaState S, LuaThread th, VarisFiber fib, LuaValue error, bool ranAndFailed) {
     if (ranAndFailed && fib !is null) {
         auto closed = fib.closeThread();
+        if (fib.exitSignal !is null) {
+            // a close handler exited: that is the failure
+            auto exit = fib.exitSignal;
+            fib.exitSignal = null;
+            return exit;
+        }
         if (closed.length > 1)
             error = closed[1];
     }
@@ -149,6 +163,11 @@ private int fastWrapCall(void* sp, LuaValue[] r, int base, int n) {
     if (!resumeThread(S, th, r[base + 1 .. base + 1 + n], results, error, ranAndFailed)) {
         // The coroutine ran (and failed). Decline: the generic call that follows takes the failure
         // from the function and reports it from a native frame, as it always did.
+        if (S.raisedError !is null) {
+            // An exit: the generic call that follows passes it on.
+            w.pendingExit = S.takeRaised();
+            return -1;
+        }
         w.failurePending = true;
         w.pendingError = error;
         w.pendingRanAndFailed = ranAndFailed;
@@ -181,8 +200,11 @@ void openCoroutineLib(LuaState state) {
         LuaValue[] results;
         LuaValue error;
         bool ranAndFailed;
-        if (!resumeThread(L, th, a.length > 1 ? a[1 .. $] : [], results, error, ranAndFailed))
+        if (!resumeThread(L, th, a.length > 1 ? a[1 .. $] : [], results, error, ranAndFailed)) {
+            if (L.raisedError !is null)
+                return null; // an exit passes through
             return [LuaValue(false), error];
+        }
         auto all = new LuaValue[results.length + 1];
         all[0] = LuaValue(true);
         all[1 .. $] = results[];
@@ -197,6 +219,8 @@ void openCoroutineLib(LuaState state) {
             return raise(L, new LuaException("attempt to yield across a C-call boundary"));
         if (!currentFib.yieldExecution(a))
             return raise(L, new LuaException("attempt to yield across a C-call boundary"));
+        if (currentFib.closing)
+            return raise(L, new CloseSignal()); // the coroutine is being closed: unwind its frames
         return currentFib.resumeArgs;
     });
 
@@ -225,7 +249,13 @@ void openCoroutineLib(LuaState state) {
         if (fiber is null)
             return [LuaValue(true)];
         thread.cCalls = current is null ? 1 : current.cCalls + 1;
-        return fiber.closeThread();
+        auto closed = fiber.closeThread();
+        if (fiber.exitSignal !is null) {
+            auto exit = fiber.exitSignal;
+            fiber.exitSignal = null;
+            return raise(L, exit); // a close handler called os.exit(code, true)
+        }
+        return closed;
     });
 
     coroLib.register("running", (LuaState L, LuaValue[] a) {
@@ -260,6 +290,11 @@ void openCoroutineLib(LuaState state) {
         WrapFunction wrapFn;
         wrapFn = new WrapFunction((void* st, LuaValue[] callArgs) {
             auto S = cast(LuaState) st;
+            if (wrapFn.pendingExit !is null) {
+                auto exit = wrapFn.pendingExit;
+                wrapFn.pendingExit = null;
+                return raise(S, exit);
+            }
             if (wrapFn.failurePending) {
                 wrapFn.failurePending = false;
                 auto pending = wrapFn.pendingError;
@@ -269,8 +304,11 @@ void openCoroutineLib(LuaState state) {
             LuaValue[] results;
             LuaValue error;
             bool ranAndFailed;
-            if (!resumeThread(S, th, callArgs, results, error, ranAndFailed))
+            if (!resumeThread(S, th, callArgs, results, error, ranAndFailed)) {
+                if (S.raisedError !is null)
+                    return null; // an exit passes through
                 return raise(S, wrapFailure(S, th, fib, error, ranAndFailed));
+            }
             return results;
         }, "wrap_fn");
         wrapFn.thread = th;

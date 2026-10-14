@@ -18,6 +18,7 @@
 /// randomness.
 module varis.services.gamehost;
 
+import varis.exception : isControlSignal, hostForm;
 import varis;
 import varis.logic.world;
 import varis.narrative.codec;
@@ -212,6 +213,8 @@ LUA";
             LuaException failure;
             VM.callProtected(candidate, LuaValue(fn), null, failure);
             if (failure !is null) {
+                if (isControlSignal(failure))
+                    throw hostForm(failure); // an exit passes through
                 error = failure.msg;
                 return false;
             }

@@ -152,23 +152,13 @@ import std.math : floatTraits, isNaN;
     t.rawset(LuaValue("foo"), luaNil());
     assert(isNil(t.rawget(LuaValue("foo"))));
 
-    // Error on nil key
-    bool caughtNilKey = false;
-    try {
-        t.rawset(luaNil(), LuaValue(123L));
-    } catch (LuaException e) {
-        caughtNilKey = true;
-    }
-    assert(caughtNilKey);
-
-    // Error on NaN key
-    bool caughtNaNKey = false;
-    try {
-        t.rawset(LuaValue(double.nan), LuaValue(123L));
-    } catch (LuaException e) {
-        caughtNaNKey = true;
-    }
-    assert(caughtNaNKey);
+    // A nil or NaN key is a Lua error (`keyProblem`); the raw store itself ignores it.
+    assert(LuaTable.keyProblem(luaNil()) == "table index is nil");
+    assert(LuaTable.keyProblem(LuaValue(double.nan)) == "table index is NaN");
+    assert(LuaTable.keyProblem(LuaValue(1L)) is null);
+    t.rawset(luaNil(), LuaValue(123L));
+    t.rawset(LuaValue(double.nan), LuaValue(123L));
+    assert(isNil(t.rawget(luaNil())));
 
     // Table iteration (next)
     auto tIter = new LuaTable();

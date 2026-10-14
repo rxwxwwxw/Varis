@@ -12,19 +12,10 @@ module varis.fiber;
 
 import varis.types;
 import varis.state : CallInfo;
-import varis.exception : LuaException;
+import varis.exception : LuaException, ExitRequest;
 import core.thread : Fiber;
 
-// Internal unwinding signal bypasses Lua protected calls when a thread is closed.
-class CoroutineClose : Throwable {
-    LuaValue errorObject;
-    bool failed;
-    this(LuaValue error = LuaValue.init, bool failed = false) {
-        super("coroutine close");
-        this.errorObject = error;
-        this.failed = failed;
-    }
-}
+public import varis.exception : CoroutineClose, CloseSignal, ExitSignal;
 
 /// The Lua coroutine currently executing, or null on the main interpreter fiber. Maintained by
 /// `callFiber` around every resume, so lookups avoid thread-local access and class casts.
@@ -108,6 +99,8 @@ class VarisFiber : Fiber {
     bool started;
     bool closing;
     size_t protectedDepth;
+    /// `os.exit(code, true)` ran inside this coroutine: the resumer takes it and passes it on.
+    LuaException exitSignal;
 
     private size_t fiberStackSize;
 
@@ -136,16 +129,25 @@ class VarisFiber : Fiber {
             if (owner.raisedError !is null) {
                 // The body failed: its error came back as a value.
                 auto e = owner.takeRaised();
-                hasError = true;
-                errorMessage = e.msg;
-                errorObject = e.errorObject;
-                if (!closing)
-                    Fiber.yield();
+                if (auto exit = cast(ExitSignal) e) {
+                    exitSignal = exit; // not an error of the coroutine: the resumer passes it on
+                } else if (auto close = cast(CloseSignal) e) {
+                    hasError = close.failed;
+                    errorObject = close.errorObject;
+                } else {
+                    hasError = true;
+                    errorMessage = e.msg;
+                    errorObject = e.errorObject;
+                    if (!closing)
+                        Fiber.yield();
+                }
             } else
                 returnResults = results;
         } catch (CoroutineClose signal) {
             hasError = signal.failed;
             errorObject = signal.errorObject;
+        } catch (ExitRequest request) {
+            exitSignal = new ExitSignal(request.status);
         } catch (LuaException e) {
             hasError = true;
             errorMessage = e.msg;
@@ -190,15 +192,13 @@ class VarisFiber : Fiber {
 
     /// Yield from inside the running fiber
     /// False, with nothing yielded, when the running code may not yield (the caller reports the
-    /// "attempt to yield across a C-call boundary" error). A close request still unwinds by
-    /// `CoroutineClose`: it must cross the native frames of this fiber.
+    /// "attempt to yield across a C-call boundary" error). When the coroutine is being closed
+    /// the yield returns and `coroutine.yield` raises a `CloseSignal`, which unwinds the frames.
     bool yieldExecution(LuaValue[] results) {
         if (!isYieldAllowed || isNoYieldScope() || isReadOnlyEvaluation() || isNotificationDispatch())
             return false;
         this.yieldResults = results;
         Fiber.yield();
-        if (closing)
-            throw new CoroutineClose();
         return true;
     }
 }

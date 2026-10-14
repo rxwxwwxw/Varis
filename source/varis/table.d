@@ -371,7 +371,7 @@ class LuaTable {
 
     /// The message of the error a store under `key` raises, or null when the key is valid.
     /// Lua-facing code checks this first and reports the error as a value.
-    static string keyProblem(ref const LuaValue key) {
+    static string keyProblem(const LuaValue key) {
         if (key.isNil)
             return "table index is nil";
         if (key.isFloat && isNaN(key.asFloat))
@@ -379,11 +379,12 @@ class LuaTable {
         return null;
     }
 
-    /// Raw set without metamethod invocation. For host code: an invalid key throws (see
-    /// `keyProblem` for the by-value form).
-    void rawset(LuaValue key, LuaValue val) {
-        if (auto problem = keyProblem(key))
-            throw new LuaException(problem);
+    /// Raw set without metamethod invocation. False, with nothing stored, when the key is nil or
+    /// NaN (`keyProblem` says which) or the array part is full ("not enough memory"); Lua-facing
+    /// code reports that as an error value. Host code that stores valid keys may ignore it.
+    bool rawset(LuaValue key, LuaValue val) {
+        if (keyProblem(key) !is null)
+            return false;
 
         key = normalizeKey(key);
 
@@ -393,7 +394,7 @@ class LuaTable {
                 size_t arrIdx = cast(size_t)(idx - 1);
                 if (arrIdx < arrayPart.length) {
                     arrayPart[arrIdx] = val;
-                    return;
+                    return true;
                 } else if (arrIdx == arrayPart.length && !isNil(val)) {
                     // Append contiguous element to arrayPart, pulling its successors out of the hash.
                     if (liveCount != 0) {
@@ -404,7 +405,7 @@ class LuaTable {
                         }
                     }
                     if (arrayPart.length >= maxArrayElements)
-                        throw new LuaException("not enough memory");
+                        return false;
                     // Grow geometrically with nil padding (like Lua's power-of-two array part) so
                     // sequential appends are plain stores; hash keys now in range move over.
                     size_t oldLength = arrayPart.length;
@@ -415,7 +416,7 @@ class LuaTable {
                     arrayPart[arrIdx] = val;
                     if (liveCount != 0)
                         absorbHashRange(oldLength, newLength);
-                    return;
+                    return true;
                 }
             }
         }
@@ -428,7 +429,7 @@ class LuaTable {
                 --liveCount;
             else if (!wasLive && !isNil(val))
                 ++liveCount;
-            return;
+            return true;
         }
         if (!isNil(val)) {
             // A full hash part is where Lua rehashes: integer keys that would fill more than
@@ -437,11 +438,12 @@ class LuaTable {
                 long idx = key.match!((long i) => i, _ => 0);
                 if (idx >= 1 && idx <= cast(long) arrayPart.length) {
                     arrayPart[cast(size_t)(idx - 1)] = val;
-                    return;
+                    return true;
                 }
             }
             insertNode(key, val);
         }
+        return true;
     }
 
     /// Lua's `computesizes`: picks the largest power-of-two array size that more than half
@@ -652,13 +654,10 @@ class LuaTable {
         return 0;
     }
 
-    /// `nextEntry` for host code that wants an exception on an invalid key. Lua-facing code
-    /// uses `nextEntry` and reports the error as a value.
+    /// `nextEntry` for host loops: false at the end of the traversal (and for a key that is not
+    /// in the table). Lua-facing code uses `nextEntry` and reports the error as a value.
     bool next(LuaValue currentKey, out LuaValue nextKey, out LuaValue nextVal) {
-        int status = nextEntry(currentKey, nextKey, nextVal);
-        if (status < 0)
-            throw new LuaException("invalid key to 'next'");
-        return status > 0;
+        return nextEntry(currentKey, nextKey, nextVal) > 0;
     }
 
     /// `next` without exceptions or allocation, for the interpreter's `for ... in pairs(t)` fast

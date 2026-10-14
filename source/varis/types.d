@@ -965,11 +965,12 @@ class LuaNativeFunction : LuaFunction {
     /// which is the boundary with callers that do not look at the state's error slot.
     override LuaValue[] call(void* state, LuaValue[] args) {
         import varis.state : LuaState;
+        import varis.exception : hostForm;
 
         auto results = callStatus(state, args);
         auto owner = cast(LuaState) state;
         if (owner !is null && owner.raisedError !is null)
-            throw owner.takeRaised();
+            throw hostForm(owner.takeRaised());
         return results;
     }
 

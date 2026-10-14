@@ -32,6 +32,7 @@ final class CCall {
     LuaState state;
     LuaValue[] stack;
     string[] pinned; // strings whose bytes were handed to C
+    LuaException failure; // the first failed `luaL_check*` of this activation
 }
 
 private __gshared CCall[] active; // keeps activations reachable while C code holds raw pointers
@@ -67,6 +68,8 @@ LuaNativeFunction wrapCFunction(lua_CFunction f, string name = "") {
         scope (exit)
             active.length = active.length - 1;
         int n = f(cast(lua_State*) cast(void*) c);
+        if (c.failure !is null)
+            return raise(c.state, c.failure); // a `luaL_check*` failed while the C function ran
         if (n < 0 || cast(size_t) n > c.stack.length)
             return raise(c.state, "C function returned an invalid number of results");
         return c.stack[$ - n .. $].dup;
@@ -366,12 +369,18 @@ export void lua_rawseti(lua_State* L, int idx, lua_Integer n) {
         t.rawset(LuaValue(n), v);
 }
 
-// A C function that calls a `luaL_check*` function never expects it to return on an error
-// (C Lua leaves by longjmp): these exported entry points are the one place that still unwinds
-// by exception, through the C frames, until a C-API host protocol is designed.
+/// Records the first error of the running C function; it is reported when the function
+/// returns. (C Lua leaves the function by longjmp; here it runs on with a zero result, which
+/// a C API library has to tolerate until a C-API host protocol is designed.)
+private void checkFailed(lua_State* L, string message) {
+    auto c = call(L);
+    if (c.failure is null)
+        c.failure = new LuaException(message);
+}
+
 export void luaL_checkversion_(lua_State* L, lua_Number ver, size_t sz) {
     if (ver != 504.0 || sz != 8 * 16 + 8)
-        throw new LuaException("version mismatch: core and library have incompatible numeric types");
+        checkFailed(L, "version mismatch: core and library have incompatible numeric types");
 }
 
 /// `luaL_Reg`: a name and a function, terminated by a null name.
@@ -394,16 +403,20 @@ export void luaL_setfuncs(lua_State* L, const(luaL_Reg)* l, int nup) {
 export lua_Integer luaL_checkinteger(lua_State* L, int arg) {
     int ok;
     auto n = lua_tointegerx(L, arg, &ok);
-    if (!ok)
-        throw new LuaException("bad argument #" ~ arg.stringOf ~ " (number expected)");
+    if (!ok) {
+        checkFailed(L, "bad argument #" ~ arg.stringOf ~ " (number expected)");
+        return 0;
+    }
     return n;
 }
 
 export lua_Number luaL_checknumber(lua_State* L, int arg) {
     int ok;
     auto n = lua_tonumberx(L, arg, &ok);
-    if (!ok)
-        throw new LuaException("bad argument #" ~ arg.stringOf ~ " (number expected)");
+    if (!ok) {
+        checkFailed(L, "bad argument #" ~ arg.stringOf ~ " (number expected)");
+        return 0;
+    }
     return n;
 }
 

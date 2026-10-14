@@ -23,7 +23,7 @@ import varis.types;
 import varis.table;
 import varis.state;
 import varis.vm : VM, LuaClosure;
-import varis.exception : LuaException;
+import varis.exception : LuaException, isControlSignal;
 import core.memory : GC;
 
 private enum size_t weakMaskValue = 0x5A5A_5A5A_5A5A_5A5AUL; // see varis.table.hideReference
@@ -248,9 +248,13 @@ private void callFinalizer(LuaState state, LuaValue object) {
     state.inFinalizer = true;
     scope (exit)
         state.inFinalizer = previous;
-    try {
-        VM.callValue(state, gc, [object], false, "__gc", "metamethod");
-    } catch (LuaException e) {
+    VM.callValue(state, gc, [object], false, "__gc", "metamethod", false, true);
+    if (state.raisedError !is null) {
+        auto e = state.takeRaised();
+        if (isControlSignal(e)) {
+            state.deferControl(e); // raised at the next safepoint
+            return;
+        }
         string text = isString(e.errorObject) ? toLuaString(e.errorObject) : "error object is not a string";
         state.warning("error in ", true);
         state.warning("__gc", true);

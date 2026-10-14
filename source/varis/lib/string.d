@@ -143,13 +143,16 @@ private int addValue(LuaState L, ref MatchState ms, ref typeof(appender!string()
         LuaValue[] captures;
         if (!pushCaptures(L, ms, true, s, e, captures))
             return -1;
-        auto results = VM.callValue(L, repl, captures);
+        auto results = VM.callValue(L, repl, captures, false, "", "", false, true);
+        if (L.raisedError !is null)
+            return -1;
         value = results.length ? results[0] : luaNil();
     } else if (isTable(repl)) {
         LuaValue key;
         if (!oneCapture(L, ms, 0, s, e, key))
             return -1;
-        value = VM.getTable(L, repl, key);
+        if (!VM.tryGetTable(L, repl, key, value))
+            return -1;
     } else {
         string r = toLuaString(repl);
         size_t i = 0;
