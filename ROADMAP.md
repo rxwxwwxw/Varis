@@ -133,8 +133,8 @@ from engine/host scripts (`world.lua`, `game.lua`, `main.lua` and `tools/`). Int
 Completed prerequisites are in [MILESTONE_HISTORY.md](MILESTONE_HISTORY.md); do not
 restart them. The two lanes remain independent (D14):
 
-1. **Runtime:** continue the authorized L1 error-as-values conversion (milestone 46).
-   Then measure the remaining call/frame costs and parity gaps. Preserve exact call
+1. **Runtime:** L1's error-as-values conversion is done for the runtime (milestone 46);
+   decide on its frontend remainder. Then measure the remaining call/frame costs and parity gaps. Preserve exact call
    records and register clearing; consult performance plan §5a before changing the
    executor. L2 is done, L3 met its recorded stage exit without compact encoding,
    and L4's measurement account is closed; none of these establishes core parity.
@@ -157,7 +157,7 @@ and dated evidence; this table is the active milestone queue.
 
 | Milestone | What remains | Completion evidence needed |
 | --- | --- | --- |
-| **46 — Lua core parity** | Finish L1: unconverted native libraries, throwing helpers and executor/coroutine boundaries, then explicit cleanup without exception unwinding. Measure the lean-frame / executor design and remaining call, string and dispatch costs. | Preserve full semantics and gates; meet the L1 no-throw exit and every C-Lua-comparable `goal.clua ≤ 1.0`. See [performance plan](benchmarks/PERFORMANCE_PLAN.md#track-l--lua-core-to-parity-milestone-46). |
+| **46 — Lua core parity** | L1's runtime part is done (libraries, pattern engine, table access, operators, calls, close handlers and both executors report errors as values). Left in L1: the frontend and loaders still unwind by exception (owner to decide if they belong to the exit), as do `CoroutineClose`/`ExitRequest`. Then measure the lean-frame / executor design and remaining call, string and dispatch costs. | Preserve full semantics and gates; meet the L1 no-throw exit and every C-Lua-comparable `goal.clua ≤ 1.0`. See [performance plan](benchmarks/PERFORMANCE_PLAN.md#track-l--lua-core-to-parity-milestone-46). |
 | **47 — Beyond C Lua** | Remaining method-chain/global caches, specialization/fusion, execution-only optimizations and measured PGO/LTO experiments (toolchain permitting). | Per-change semantic validation and same-session timings; choose a below-parity target only after parity is measured. [Track X](benchmarks/PERFORMANCE_PLAN.md#track-x--lua-core-beyond-c-lua-milestone-47). |
 | **36 — Standard presentation** | Full stage rendering: authored timing, picture/screen effects, richer transitions, typewriter/voice synchronization, full history and input/IME support; CJK layout, ruby and font fallback. The D embedding contract and both host adapters already exist. | SDL rendering/input tests and reviewed examples against the retained RPG Maker/Ren'Py/Twine comparison scope. [Current player and limits](docs/presentation.md), [embedding contract](docs/embedding.md). |
 | **37 — Portability and real hardware** | Build/test/package on Windows and Linux; resolve POSIX dependencies; select a real low-end reference machine and verify time, memory and collector-pause budgets. Android remains a stretch goal. | Recorded platform builds and reference-game measurements. Host idle collection and the macOS footprint audit already exist. [Stage M](benchmarks/PERFORMANCE_PLAN.md#stage-m--memory-pauses-the-host-boundary-real-hardware-milestones-36-37). |

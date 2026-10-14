@@ -1741,8 +1741,10 @@ struct VM {
             if (callee.isFunction && callee.asFunction.isLuaClosure)
                 closure = cast(LuaClosure) cast(void*) callee.asFunction;
             else {
-                if (!resolveCallable(state, callee, args))
-                    throw state.takeRaised(); // the boundary of this array-returning function
+                if (!resolveCallable(state, callee, args)) {
+                    first.error = state.takeRaised();
+                    return null;
+                }
                 auto function_ = callee.match!((LuaFunction fn) => fn, _ => null);
                 if (function_ is null || !function_.isLuaClosure) {
                     // A native reached through `__call`: it runs with the lexical world of the
