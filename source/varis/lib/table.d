@@ -114,6 +114,8 @@ private bool shiftRemove(LuaValue t, long size, long pos, out LuaValue removed) 
 /// luaL_len: length honoring __len, which must produce an integer.
 private bool lenOf(LuaState L, LuaValue t, out long length) {
     auto n = VM.opLen(L, t);
+    if (L.raisedError !is null)
+        return false;
     long result;
     if (!isInteger(n) && !(isFloat(n) && floatToInteger(n.match!((double d) => d, _ => 0.0), result))) {
         raise(L, "object length is not an integer");
@@ -135,20 +137,28 @@ private struct Sorter {
     LuaValue comparator;
     bool hasComparator;
 
+    // An error from the comparator (or from a metamethod) stays in `L.raisedError`: from then
+    // on every step is a no-op, so the sort unwinds quickly and the caller reports the error.
     bool less(LuaValue x, LuaValue y) {
+        if (L.raisedError !is null)
+            return false;
         if (!hasComparator)
-            return VM.opLt(L, x, y);
+            return VM.opLt(L, x, y) && L.raisedError is null;
         // The callee copies its arguments on entry, so a stack buffer is enough.
         LuaValue[2] arguments = [x, y];
-        auto r = VM.callValue(L, comparator, arguments[]);
-        return r.length && isTruthy(r[0]);
+        auto r = VM.callValue(L, comparator, arguments[], false, "", "", false, true);
+        return L.raisedError is null && r.length && isTruthy(r[0]);
     }
 
     LuaValue get(uint i) {
+        if (L.raisedError !is null)
+            return luaNil();
         return geti(L, table, i);
     }
 
     void set(uint i, LuaValue v) {
+        if (L.raisedError !is null)
+            return;
         seti(L, table, i, v);
     }
 
@@ -384,7 +394,7 @@ void openTableLib(LuaState state) {
                 return null;
             }
             Sorter s = Sorter(L, a[0], argAt(a, 2), !isNoneOrNil(a, 2));
-            if (!s.auxsort(1, cast(uint) n, 0))
+            if (!s.auxsort(1, cast(uint) n, 0) || L.raisedError !is null)
                 return null;
         }
         return cast(LuaValue[])[];

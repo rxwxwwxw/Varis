@@ -1246,29 +1246,41 @@ private enum string sharedOpcodeCases1 = q{
                     // operands are handled inline; everything else takes the generic path.
                 case OpCode.Add:
                     mixin(fastArithmetic("+"));
-                    execArith(state, proto, registers, instr);
+                    if (!execArith(state, proto, registers, instr)) {
+                        mixin(reportedFailure);
+                    }
                     break;
                 case OpCode.Sub:
                     mixin(fastArithmetic("-"));
-                    execArith(state, proto, registers, instr);
+                    if (!execArith(state, proto, registers, instr)) {
+                        mixin(reportedFailure);
+                    }
                     break;
                 case OpCode.Mul:
                     mixin(fastArithmetic("*"));
-                    execArith(state, proto, registers, instr);
+                    if (!execArith(state, proto, registers, instr)) {
+                        mixin(reportedFailure);
+                    }
                     break;
                 case OpCode.Div:
                     mixin(fastDivision);
-                    execArith(state, proto, registers, instr);
+                    if (!execArith(state, proto, registers, instr)) {
+                        mixin(reportedFailure);
+                    }
                     break;
                 case OpCode.IDiv, OpCode.Mod, OpCode.Pow,
                     OpCode.BAnd, OpCode.BOr, OpCode.BXor, OpCode.Shl, OpCode.Shr:
-                    execArith(state, proto, registers, instr);
+                    if (!execArith(state, proto, registers, instr)) {
+                        mixin(reportedFailure);
+                    }
                     break;
                 case OpCode.Concat:
                     if ((instr.bIsK || instr.a != instr.b) && (instr.cIsK || instr.a != instr.c))
                         registers[instr.a] = luaNil();
                     state.allocationTick();
-                    execArith(state, proto, registers, instr);
+                    if (!execArith(state, proto, registers, instr)) {
+                        mixin(reportedFailure);
+                    }
                     break;
 
                     // Unary operations
@@ -1286,7 +1298,9 @@ private enum string sharedOpcodeCases1 = q{
                             continue;
                         }
                     }
-                    execUnary(state, registers, instr);
+                    if (!execUnary(state, registers, instr)) {
+                        mixin(reportedFailure);
+                    }
                     break;
                 case OpCode.Unm: {
                         auto operand = &registers[instr.b];
@@ -1299,10 +1313,14 @@ private enum string sharedOpcodeCases1 = q{
                             continue;
                         }
                     }
-                    execUnary(state, registers, instr);
+                    if (!execUnary(state, registers, instr)) {
+                        mixin(reportedFailure);
+                    }
                     break;
                 case OpCode.BNot:
-                    execUnary(state, registers, instr);
+                    if (!execUnary(state, registers, instr)) {
+                        mixin(reportedFailure);
+                    }
                     break;
 
                     // Jumps & Comparisons
@@ -1324,6 +1342,9 @@ private enum string sharedOpcodeCases1 = q{
                             outcome = op == OpCode.Eq ? x == y : op == OpCode.Lt ? x < y : x <= y;
                         } else {
                             outcome = execCompare(state, proto, registers, instr);
+                            if (state.raisedError !is null) {
+                                mixin(reportedFailure);
+                            }
                             direct = false; // a metamethod may have run
                         }
                         if (outcome != (instr.c != 0))
@@ -1362,8 +1383,14 @@ private enum string sharedOpcodeCases1 = q{
 // ForPrep, ForLoop, TForCall, TForLoop, Closure, Vararg, Close, ToClose, BeginTransaction, EndTransaction, Rollback, DefineContent
 private enum string sharedOpcodeCases2 = q{
                 case OpCode.ForPrep:
-                    if (forPrepare(state, registers, instr.a))
-                        ip += instr.sBx;
+                    {
+                        int prepared = forPrepare(state, registers, instr.a);
+                        if (prepared < 0) {
+                            mixin(reportedFailure);
+                        }
+                        if (prepared > 0)
+                            ip += instr.sBx;
+                    }
                     continue;
 
                 case OpCode.ForLoop: {
@@ -2533,11 +2560,14 @@ struct VM {
     }
 
     pragma(inline, false)
-    private static void execArith(LuaState state, Prototype proto, LuaValue[] registers, ref const Instruction instr) {
+    private static bool execArith(LuaState state, Prototype proto, LuaValue[] registers, ref const Instruction instr) {
         auto left = instr.bIsK ? proto.constants[instr.b] : registers[instr.b];
         auto right = instr.cIsK ? proto.constants[instr.c] : registers[instr.c];
         auto result = arithmeticResult(state, left, right, instr.op);
+        if (state.raisedError !is null)
+            return false;
         copyValue(registers[instr.a], result);
+        return true;
     }
 
     // Return construction avoids visiting the old tag of an initialized
@@ -2586,7 +2616,7 @@ struct VM {
     }
 
     pragma(inline, false)
-    private static void execUnary(LuaState state, LuaValue[] registers, ref const Instruction instr) {
+    private static bool execUnary(LuaState state, LuaValue[] registers, ref const Instruction instr) {
         auto operand = registers[instr.b];
         LuaValue result;
         switch (instr.op) {
@@ -2603,7 +2633,10 @@ struct VM {
             result = opBNot(state, operand);
             break;
         }
+        if (state.raisedError !is null)
+            return false;
         registers[instr.a] = result;
+        return true;
     }
 
     pragma(inline, false)
@@ -3346,7 +3379,7 @@ struct VM {
             if (isInteger(na) && isInteger(nb)) {
                 long bi = nb.match!((long i) => i, _ => 0L);
                 if (bi == 0)
-                    throw new LuaException("attempt to divide by zero");
+                    return failValue(state, new LuaException("attempt to divide by zero"));
                 long ai = na.match!((long i) => i, _ => 0L);
                 // Lua wraps MININTEGER / -1, and rounds division down.
                 if (bi == -1)
@@ -3367,7 +3400,7 @@ struct VM {
             if (isInteger(na) && isInteger(nb)) {
                 long bi = nb.match!((long i) => i, _ => 0L);
                 if (bi == 0)
-                    throw new LuaException("attempt to perform 'n%0'");
+                    return failValue(state, new LuaException("attempt to perform 'n%0'"));
                 if (bi == -1)
                     return luaValue(0L);
                 long remainder = na.match!((long i) => i, _ => 0L) % bi;
@@ -3471,7 +3504,9 @@ struct VM {
             auto t = a.match!((LuaTable tbl) => tbl, _ => null);
             auto meta = t.getMetamethod("__len");
             if (!isNil(meta)) {
-                auto res = callValue(state, meta, [a, a], false, "len", "metamethod");
+                auto res = callValue(state, meta, [a, a], false, "len", "metamethod", false, true);
+                if (state.raisedError !is null)
+                    return luaNil();
                 return res.length > 0 ? res[0] : luaNil();
             }
             return luaValue(t.rawLen());
@@ -3501,8 +3536,8 @@ struct VM {
             meta = metaField(state, b, "__eq");
         if (isNil(meta))
             return false;
-        auto result = callValue(state, meta, [a, b], false, "eq", "metamethod");
-        return result.length && isTruthy(result[0]);
+        auto result = callValue(state, meta, [a, b], false, "eq", "metamethod", false, true);
+        return state.raisedError is null && result.length && isTruthy(result[0]);
     }
 
     static bool opLt(LuaState state, LuaValue a, LuaValue b) {
@@ -3532,7 +3567,9 @@ struct VM {
         if (firstMeta !is null) {
             auto meta = firstMeta.rawget(LuaValue(event));
             if (!isNil(meta)) {
-                auto res = callValue(state, meta, [a, b], false, event[2 .. $], "metamethod");
+                auto res = callValue(state, meta, [a, b], false, event[2 .. $], "metamethod", false, true);
+                if (state.raisedError !is null)
+                    return luaNil();
                 return res.length > 0 ? res[0] : luaNil();
             }
         }
@@ -3540,11 +3577,13 @@ struct VM {
         if (secondMeta !is null) {
             auto meta = secondMeta.rawget(LuaValue(event));
             if (!isNil(meta)) {
-                auto res = callValue(state, meta, [a, b], false, event[2 .. $], "metamethod");
+                auto res = callValue(state, meta, [a, b], false, event[2 .. $], "metamethod", false, true);
+                if (state.raisedError !is null)
+                    return luaNil();
                 return res.length > 0 ? res[0] : luaNil();
             }
         }
-        throw binaryOperandError(state, a, b, event);
+        return failValue(state, binaryOperandError(state, a, b, event));
     }
 
     /// Builds the C-Lua-equivalent error for a binary operation without a usable metamethod.
@@ -3608,13 +3647,14 @@ struct VM {
         return "bad 'for' " ~ what ~ " (number expected, got " ~ objectTypeName(state, v) ~ ")";
     }
 
-    /// Prepares a numeric for loop (lvm.c forprep). Returns true to skip the loop.
-    private static bool forPrepare(LuaState state, LuaValue[] r, int a) {
+    /// Prepares a numeric for loop (lvm.c forprep). Returns 1 to skip the loop, 0 to run it, -1 after
+    /// leaving the error in `state.raisedError`.
+    private static int forPrepare(LuaState state, LuaValue[] r, int a) {
         if (isInteger(r[a]) && isInteger(r[a + 2])) {
             long init = r[a].match!((long i) => i, _ => 0L);
             long step = r[a + 2].match!((long i) => i, _ => 0L);
             if (step == 0)
-                throw new LuaException("'for' step is zero");
+                return failFor(state, "'for' step is zero");
             r[a + 3] = luaValue(init);
             long limit;
             LuaValue lim = r[a + 1];
@@ -3628,23 +3668,23 @@ struct VM {
             else if (isFloat(lim)) {
                 double f = lim.match!((double d) => d, _ => 0.0);
                 if (isNaN(f))
-                    return true;
+                    return 1;
                 double fl = step < 0 ? ceil(f) : floor(f);
                 if (fl >= -9223372036854775808.0 && fl < 9223372036854775808.0)
                     limit = cast(long) fl;
                 else if (f > 0) {
                     if (step < 0)
-                        return true;
+                        return 1;
                     limit = long.max;
                 } else {
                     if (step > 0)
-                        return true;
+                        return 1;
                     limit = long.min;
                 }
             } else
-                throw new LuaException(forError(state, lim, "limit"));
+                return failFor(state, forError(state, lim, "limit"));
             if (step > 0 ? init > limit : init < limit)
-                return true;
+                return 1;
             ulong count;
             if (step > 0) {
                 count = cast(ulong) limit - cast(ulong) init;
@@ -3655,25 +3695,30 @@ struct VM {
                 count /= cast(ulong)(-(step + 1)) + 1UL;
             }
             r[a + 1] = luaValue(cast(long) count);
-            return false;
+            return 0;
         }
         LuaValue init, limit, step;
         if (!toCoercedNumber(r[a + 1], limit))
-            throw new LuaException(forError(state, r[a + 1], "limit"));
+            return failFor(state, forError(state, r[a + 1], "limit"));
         if (!toCoercedNumber(r[a + 2], step))
-            throw new LuaException(forError(state, r[a + 2], "step"));
+            return failFor(state, forError(state, r[a + 2], "step"));
         if (!toCoercedNumber(r[a], init))
-            throw new LuaException(forError(state, r[a], "initial value"));
+            return failFor(state, forError(state, r[a], "initial value"));
         double fi = toDoubleVal(init), fl = toDoubleVal(limit), fs = toDoubleVal(step);
         if (fs == 0)
-            throw new LuaException("'for' step is zero");
+            return failFor(state, "'for' step is zero");
         if (fs > 0 ? fl < fi : fi < fl)
-            return true;
+            return 1;
         r[a] = luaValue(fi);
         r[a + 1] = luaValue(fl);
         r[a + 2] = luaValue(fs);
         r[a + 3] = luaValue(fi);
-        return false;
+        return 0;
+    }
+
+    private static int failFor(LuaState state, string message) {
+        state.raisedError = new LuaException(message);
+        return -1;
     }
 
     /// Steps a prepared numeric for loop. Returns true to continue looping.
@@ -3709,7 +3754,9 @@ struct VM {
         if (metatable !is null) {
             auto meta = metatable.rawget(LuaValue(event));
             if (!isNil(meta)) {
-                auto result = callValue(state, meta, [a, a], false, event[2 .. $], "metamethod");
+                auto result = callValue(state, meta, [a, a], false, event[2 .. $], "metamethod", false, true);
+                if (state.raisedError !is null)
+                    return luaNil();
                 return result.length ? result[0] : luaNil();
             }
         }
@@ -3722,16 +3769,19 @@ struct VM {
         } else if (event == "__len") {
             failure = new LuaException("attempt to get length of a " ~ objectTypeName(state, a) ~ " value");
         } else if (isString(a)) {
-            return throw_(new LuaException(format("attempt to unm a 'string' with a 'string'")));
+            return failValue(state, new LuaException("attempt to unm a 'string' with a 'string'"));
         } else {
             failure = new LuaException("attempt to perform arithmetic on a " ~ objectTypeName(state, a) ~ " value");
         }
         failure.culprit = 1;
-        throw failure;
+        return failValue(state, failure);
     }
 
-    private static LuaValue throw_(LuaException e) {
-        throw e;
+    /// The operators report an error as a value: nil (or false) with the error in
+    /// `state.raisedError`. Callers check the slot after an operation that can fail.
+    private static LuaValue failValue(LuaState state, LuaException failure) {
+        state.raisedError = failure;
+        return luaNil();
     }
 
     private static double toDoubleVal(LuaValue v) {

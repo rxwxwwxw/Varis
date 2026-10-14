@@ -273,6 +273,8 @@ struct NaiveEvaluator {
                         if (!isNumber(value))
                             throw new LuaException("sum aggregate requires numeric values");
                         result = VM.opAdd(state, result, value);
+                        if (state.raisedError !is null)
+                            throw state.takeRaised();
                         // Reject NaN before it reaches a result binding.
                         RelTuple([result]);
                     } else if (aggregate.aggregateOp == "min" || aggregate.aggregateOp == "max") {

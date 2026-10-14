@@ -606,6 +606,8 @@ private struct Executor {
                         if (!isNumber(value))
                             throw new LuaException("sum aggregate requires numeric values");
                         result = VM.opAdd(state, result, value);
+                        if (state.raisedError !is null)
+                            throw state.takeRaised();
                         // Reject NaN before it reaches a result binding.
                         rejectNaN(result);
                     } else if (op == "min" || op == "max") {

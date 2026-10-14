@@ -200,7 +200,10 @@ void openMathLib(LuaState state) {
             return argFail(L, 1, "value expected");
         size_t imin = 0;
         foreach (i; 1 .. a.length) {
-            if (VM.opLt(L, a[i], a[imin]))
+            bool less = VM.opLt(L, a[i], a[imin]);
+            if (L.raisedError !is null)
+                return null;
+            if (less)
                 imin = i;
         }
         return [a[imin]];
@@ -210,7 +213,10 @@ void openMathLib(LuaState state) {
             return argFail(L, 1, "value expected");
         size_t imax = 0;
         foreach (i; 1 .. a.length) {
-            if (VM.opLt(L, a[imax], a[i]))
+            bool less = VM.opLt(L, a[imax], a[i]);
+            if (L.raisedError !is null)
+                return null;
+            if (less)
                 imax = i;
         }
         return [a[imax]];
