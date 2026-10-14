@@ -474,11 +474,15 @@ private enum string frameLoopBody = q{
                                     // Results that did not fit the registers were stashed.
                                     auto stashed = state.stashedResults;
                                     state.stashedResults = null;
-                                    closeValuesFrom(0);
+                                    if (!closeValuesFrom(0)) {
+                                        mixin(reportedFailure);
+                                    }
                                     return stashed.dup;
                                 }
                                 if (produced >= 0) {
-                                    closeValuesFrom(0);
+                                    if (!closeValuesFrom(0)) {
+                                        mixin(reportedFailure);
+                                    }
                                     if (produced == 0)
                                         return [];
                                     if (frameThread.returnBuffers.length <= registerDepth)
@@ -498,7 +502,9 @@ private enum string frameLoopBody = q{
                                 break interpret;
                             }
                             debugLimit = proto.maxStackSize;
-                            closeValuesFrom(0);
+                            if (!closeValuesFrom(0)) {
+                                mixin(reportedFailure);
+                            }
                             state.debugHook("return", -1, nativeResults, true);
                             return nativeResults;
                         }
@@ -516,7 +522,9 @@ private enum string frameLoopBody = q{
                             frameThread.tailArguments = count > 0 ? registers[instr.a + 1 .. instr.a + 1 + count].dup
                                 : [
                             ];
-                            closeValuesFrom(0);
+                            if (!closeValuesFrom(0)) {
+                                mixin(reportedFailure);
+                            }
                         } else {
                             // The callee copies its arguments into its own registers on entry (and clears
                             // them, see `transferred`), so a per-thread buffer is enough.
@@ -693,9 +701,11 @@ private enum string frameLoopBody = q{
                             dest[] = returned[];
                             returned = dest;
                         }
-                        if (toClose.length)
-                            closeValuesFrom(0);
-                        else
+                        if (toClose.length) {
+                            if (!closeValuesFrom(0)) {
+                                mixin(reportedFailure);
+                            }
+                        } else
                             closeUpvaluesFrom(0);
                         if (frameThread.hookFunction !is null)
                             state.debugHook("return", -1, returned, true);
@@ -841,13 +851,17 @@ private enum string deepFrameLoopBody = q{
                                 auto newClosure = cast(LuaClosure) cast(void*) target.asFunction;
                                 LuaValue[] newArgs;
                                 if (callArgs !is null) {
-                                    closeValuesFrom(0);
+                                    if (!closeValuesFrom(0)) {
+                                        mixin(reportedFailure);
+                                    }
                                     newArgs = callArgs;
                                 } else if (toClose.length) {
                                     // Close handlers may run Lua code (and tail calls of their own): keep a private copy.
                                     newArgs = count > 0 ? registers[instr.a + 1 .. instr.a + 1 + count].dup : [
                                     ];
-                                    closeValuesFrom(0);
+                                    if (!closeValuesFrom(0)) {
+                                        mixin(reportedFailure);
+                                    }
                                 } else {
                                     // The callee copies its arguments into its own registers on entry (and clears
                                     // them, see `isTail`), so a per-thread buffer is enough.
@@ -975,6 +989,7 @@ private enum string deepFrameLoopBody = q{
                                     if (stackHygiene)
                                         scrubDeadStack();
                                     TailRequest childTail;
+                                    childTail.returnErrors = true;
                                     childTail.placeInDest = true;
                                     childTail.wanted = numWantedResults;
                                     childTail.dest = numWantedResults >= 0 ? registers[instr.a .. instr.a + numWantedResults] : registers[instr
@@ -984,8 +999,12 @@ private enum string deepFrameLoopBody = q{
                                     bool childPlaced = childTail.placed;
                                     size_t childCount = childTail.placedCount;
                                     // A callee run natively reports proper tail calls through `pending`.
-                                    if (childTail.pending)
+                                    if (childTail.pending && childTail.error is null)
                                         childResults = runTailCalls(state, childTail, childPlaced, childCount);
+                                    if (childTail.error !is null) {
+                                        state.raisedError = childTail.error;
+                                        mixin(reportedFailure);
+                                    }
                                     if (childPlaced)
                                         resultTop = instr.a + cast(int) childCount;
                                     else if (numWantedResults >= 0) {
@@ -1066,9 +1085,11 @@ private enum string deepFrameLoopBody = q{
                                         // Does not fit: keep a copy until the caller's registers have grown.
                                         overflow = returned.dup;
                                     }
-                                    if (toClose.length)
-                                        closeValuesFrom(0);
-                                    else
+                                    if (toClose.length) {
+                                        if (!closeValuesFrom(0)) {
+                                            mixin(reportedFailure);
+                                        }
+                                    } else
                                         closeUpvaluesFrom(0);
                                     if (frameThread.hookFunction !is null)
                                         state.debugHook("return", -1, returned, true);
@@ -1114,9 +1135,11 @@ private enum string deepFrameLoopBody = q{
                                     dest[] = returned[];
                                     returned = dest;
                                 }
-                                if (toClose.length)
-                                    closeValuesFrom(0);
-                                else
+                                if (toClose.length) {
+                                    if (!closeValuesFrom(0)) {
+                                        mixin(reportedFailure);
+                                    }
+                                } else
                                     closeUpvaluesFrom(0);
                                 if (frameThread.hookFunction !is null)
                                     state.debugHook("return", -1, returned, true);
@@ -1491,7 +1514,9 @@ private enum string sharedOpcodeCases2 = q{
                     break;
 
                 case OpCode.Close:
-                    closeValuesFrom(instr.a);
+                    if (!closeValuesFrom(instr.a)) {
+                        mixin(reportedFailure);
+                    }
                     break;
 
                 case OpCode.ToClose:
@@ -1543,7 +1568,9 @@ private enum string sharedOpcodeCases2 = q{
                     }
                     while (frameTransactions.length && (instr.b < frameTransactions[$ - 1].startPC
                             || instr.b >= frameTransactions[$ - 1].endPC)) {
-                        closeValuesFrom(frameTransactions[$ - 1].firstRegister);
+                        if (!closeValuesFrom(frameTransactions[$ - 1].firstRegister)) {
+                            mixin(reportedFailure);
+                        }
                         frameTransactions[$ - 1].transaction.finish(true);
                         frameTransactions.length--;
                     }
@@ -1555,7 +1582,9 @@ private enum string sharedOpcodeCases2 = q{
                             mixin(reportedFailure);
                         }
                     auto rolledBack = frameTransactions[$ - 1];
-                    closeValuesFrom(rolledBack.firstRegister);
+                    if (!closeValuesFrom(rolledBack.firstRegister)) {
+                        mixin(reportedFailure);
+                    }
                     rolledBack.transaction.finish(false);
                     ip = codeBase + rolledBack.endPC;
                     frameTransactions.length--;
@@ -1688,12 +1717,16 @@ struct VM {
         tail.placeInDest = placeInDest;
         tail.wanted = wanted;
         tail.dest = dest;
+        tail.returnErrors = true;
         auto results = executeFrame(state, closure, args, tail, false, name, nameKind);
         placed = tail.placed;
         placedCount = tail.placedCount;
-        if (!tail.pending)
-            return results;
-        return runTailCalls(state, tail, placed, placedCount);
+        if (tail.pending && tail.error is null)
+            results = runTailCalls(state, tail, placed, placedCount);
+        // The one place a Lua error becomes an exception: the host-facing entry points.
+        if (tail.error !is null)
+            throw tail.error;
+        return results;
     }
 
     /// Follows a chain of proper tail calls starting from a pending request in `tail`.
@@ -1856,11 +1889,13 @@ struct VM {
             if (nativeHard || stackUse > luaMaxStack + 200) {
                 auto nested = new LuaException("error in error handling");
                 nested.needsLocation = false;
-                throw nested;
+                tail.error = nested;
+                return null;
             }
             if ((nativeSoft || stackUse > luaMaxStack) && !frameThread.overflowed) {
                 frameThread.overflowed = true;
-                throw new LuaException("stack overflow");
+                tail.error = new LuaException("stack overflow");
+                return null;
             }
         }
         size_t stackSize = max(cast(size_t) proto.maxStackSize + 8, 8);
@@ -1948,7 +1983,9 @@ struct VM {
         }
 
         int[] toClose;
-        void closeValuesFrom(int first, LuaValue error = LuaValue.init) {
+        // Runs the close handlers down to `first`. False when one failed: the last failure is in
+        // `state.raisedError` (each later handler sees the previous error object).
+        bool closeValuesFrom(int first, LuaValue error = LuaValue.init) {
             auto thread = state.currentThread();
             if (thread !is null)
                 thread.closeDepth++;
@@ -1962,16 +1999,17 @@ struct VM {
                 auto value = registers[slot];
                 auto metatable = state.getMetatable(value);
                 auto method = metatable is null ? luaNil() : metatable.rawget(LuaValue("__close"));
-                try {
-                    callValue(state, method, [value, error], false, "close", "metamethod");
-                } catch (LuaException failure) {
-                    closeError = failure;
-                    error = failure.errorObject;
+                callValue(state, method, [value, error], false, "close", "metamethod", false, true);
+                if (state.raisedError !is null) {
+                    closeError = state.takeRaised();
+                    error = closeError.errorObject;
                 }
             }
             closeUpvaluesFrom(first);
-            if (closeError !is null)
-                throw closeError;
+            if (closeError is null)
+                return true;
+            state.raisedError = closeError;
+            return false;
         }
 
         if (!proto.prepared)
@@ -2067,9 +2105,8 @@ struct VM {
                 state.popCall();
                 callVisible = false;
             }
-            try {
-                closeValuesFrom(0, signal.errorObject);
-            } catch (LuaException failure) {
+            if (!closeValuesFrom(0, signal.errorObject)) {
+                auto failure = state.takeRaised();
                 signal.errorObject = failure.errorObject;
                 signal.failed = true;
             }
@@ -2081,11 +2118,13 @@ struct VM {
                 state.popCall();
                 callVisible = false;
             }
-            closeValuesFrom(0);
+            if (!closeValuesFrom(0))
+                throw state.takeRaised(); // a close handler failed during an exit: its error wins
             throw request;
         } catch (Exception e) {
             transactionError = true;
-            closeValuesFrom(0, LuaValue(e.msg));
+            if (!closeValuesFrom(0, LuaValue(e.msg)))
+                throw state.takeRaised();
             throw e;
         }
 
@@ -2125,26 +2164,24 @@ struct VM {
                     callVisible = false;
                 }
                 auto signal = new CoroutineClose(e.errorObject, true);
-                try {
-                    closeValuesFrom(0, signal.errorObject);
-                } catch (LuaException failure) {
-                    signal.errorObject = failure.errorObject;
-                }
+                if (!closeValuesFrom(0, signal.errorObject))
+                    signal.errorObject = state.takeRaised().errorObject;
                 throw signal;
             }
             if (callVisible) {
                 state.popCall();
                 callVisible = false;
             }
-            closeValuesFrom(0, e.errorObject);
-            if (tail.returnErrors) {
-                tail.error = e;
-                return null;
-            }
-            throw e;
+            if (!closeValuesFrom(0, e.errorObject))
+                e = state.takeRaised(); // an error in a close handler replaces the original
+            tail.error = e;
+            return null;
         }
 
-        closeValuesFrom(0);
+        if (!closeValuesFrom(0)) {
+            tail.error = state.takeRaised();
+            return null;
+        }
         state.debugHook("return");
         return [];
     }
@@ -2229,7 +2266,9 @@ struct VM {
             }
         }
 
-        void closeValuesFrom(int first, LuaValue error = LuaValue.init) {
+        // Runs the close handlers down to `first`. False when one failed: the last failure is in
+        // `state.raisedError` (each later handler sees the previous error object).
+        bool closeValuesFrom(int first, LuaValue error = LuaValue.init) {
             auto thread = state.currentThread();
             if (thread !is null)
                 thread.closeDepth++;
@@ -2243,16 +2282,17 @@ struct VM {
                 auto value = registers[slot];
                 auto metatable = state.getMetatable(value);
                 auto method = metatable is null ? luaNil() : metatable.rawget(LuaValue("__close"));
-                try {
-                    callValue(state, method, [value, error], false, "close", "metamethod");
-                } catch (LuaException failure) {
-                    closeError = failure;
-                    error = failure.errorObject;
+                callValue(state, method, [value, error], false, "close", "metamethod", false, true);
+                if (state.raisedError !is null) {
+                    closeError = state.takeRaised();
+                    error = closeError.errorObject;
                 }
             }
             closeUpvaluesFrom(first);
-            if (closeError !is null)
-                throw closeError;
+            if (closeError is null)
+                return true;
+            state.raisedError = closeError;
+            return false;
         }
 
         LuaClosure efClosure;
@@ -2339,9 +2379,8 @@ struct VM {
                         state.popCall();
                         callVisible = false;
                     }
-                    try {
-                        closeValuesFrom(0, signal.errorObject);
-                    } catch (LuaException failure) {
+                    if (!closeValuesFrom(0, signal.errorObject)) {
+                        auto failure = state.takeRaised();
                         signal.errorObject = failure.errorObject;
                         signal.failed = true;
                     }
@@ -2382,11 +2421,8 @@ struct VM {
                             callVisible = false;
                         }
                         auto signal = new CoroutineClose(e.errorObject, true);
-                        try {
-                            closeValuesFrom(0, signal.errorObject);
-                        } catch (LuaException failure) {
-                            signal.errorObject = failure.errorObject;
-                        }
+                        if (!closeValuesFrom(0, signal.errorObject))
+                            signal.errorObject = state.takeRaised().errorObject;
                         propagate = signal;
                         suspended = true;
                     }
@@ -2395,19 +2431,22 @@ struct VM {
                             state.popCall();
                             callVisible = false;
                         }
-                        closeValuesFrom(0, e.errorObject);
+                        if (!closeValuesFrom(0, e.errorObject))
+                            propagate = state.takeRaised();
                     }
                 } else if (auto request = cast(ExitRequest) incoming) {
                     if (callVisible) {
                         state.popCall();
                         callVisible = false;
                     }
-                    closeValuesFrom(0);
+                    if (!closeValuesFrom(0))
+                        propagate = state.takeRaised();
                 } else if (cast(Exception) incoming is null) {
                     transactionError = true; // an Error: only cleanup runs
                 } else if (auto other = cast(Exception) incoming) {
                     transactionError = true;
-                    closeValuesFrom(0, LuaValue(other.msg));
+                    if (!closeValuesFrom(0, LuaValue(other.msg)))
+                        propagate = state.takeRaised();
                 }
             } catch (Throwable inner) {
                 propagate = inner;
@@ -2416,11 +2455,10 @@ struct VM {
             // have a native frame of their own: leave this one, and let the caller's frame see the
             // exception exactly where a native call would have raised it.
             if (frameThread.inlineTop == inlineBase) {
-                if (tail.returnErrors)
-                    if (auto protectedFailure = cast(LuaException) propagate) {
-                        tail.error = protectedFailure;
-                        return null;
-                    }
+                if (auto failure = cast(LuaException) propagate) {
+                    tail.error = failure;
+                    return null;
+                }
                 throw propagate;
             }
             mixin(leaveFrameCode);
