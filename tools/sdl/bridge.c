@@ -47,6 +47,10 @@ float v_pixel_scale(void) { return window ? SDL_GetWindowPixelDensity(window) : 
 void *v_image(const char *path) { return IMG_LoadTexture(renderer, path); }
 void *v_font(const char *path) { return TTF_OpenFont(path, 24); }
 void v_font_free(void *f) { if (f) TTF_CloseFont(f); }
+int v_font_add_fallback(void *f, void *fallback) {
+    if (!f || !fallback) return 0;
+    return TTF_AddFallbackFont((TTF_Font *)f, (TTF_Font *)fallback) ? 1 : 0;
+}
 /* Text at a pixel size, wrapped at `wrap` pixels (0: only at newlines). */
 void *v_text(void *f, const char *text, float px, int wrap, unsigned color) {
     if (!f || !*text) return NULL;
@@ -167,6 +171,7 @@ int v_event(int *key, float *x, float *y, const char **text) {
             return 8;
         }
         if (e.type == SDL_EVENT_TEXT_INPUT) { *text = e.text.text; return 4; }
+        if (e.type == SDL_EVENT_TEXT_EDITING) { *text = e.edit.text; return 11; }
         if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN && e.button.button == SDL_BUTTON_LEFT) {
             SDL_RenderCoordinatesFromWindow(renderer, e.button.x, e.button.y, x, y); return 5;
         }

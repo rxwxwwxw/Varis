@@ -144,10 +144,9 @@ restart them. The two lanes remain independent (D14):
    and Windows/Linux builds. S0, S1 and the world-model budget work are already delivered;
    W5(b) remains conditional on a measured need, not a prerequisite to restart.
 
-**Presentation and production lane:** finish the standard player's presentation and
-text layout (36), localization T5 and handoff refinements (39). V1 syntax, authoring
-A0–A6 and workbench milestones 42–44 are delivered. Their optional refinements below
-are not new blockers for the completed milestones.
+**Presentation and production lane:** standard presentation (36) and production
+localization (39) are delivered. V1 syntax, authoring A0–A6 and workbench milestones
+42–44 are delivered. Their optional refinements below are not new blockers for the completed milestones.
 
 ## Remaining work
 
@@ -159,9 +158,7 @@ and dated evidence; this table is the active milestone queue.
 | --- | --- | --- |
 | **46 — Lua core parity** | L1 is done: every language error in the core travels by value, including exit and coroutine close; the throws left are the host adapters of open decision 8. Left: measure the lean-frame / executor design (calls are 1.7–2.1× C Lua) and the remaining call, string and dispatch costs. | Preserve full semantics and gates; every C-Lua-comparable `goal.clua ≤ 1.0`. See [performance plan](benchmarks/PERFORMANCE_PLAN.md#track-l--lua-core-to-parity-milestone-46). |
 | **47 — Beyond C Lua** | Remaining method-chain/global caches, specialization/fusion, execution-only optimizations and measured PGO/LTO experiments (toolchain permitting). | Per-change semantic validation and same-session timings; choose a below-parity target only after parity is measured. [Track X](benchmarks/PERFORMANCE_PLAN.md#track-x--lua-core-beyond-c-lua-milestone-47). |
-| **36 — Standard presentation** | Full stage rendering: authored timing, picture/screen effects, richer transitions, typewriter/voice synchronization, full history and input/IME support; CJK layout, ruby and font fallback. The D embedding contract and both host adapters already exist. | SDL rendering/input tests and reviewed examples against the retained RPG Maker/Ren'Py/Twine comparison scope. [Current player and limits](docs/presentation.md), [embedding contract](docs/embedding.md). |
 | **37 — Portability and real hardware** | Build/test/package on Windows and Linux; resolve POSIX dependencies; select a real low-end reference machine and verify time, memory and collector-pause budgets. Android remains a stretch goal. | Recorded platform builds and reference-game measurements. Host idle collection and the macOS footprint audit already exist. [Stage M](benchmarks/PERFORMANCE_PLAN.md#stage-m--memory-pauses-the-host-boundary-real-hardware-milestones-36-37). |
-| **39 — Production localization** | Complete T5 typography and native-reader validation; publisher font subsetting and per-locale release policy. Close host differences: `GameHost` translates character display names, while raw scene speaker metadata and `SceneHost` still use authored names. | Chinese/Japanese/Korean samples reviewed by readers, font coverage/subsetting evidence, reviewed translations and release checks. Catalogs, menu-label translation, packs, font coverage checks and per-language fonts already exist. [Localization plan](NARRATIVE_LOCALIZATION_PLAN.md). |
 
 ### Optional refinements and deferred scope
 
@@ -186,9 +183,9 @@ These remain visible without reopening delivered milestones:
 
 The completed scope and evidence are indexed in [MILESTONE_HISTORY.md](MILESTONE_HISTORY.md).
 Phases 1–7, the v1 language (9), authoring/workbench (10), and the first battle/sample
-scope (13) have landed. Phase 8 is closed with 21–25 retired. Phase 11 retains 36, 37,
-46 and 47; Phase 12 retains 39. Undo/profile/saves (38), conveniences (40) and the writer
-guide (41) are delivered. Preserve their regression coverage while doing the work above.
+scope (13) have landed. Phase 8 is closed with 21–25 retired. Phase 11 retains 37,
+46 and 47 (milestone 36 delivered); Phase 12 is completed (38, 39, 40, 41 delivered).
+Preserve their regression coverage while doing the work above.
 
 ## Open decisions (owner)
 
@@ -311,8 +308,8 @@ preserves the rationale.
 text ids and input statements, the syntax freeze, *Saltmarsh Light* migration and
 `.varis` content in `sample-vn`, `sample-rpg` and `sample-td`.
 *Saltmarsh Light* retains `.lua` filenames. Menu labels are catalog text (`scene.<label id>.label`);
-character names are indexed as `character.<id>.name` and translated by `GameHost`.
-The scene-only host difference is tracked under milestone 39 above.
+character names are indexed as `character.<id>.name` and translated by `GameHost` and `SceneHost`.
+The scene-only host difference was closed under milestone 39.
 
 Decided October 12, 2026 (owner, asked while planning the executor work):
 

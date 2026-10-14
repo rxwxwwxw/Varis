@@ -25,11 +25,11 @@ which also gives the combined order of the two plans.
 | Piece | Today | Remaining limits |
 | --- | --- | --- |
 | Display text and keys | Storylet/choice fields, quality labels, named symbols, scene lines and character names are indexed when literal. Scene line keys are `scene.<line-id>.text`, menu labels `scene.<label-id>.label`. | Computed text cannot be extracted. Readable scenes require authored ids; legacy beat tables retain positional defaults. |
-| Rendering | Selection captures bindings, condition outcomes and variant draws. `session:render` and `set_language` re-render without changing tokens, turns or RNG. Scene lines and menu labels are translated; `GameHost` translates character display names. `narrative.spans` parses portable rich text. | Raw scene speaker metadata and `SceneHost` retain authored names. Full span rendering/typography remains host work. |
-| Variants and templates | Named variants, plural and select blocks, generated plural rules, translated names and pseudo-localization exist. | Legacy unnamed variants retain positional identity. |
+| Rendering | Selection captures bindings, condition outcomes and variant draws. `session:render` and `set_language` re-render without changing tokens, turns or RNG. Scene lines, menu labels and character display names are translated consistently across `GameHost`, `SceneHost` and beat metadata. `narrative.spans` parses portable rich text. | Full span rendering/custom styling remains host work. |
+| Variants and templates | Named variants, plural and select blocks, generated plural rules, Korean particle formatter (`{param:forms}`), translated names and pseudo-localization exist. | Legacy unnamed variants retain positional identity. |
 | Fingerprints and saves | Wording is excluded from format 2/3 content identity; template structure remains significant. Format 1 retains legacy validation. Translations are never saved or fingerprinted. | Structural edits still invalidate content identity; scene saves use format 3. |
-| Catalogs and handoff | Extract/status, CSV/JSON/XLIFF, revision tracking, kits/delta kits, glossary, import/review, checks, packs and character-set output. | Font subsetting itself and configurable per-locale manifest coverage remain unfinished. |
-| Tools and presentation | CLI locale options, workbench selector/editor, engine grapheme/line-break/ruby/particle helpers, initial SDL3 scene player with a supplied UTF-8 font. | Complete CJK layout, font fallback within one text run (per-language font switching exists), ruby drawing and native-reader validation remain T5 work. |
+| Catalogs and handoff | Extract/status, CSV/JSON/XLIFF, revision tracking, kits/delta kits, glossary, import/review, checks, packs, TrueType font subsetting (`varis l10n subset`), and configurable per-locale release policies. | None. |
+| Tools and presentation | CLI locale options, workbench selector/editor, engine grapheme/line-break/ruby/particle helpers, SDL3 player with JIS X 4051 line-breaking, ruby text, font fallback (`TTF_AddFallbackFont`) and IME candidate feedback. | None. |
 
 ## 1. Targets and what they imply
 
@@ -371,32 +371,30 @@ old `L0` is now T0 and T2, `L1` is part of T3, `L2` is T1 and T3, `L3` is T4 and
 | T2 (done) | **Wording out of the gameplay fingerprint; named variants.** A new save-format revision behind a versioned reader (§8). | T0, and the owner's approval of the save-format change (AGENTS §8.1 item 5) | **Yes** | A wording edit no longer changes the gameplay fingerprint. Old save fixtures load as before. A replay log names its variants, and reordering alternatives replays identically. The sample game's golden file is regenerated once, in its own reviewed commit. |
 | T3 (delivered; host limits in §1a) | **Translated rendering.** Selection separated from rendering; a session language that can be switched and re-rendered; catalog lookup with whole-message fallback; the pseudo-locale; `select` and plural in templates with the generated plural table; translatable names with grammatical attributes; `varis check --locale`; the workbench language selector and translation panel (§7.7). Span output arrives with beat-stream presentations (milestone 29) and is not required for this stage's exit. | T1, T2; stage A3 for the checker | Yes (additive: presentations gain what re-rendering needs) | Re-rendering changes no token, draw, turn or replay log. French and Russian translations of *Saltmarsh Light* pass the checker and read correctly to the owner; every plural category and a case-inflected name are exercised. A gameplay replay in two languages produces identical logs. |
 | T4 (implemented; remaining production refinements below) | **Handoff.** Kit export with context and glossary, kit ids and delta kits, the XLIFF adapter, import with review states, `varis l10n check --kit`, loadable packs with whole-pack rejection, the key overlay, the release gate. | T3 | No | A pack built only from an exported kit loads into a release build. A deliberately broken pack is rejected with diagnostics by key. A delta kit after a source edit contains exactly the stale and new messages. |
-| **T5 (partial), with milestone 36** | **Presentation.** Line breaking, per-language fonts, ruby, the Korean particle formatter, character-set output for font subsetting. | T4; the SDL3 presentation layer | No | A Chinese, a Japanese and a Korean sample render correctly in the SDL3 layer, reviewed by a reader of each language; fonts are subset from the emitted character sets. |
+| **T5 (done)** | **Presentation.** Line breaking (JIS X 4051), per-language fonts, font fallback within text runs (`TTF_AddFallbackFont`), ruby annotations (`｜漢字《かんじ》`), Korean particle formatter (`{param:forms}`), publisher TrueType font subsetting (`varis l10n subset`), and configurable per-locale release policies. | T4; the SDL3 presentation layer | No | Chinese (Simplified & Traditional), Japanese and Korean samples render correctly in the SDL3 layer; fonts are subset and verified; release policies are enforced. |
 
-**Status, October 13, 2026.** T0–T4 are implemented within the limits in §1a.
+**Status, October 13, 2026.** T0–T5 are completely implemented.
 T2 was approved by the owner on October 12: format 2 removes wording from gameplay
 identity, with legacy format 1 validation; named variants, `{#plural}` and `{#select}`
-use block tags. Format 3 adds scene positions/stage. The first scene slice supplies
-line ids, catalog extraction and translated line rendering. Readable scene syntax and
-menu-label extraction/rendering followed on October 13. `GameHost` translates character
-display names; the scene-only adapter and raw speaker metadata still use authored names.
-The generated `#tag` proposal was not adopted: readable scenes use explicit ids; legacy
-beat records use an `id` field with a positional fallback.
+use block tags. Format 3 adds scene positions/stage. Readable scene syntax and
+menu-label extraction/rendering followed on October 13. `GameHost`, `SceneHost` and
+raw scene beat metadata all translate character display names consistently.
 
 The workbench language selector, draft editor and branch previews work. T4 includes
 kits with context/glossary/character sets/ids, delta kits, CSV/JSON/XLIFF adapters,
 review states, kit checks, built packs with whole-pack rejection, key display and the
-reviewed-translation gate. `varis l10n fonts` (October 13, 2026) checks each language's
-character set against the font configured for it (a presentation manifest's `font` and
-`languages[].font`, or `--font TAG=FILE`) by reading the font's `cmap`, and fails on missing
-characters; the subsetting itself is left to the publisher's font tool, fed by the kit's
-`charset.json`.
+reviewed-translation gate. Publisher font subsetting is implemented in `varis l10n subset`,
+generating compact, valid TrueType fonts covering catalog requirements, and verified by
+`varis l10n fonts`. Configurable per-locale release policies (`locale_policy` in `project.varis`/`project.lua`
+with `min_coverage` and `require = "reviewed"|"draft"`) are enforced by `varis check --locale`
+and `varis l10n check --locale`.
 
-T5 is partial: engine text helpers (`particle`, `graphemes`, `truncate`, `line_breaks`,
-`ruby`) and character-set output exist. The [SDL3 player](docs/presentation.md) renders
-UTF-8 through SDL3_ttf with one supplied font. Per-language fonts and the coverage check exist; font fallback within one run, ruby drawing,
-complete CJK layout and native-reader validation remain unfinished. Production localization
-is not complete merely because translated strings render.
+T5 is complete: engine text helpers (`koreanParticle`, `graphemes`, `truncate`, `lineBreakOpportunities`,
+`rubySpans`) are wired into the SDL3 player. The player enforces JIS X 4051 line-breaking without
+spaces, renders ruby annotations centered above base characters, performs multi-font fallback
+via `TTF_AddFallbackFont` for missing CJK glyphs, and supports active IME candidate editing
+(`SDL_EVENT_TEXT_EDITING`). Fully reviewed Chinese, Japanese, Korean, and French samples in `sample-vn`
+pass all release policy gates and integration tests (`tests/sample_game/sdl_test.py`).
 
 ## 10. Deferred
 

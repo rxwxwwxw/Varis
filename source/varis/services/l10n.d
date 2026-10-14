@@ -1172,7 +1172,7 @@ private int checkKitFile(string kitDirectory, string file) {
 private int checkCommand(string[] args) {
     string locale;
     string kitDirectory, kitFile;
-    bool requireReviewed;
+    string requireStatus;
     for (size_t i = 0; i < args.length; ++i) {
         if (args[i] == "--kit" && i + 1 < args.length)
             kitDirectory = args[++i];
@@ -1181,9 +1181,9 @@ private int checkCommand(string[] args) {
         else if (args[i] == "--locale" && i + 1 < args.length)
             locale = args[++i];
         else if (args[i] == "--require" && i + 1 < args.length) {
-            requireReviewed = args[++i] == "reviewed";
+            requireStatus = args[++i];
         } else {
-            warn("usage: varis l10n check --locale L|all [--require reviewed]\n");
+            warn("usage: varis l10n check --locale L|all [--require reviewed|draft]\n");
             return 2;
         }
     }
@@ -1195,7 +1195,7 @@ private int checkCommand(string[] args) {
         return checkKitFile(kitDirectory, kitFile);
     }
     if (locale.length == 0) {
-        warn("usage: varis l10n check --locale L|all [--require reviewed]\n");
+        warn("usage: varis l10n check --locale L|all [--require reviewed|draft]\n");
         return 2;
     }
     auto project = loadProject();
@@ -1224,9 +1224,32 @@ private int checkCommand(string[] args) {
                 coverage.stale) ~ " stale, " ~ number(
                 coverage.untranslated) ~ " untranslated of " ~ number(
                 coverage.total) ~ "\n");
-        if (requireReviewed && coverage.reviewed != coverage.total) {
-            say(tag ~ ": the release gate needs every message reviewed\n");
-            failed = true;
+
+        string req = requireStatus;
+        double minCov = 1.0;
+        bool enforce = requireStatus.length > 0;
+        if (auto pol = tag in project.manifest.localePolicies) {
+            enforce = true;
+            minCov = pol.minCoverage;
+            if (!requireStatus.length)
+                req = pol.requireStatus;
+        }
+        if (enforce && coverage.total > 0) {
+            double currentCov = 0.0;
+            if (req == "draft")
+                currentCov = cast(double)(coverage.reviewed + coverage.draft) / cast(double) coverage.total;
+            else
+                currentCov = cast(double) coverage.reviewed / cast(double) coverage.total;
+            if (currentCov < minCov - 0.000001) {
+                if (req == "reviewed" && minCov >= 1.0)
+                    say(tag ~ ": the release gate needs every message reviewed\n");
+                else
+                    say(tag ~ ": release policy requires " ~ (req == "draft" ? "draft" : "reviewed") ~
+                            " coverage >= " ~ number(cast(long)(minCov * 100)) ~ "% (current: " ~
+                            number(
+                                cast(long)(currentCov * 100)) ~ "%)\n");
+                failed = true;
+            }
         }
     }
     return failed ? 1 : 0;
@@ -1516,9 +1539,231 @@ private int fontsCommand(string[] args) {
     return failed ? 1 : 0;
 }
 
+/// `varis l10n subset`: produces compact, valid TrueType fonts containing only the glyphs
+/// required by a project's languages or an explicit character set (T5).
+private int subsetCommand(string[] args) {
+    import varis.services.fontsubset : subsetFont;
+
+    string manifestFile, wanted = "all", charsetText, charsetFile, output;
+    string[string] fonts; // locale tag -> font path ("" is default)
+
+    for (size_t i = 0; i < args.length; ++i) {
+        if (args[i] == "--manifest" && i + 1 < args.length)
+            manifestFile = args[++i];
+        else if (args[i] == "--locale" && i + 1 < args.length)
+            wanted = args[++i];
+        else if (args[i] == "--charset" && i + 1 < args.length)
+            charsetText = args[++i];
+        else if (args[i] == "--charset-file" && i + 1 < args.length)
+            charsetFile = args[++i];
+        else if (args[i] == "--out" && i + 1 < args.length)
+            output = args[++i];
+        else if (args[i] == "--font" && i + 1 < args.length) {
+            auto spec = args[++i];
+            ptrdiff_t eq = -1;
+            foreach (k, char c; spec)
+                if (c == '=') {
+                    eq = k;
+                    break;
+                }
+            if (eq < 0)
+                fonts[""] = spec;
+            else
+                fonts[spec[0 .. eq].idup] = spec[eq + 1 .. $].idup;
+        } else {
+            warn("usage: varis l10n subset [--manifest presentation.json] [--font [TAG=]FILE ...] [--locale L|all] [--charset TEXT] [--out FILE|DIR]\n");
+            return 2;
+        }
+    }
+
+    if (manifestFile.length) {
+        string text;
+        if (!readFile(manifestFile, text)) {
+            warn("cannot read " ~ manifestFile ~ "\n");
+            return 1;
+        }
+        JsonValue root;
+        string error;
+        if (!parseJson(text, root, error)) {
+            warn(manifestFile ~ ": " ~ error ~ "\n");
+            return 1;
+        }
+        string directory;
+        foreach (i, char c; manifestFile)
+            if (c == '/')
+                directory = manifestFile[0 .. i + 1].idup;
+        string resolve(string file) {
+            return file.length && file[0] == '/' ? file : directory ~ file;
+        }
+
+        auto base = root.stringOr("font");
+        if (base.length && ("" !in fonts))
+            fonts[""] = resolve(base);
+        if (auto list = root.get("languages"))
+            foreach (ref entry; list.items) {
+                auto tag = entry.stringOr("tag");
+                auto file = entry.stringOr("font");
+                if (file.length && !(tag in fonts))
+                    fonts[tag] = resolve(file);
+            }
+    }
+
+    if (fonts.length == 0) {
+        warn("no fonts configured: give --manifest or --font\n");
+        return 2;
+    }
+
+    if (charsetFile.length) {
+        string ctext;
+        if (!readFile(charsetFile, ctext)) {
+            warn("cannot read " ~ charsetFile ~ "\n");
+            return 1;
+        }
+        charsetText ~= ctext;
+    }
+
+    auto project = loadProject();
+    string[] locales;
+    if (wanted == "all") {
+        if (project.manifest.locales.length)
+            locales = project.manifest.locales.dup;
+        else {
+            foreach (tag; fonts.keys)
+                if (tag.length)
+                    locales ~= tag;
+        }
+    } else
+        locales = splitList(wanted);
+
+    struct Job {
+        string tag;
+        bool[uint] chars;
+    }
+
+    Job[] jobs;
+    if ("" in fonts || locales.length == 0) {
+        Job job;
+        job.tag = "";
+        foreach (uint c; 32 .. 127)
+            job.chars[c] = true;
+        foreach (ref m; project.source.messages)
+            collectCodePoints(m.text, job.chars);
+        if (charsetText.length)
+            collectCodePoints(charsetText, job.chars);
+        jobs ~= job;
+    }
+
+    foreach (tag; locales) {
+        Job job;
+        job.tag = tag;
+        foreach (uint c; 32 .. 127)
+            job.chars[c] = true;
+        LocaleCatalog catalog;
+        if (loadLocale(tag, catalog)) {
+            foreach (ref e; catalog.entries)
+                collectCodePoints(e.text, job.chars);
+        }
+        if (charsetText.length)
+            collectCodePoints(charsetText, job.chars);
+        jobs ~= job;
+    }
+
+    bool failed;
+    foreach (ref job; jobs) {
+        string label = job.tag.length ? job.tag : "source";
+        auto given = job.tag in fonts;
+        if (given is null)
+            given = "" in fonts;
+        if (given is null) {
+            say(label ~ ": no font configured\n");
+            failed = true;
+            continue;
+        }
+        string fontData;
+        if (!readFile(*given, fontData)) {
+            say(label ~ ": cannot read font " ~ *given ~ "\n");
+            failed = true;
+            continue;
+        }
+
+        ubyte[] subsetted;
+        string err;
+        if (!subsetFont(cast(const(ubyte)[]) fontData, job.chars, subsetted, err)) {
+            say(label ~ ": subsetting " ~ *given ~ " failed: " ~ err ~ "\n");
+            failed = true;
+            continue;
+        }
+
+        string outPath;
+        if (output.length) {
+            if (jobs.length == 1 && output.length > 4 && (output[$ - 4 .. $] == ".ttf" || output[$ - 4 .. $] == ".otf"))
+                outPath = output;
+            else {
+                string suffix = job.tag.length ? ("_" ~ job.tag) : "_subset";
+                string baseName = *given;
+                foreach_reverse (i, char c; baseName)
+                    if (c == '/') {
+                        baseName = baseName[i + 1 .. $];
+                        break;
+                    }
+                ptrdiff_t dot = -1;
+                foreach_reverse (i, char c; baseName)
+                    if (c == '.') {
+                        dot = i;
+                        break;
+                    }
+                string namePart = dot >= 0 ? baseName[0 .. dot] : baseName;
+                string extPart = dot >= 0 ? baseName[dot .. $] : ".ttf";
+                outPath = output ~ "/" ~ namePart ~ suffix ~ extPart;
+            }
+        } else {
+            string suffix = job.tag.length ? ("_" ~ job.tag) : "_subset";
+            ptrdiff_t dot = -1;
+            foreach_reverse (i, char c; *given)
+                if (c == '.') {
+                    dot = i;
+                    break;
+                }
+            string namePart = dot >= 0 ? (*given)[0 .. dot] : *given;
+            string extPart = dot >= 0 ? (*given)[dot .. $] : ".ttf";
+            outPath = namePart ~ suffix ~ extPart;
+        }
+
+        if (!writeFile(outPath, cast(string) subsetted)) {
+            say(label ~ ": cannot write " ~ outPath ~ "\n");
+            failed = true;
+            continue;
+        }
+
+        bool[uint] covered;
+        string verifyErr;
+        if (!fontCodePoints(subsetted, covered, verifyErr)) {
+            say(label ~ ": verification failed: " ~ verifyErr ~ "\n");
+            failed = true;
+            continue;
+        }
+        size_t missingCount = 0;
+        foreach (c, _; job.chars) {
+            if (needsGlyph(c) && c !in covered)
+                missingCount++;
+        }
+        if (missingCount > 0) {
+            say(label ~ ": subsetted font missing " ~ number(missingCount) ~ " required glyphs\n");
+            failed = true;
+            continue;
+        }
+
+        say(label ~ ": " ~ *given ~ " -> " ~ outPath ~ " (" ~ number(
+                subsetted.length) ~ " bytes, " ~
+                number(covered.length) ~ " glyphs)\n");
+    }
+
+    return failed ? 1 : 0;
+}
+
 int l10nMain(string[] args) {
     if (args.length == 0) {
-        warn("usage: varis l10n extract|status|export|import|check|review|build|fonts ...\n");
+        warn("usage: varis l10n extract|status|export|import|check|review|build|fonts|subset ...\n");
         return 2;
     }
     switch (args[0]) {
@@ -1538,8 +1783,10 @@ int l10nMain(string[] args) {
         return buildPacks(args[1 .. $]);
     case "fonts":
         return fontsCommand(args[1 .. $]);
+    case "subset":
+        return subsetCommand(args[1 .. $]);
     default:
-        warn("unknown l10n command `" ~ args[0] ~ "`; the commands are: extract, status, export, import, check, review, build, fonts\n");
+        warn("unknown l10n command `" ~ args[0] ~ "`; the commands are: extract, status, export, import, check, review, build, fonts, subset\n");
         return 2;
     }
 }

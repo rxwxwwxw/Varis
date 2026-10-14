@@ -1,0 +1,7 @@
+{"format":1,"package":"harbour","locale":"ko","entries":[
+ {"key":"character.mira.name","text":"미라","status":"reviewed","revision":"da5bf1a2a79adec6"},
+ {"key":"scene.farewell.promise.text","text":"그럼 내일 뵙겠습니다.","status":"reviewed","revision":"640cd52d39829bea"},
+ {"key":"scene.harbour.lantern.text","text":"등불을 켜 두세요.","status":"reviewed","revision":"9b90a88688ea0ce4"},
+ {"key":"scene.harbour.name.text","text":"당신의 이름은 무엇입니까?","status":"reviewed","revision":"2be7a9ba5d444d17"},
+ {"key":"scene.harbour.welcome.text","text":"어서 오세요, {visitor:은/는}.","status":"reviewed","revision":"977c10752b268a72"}
+]}

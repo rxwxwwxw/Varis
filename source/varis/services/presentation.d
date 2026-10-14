@@ -34,6 +34,7 @@ struct SceneView {
     LuaValue audio;
     size_t index;
     bool finished;
+    LuaValue rawBeat;
 }
 
 /// Status-returning adapter over the existing exception-based runtime. A host retains the
@@ -44,8 +45,17 @@ class SceneHost {
     private LuaValue token;
     SceneView view;
     string error;
+    string language;
     /// How many beats `back` can take back; 0 turns it off. Applied to each new or restored session.
     size_t undoLimit = 256;
+
+    /// Re-renders the current boundary in another language (empty tag: the source language).
+    bool setLanguage(string tag) {
+        language = tag;
+        if (session !is null)
+            session.language = tag;
+        return refresh();
+    }
 
     bool loadContent(string source, string filename, string scene) {
         try {
@@ -113,6 +123,7 @@ class SceneHost {
                     if (slot.length)
                         next.characters ~= StageCharacter(definition.id, slot, field(current, "attributes"));
                 }
+                next.rawBeat = beat;
                 foreach (choice; sequence(field(beat, "choices")))
                     next.choices ~= SceneChoice(field(choice, "id"), nameOf(field(choice, "text")));
             }
@@ -185,6 +196,8 @@ class SceneHost {
             auto previous = session;
             session = restored;
             session.setUndoLimit(undoLimit);
+            if (language.length)
+                session.language = language;
             if (refresh())
                 return true;
             session = previous;

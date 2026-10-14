@@ -1,0 +1,7 @@
+{"format":1,"package":"harbour","locale":"zh-Hant","source_language":"en","charset":"iorstv{}。亮什你來叫名吧回天字拉提明歡燈米繼續著見讓迎那麼，？","messages":{
+ "character.mira.name":"米拉",
+ "scene.farewell.promise.text":"那麼明天見。",
+ "scene.harbour.lantern.text":"讓提燈繼續亮著吧。",
+ "scene.harbour.name.text":"你叫什麼名字？",
+ "scene.harbour.welcome.text":"歡迎回來，{visitor}。"
+}}

@@ -137,10 +137,7 @@ def lanternfall_scale():
     print("Lanternfall at 435,600 tiles: steady frames " + ", ".join(f"{b[0]} {b[2]} ms" for b in bands))
 
 
-def main():
-    lanternfall()
-    lanternfall_scale()
-    rpg()
+def sample_vn():
     output = ROOT / "build/sdl/harbour.bmp"
     run(ROOT / "sample-vn/presentation.json", output, message="checks passed")
     data = output.read_bytes()
@@ -177,12 +174,141 @@ scene menu {{kind=:background,tag=:harbour_evening},
 ''')
         manifest.write_text(json.dumps(dict(original, content=str(content), scene="menu")))
         run(manifest, directory / "menu.bmp", message="checks passed")
-        # Rendering text longer than a box and scripts without spaces must not crash.
-        # Smoke captures a spoken beat; use a character-free say through a declaration.
+        # Stage presentation features: pictures, screen effects, richer transitions, ruby, pauses
+        pic_file = str(ROOT / "sample-vn/assets/harbour.svg")
+        content.write_text(f'''
+character mira {{name="Mira", attributes={{expression={{:quiet,:smile}},outfit={{:coat}}}},
+ defaults={{expression=:quiet,outfit=:coat}}}}
+scene stage_test {{
+    {{kind=:background,tag=:harbour_evening}},
+    {{kind=:show,character=:mira,slot=:left}},
+    {{kind=:transition,type=:fade,duration=200}},
+    {{kind=:picture,id=:harbour_pic,file="{pic_file}",x=0.05,y=0.05,width=0.4,height=0.4,alpha=0.8}},
+    {{kind=:screen,effect=:flash,duration=150,color=0xffffff}},
+    {{kind=:screen,effect=:shake,duration=150,intensity=6}},
+    {{kind=:screen,effect=:tint,duration=150,color="#44ff0000"}},
+    {{kind=:pause,duration=100}},
+    {{kind=:transition,type=:slide,duration=200}},
+    {{kind=:transition,type=:wipe,duration=200}},
+    {{kind=:say,character=:mira,text="明日は｜港《みなと》に行きます。それでは、また｜明日《あした》。"}},
+    {{kind=:picture,id=:harbour_pic,action=:hide}},
+    {{kind=:ended}}
+}}
+''')
+        manifest.write_text(json.dumps(dict(original, content=str(content), scene="stage_test")))
+        stage_out = directory / "stage.bmp"
+        run(manifest, stage_out, message="checks passed")
+        stage_data = stage_out.read_bytes()
+        assert len(set(stage_data[offset:])) > 80
+
+        # CJK line-breaking (JIS X 4051) preventing prohibited start/end punctuation
         content.write_text('character narrator {name="Narrator"}\nscene menu {{kind=:say,character=:narrator,text="'
-                           + '海港の灯り欢迎回来 ' * 80 + '"},{kind=:ended}}')
-        run(manifest, directory / "unicode.bmp", message="checks passed")
+                           + '桜の花びらが風に舞い落ちる季節、港の灯りは静かに波を照らしていた。「どこへ行くの？」と彼女は尋ねた。' * 10
+                           + '"},{kind=:ended}}')
+        manifest.write_text(json.dumps(dict(original, content=str(content), scene="menu")))
+        run(manifest, directory / "cjk_wrapping.bmp", message="checks passed")
     print("SDL rendering, scene flow, menu, Unicode and missing-asset diagnostics passed")
+
+
+def localization():
+    """Milestone 39 localization validation:
+    - Release policy enforcement via varis check --locale and varis l10n check.
+    - TrueType publisher font subsetting and glyph coverage checks.
+    - Korean particle formatting and Japanese ruby in localized scenes."""
+    # 1. Project check with locale policy
+    res = subprocess.run([str(ROOT / "bin/varis"), "check", "--locale", "all", "--require", "reviewed", "sample-vn"],
+                         cwd=ROOT, capture_output=True, text=True)
+    assert res.returncode == 0, res.stdout + res.stderr
+
+    # 2. l10n check with locale policy
+    res = subprocess.run([str(ROOT / "bin/varis"), "l10n", "check", "--locale", "all", "--require", "reviewed"],
+                         cwd=ROOT / "sample-vn", capture_output=True, text=True)
+    assert res.returncode == 0 and "5 reviewed" in res.stdout, res.stdout + res.stderr
+
+    # 3. Policy failure check when unreviewed draft exists
+    ja_orig = (ROOT / "sample-vn/l10n/ja.json").read_text()
+    try:
+        ja_draft = ja_orig.replace('"status":"reviewed"', '"status":"draft"', 1)
+        (ROOT / "sample-vn/l10n/ja.json").write_text(ja_draft)
+        bad_check = subprocess.run([str(ROOT / "bin/varis"), "l10n", "check", "--locale", "ja", "--require", "reviewed"],
+                                   cwd=ROOT / "sample-vn", capture_output=True, text=True)
+        assert bad_check.returncode == 1, "Expected release policy failure for draft message"
+        assert "release gate" in bad_check.stdout
+    finally:
+        (ROOT / "sample-vn/l10n/ja.json").write_text(ja_orig)
+
+    # 4. TrueType font subsetting
+    arial = Path("/System/Library/Fonts/Supplemental/Arial.ttf")
+    if arial.exists():
+        subset_out = ROOT / "sample-vn/assets/Arial_fr.ttf"
+        res = subprocess.run([str(ROOT / "bin/varis"), "l10n", "subset", "--locale", "fr",
+                              "--font", str(arial), "--out", "assets"],
+                             cwd=ROOT / "sample-vn", capture_output=True, text=True)
+        assert res.returncode == 0, res.stdout + res.stderr
+        assert subset_out.exists()
+        font_chk = subprocess.run([str(ROOT / "bin/varis"), "l10n", "fonts", "--font", f"fr={subset_out}"],
+                                  cwd=ROOT / "sample-vn", capture_output=True, text=True)
+        assert "covers all" in font_chk.stdout, font_chk.stdout + font_chk.stderr
+        subset_out.unlink(missing_ok=True)
+        (ROOT / "sample-vn/assets/Arial_subset.ttf").unlink(missing_ok=True)
+
+    # 5. Scene translation execution: Japanese ruby, Korean particle formatter, speaker name translation
+    script = """
+require("sample-vn.content")
+local function factory() return logic.emptyworld() end
+
+-- Japanese: speaker name "ミラ", ruby "｜明日《あした》"
+local s_ja = narrative.new(factory())
+s_ja:set_language("ja")
+s_ja:play(:harbour)
+for _=1,3 do s_ja:advance(s_ja:present().token) end
+local p = s_ja:present()
+assert(p.beats[1].text == "お名前は何ですか？")
+s_ja:advance(p.token, "ローワン")
+p = s_ja:present()
+assert(p.beats[1].speaker.name == "ミラ")
+assert(p.beats[1].text == "おかえりなさい、ローワン。")
+s_ja:advance(p.token)
+p = s_ja:present()
+assert(p.beats[1].speaker.name == "ミラ")
+assert(p.beats[1].text == "それでは、また｜明日《あした》。")
+
+-- Korean: speaker name "미라", particle "{visitor:은/는}"
+local s_ko = narrative.new(factory())
+s_ko:set_language("ko")
+s_ko:play(:harbour)
+for _=1,3 do s_ko:advance(s_ko:present().token) end
+p = s_ko:present()
+assert(p.beats[1].text == "당신의 이름은 무엇입니까?")
+s_ko:advance(p.token, "로완") -- ends in final consonant (ㄴ) -> 은
+p = s_ko:present()
+assert(p.beats[1].speaker.name == "미라")
+assert(p.beats[1].text == "어서 오세요, 로완은.")
+
+local s_ko2 = narrative.new(factory())
+s_ko2:set_language("ko")
+s_ko2:play(:harbour)
+for _=1,3 do s_ko2:advance(s_ko2:present().token) end
+s_ko2:advance(s_ko2:present().token, "미라") -- ends in vowel (ㅏ) -> 는
+p = s_ko2:present()
+assert(p.beats[1].text == "어서 오세요, 미라는.")
+
+print("Localization integration tests passed")
+"""
+    with tempfile.TemporaryDirectory() as td:
+        p = Path(td) / "test_l10n.lua"
+        p.write_text(script)
+        res = subprocess.run([str(ROOT / "bin/varis"), str(p)], cwd=ROOT, capture_output=True, text=True)
+        assert res.returncode == 0 and "Localization integration tests passed" in res.stdout, res.stdout + res.stderr
+    print("Localization release policies, font subsetting, and CJK translations passed")
+
+
+def main():
+    lanternfall()
+    lanternfall_scale()
+    rpg()
+    sample_vn()
+    localization()
 
 
 if __name__ == "__main__":

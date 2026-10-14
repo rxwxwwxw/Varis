@@ -17,6 +17,7 @@ extern (C) @nogc nothrow {
     void* v_image(const(char)* path);
     void* v_font(const(char)* path);
     void v_font_free(void* font);
+    int v_font_add_fallback(void* font, void* fallback);
     void* v_text(void* font, const(char)* text, float px, int wrap, uint color);
     void* v_pixels(const(uint)* rgba, int w, int h);
     void v_texture_size(void* texture, float* w, float* h);

@@ -84,18 +84,19 @@ PNG with alpha is suitable for finished sprite and portrait artwork.
   games, below, open a menu instead).
 - Up/Down selects a menu item; Enter or a click chooses it. Menus page in groups of six.
 - Type a name and press Enter at an input beat. Backspace removes a UTF-8 code point.
-- Up/Down scrolls long dialogue. H shows the five most recent lines.
+- Up/Down scrolls long dialogue. H opens the full scrollable dialogue history.
 - A toggles automatic dialogue advancement; S toggles skipping. Neither chooses menus nor
   submits text input. H pauses both modes.
 - F5 saves; F9 loads and reconstructs the complete stage from the engine save; B takes back the last choice or beat (session undo, 64 steps in a game, 256 in a scene player; not during a battle).
 
-`transition` currently fades in from black over 300 ms and `pause` waits 300 ms. These are
-player defaults; authored timing/effect parameters are not implemented. `picture` and `screen`
-beats fail explicitly. In this scene-only player, typewriter effects, arbitrary transforms,
-advanced transitions, voice synchronization, ruby, IME composition
-feedback and full history navigation remain future work. SDL3_ttf renders UTF-8 but the supplied
-font must cover the script; full CJK typography/localization stage T5 is not claimed. This is
-an initial usable scene player, not completion of the entire milestone 36 parity checklist.
+Stage directives and typography (milestone 36):
+- `pause {duration = ms}` waits for the authored duration before continuing; Enter or click skips the pause.
+- `transition {type = "fade"|"slide"|"wipe", duration = ms, color = 0x...}` renders smooth stage transitions.
+- `picture {id = "...", file = "...", x = 0..1, y = 0..1, width = 0..1, height = 0..1, alpha = 0..1}` renders stage pictures; `action = :hide` removes them.
+- `screen {effect = "flash"|"shake"|"tint", duration = ms, color = ..., intensity = ...}` applies camera shake and color overlays.
+- Typewriter text reveal animates spoken beats grapheme-by-grapheme; clicking or pressing Enter instantly completes the text.
+- Spoken voice on the `"voice"` audio channel synchronizes with dialogue and cuts off cleanly when advancing.
+- CJK typography enforces JIS X 4051 line-breaking rules without spaces, renders ruby text annotations (`｜漢字《かんじ》`) centered above base characters, and performs dynamic font fallback (`TTF_AddFallbackFont`) when missing glyphs are needed. Text input supports active IME composition candidates (`SDL_EVENT_TEXT_EDITING`).
 
 ## D embedding boundary
 

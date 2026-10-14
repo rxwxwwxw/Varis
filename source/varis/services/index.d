@@ -324,17 +324,27 @@ private TemplateScan scanTemplate(string raw, int line, int column, string file,
         }
         if (text[0] == '/')
             continue;
-        bool plain = true;
-        foreach (char c; text)
+        string param = text;
+        ptrdiff_t colon = -1;
+        foreach (idx, char c; text) {
+            if (c == ':') {
+                colon = idx;
+                break;
+            }
+        }
+        if (colon >= 0)
+            param = text[0 .. colon];
+        bool plain = param.length > 0;
+        foreach (char c; param)
             if (!isNameChar(c))
                 plain = false;
         if (!plain)
             continue;
-        result.placeholders ~= text;
+        result.placeholders ~= param;
         auto at = map.at(offset);
         Reference reference;
         reference.kind = "placeholder";
-        reference.name = text;
+        reference.name = param;
         reference.file = file;
         reference.inside = inside;
         reference.range = Range(at.line, at.column, at.line, cast(int)(at.column + text.length));

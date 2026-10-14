@@ -1,0 +1,7 @@
+{"format":1,"package":"harbour","locale":"ko","source_language":"en","charset":" ,./:?iorstv{}겠그까내는니다당두등라럼름무미뵙불서세습신어엇오요은을의이일입켜","messages":{
+ "character.mira.name":"미라",
+ "scene.farewell.promise.text":"그럼 내일 뵙겠습니다.",
+ "scene.harbour.lantern.text":"등불을 켜 두세요.",
+ "scene.harbour.name.text":"당신의 이름은 무엇입니까?",
+ "scene.harbour.welcome.text":"어서 오세요, {visitor:은/는}."
+}}

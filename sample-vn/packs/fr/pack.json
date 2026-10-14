@@ -1,0 +1,7 @@
+{"format":1,"package":"harbour","locale":"fr","source_language":"en","charset":" ,-.?ABCLMadeilmnoprstuvz{}àé","messages":{
+ "character.mira.name":"Mira",
+ "scene.farewell.promise.text":"Alors à demain.",
+ "scene.harbour.lantern.text":"Laissez la lanterne allumée.",
+ "scene.harbour.name.text":"Comment vous appelez-vous ?",
+ "scene.harbour.welcome.text":"Bienvenue, {visitor}."
+}}

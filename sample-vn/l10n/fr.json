@@ -1,0 +1,7 @@
+{"format":1,"package":"harbour","locale":"fr","entries":[
+ {"key":"character.mira.name","text":"Mira","status":"reviewed","revision":"da5bf1a2a79adec6"},
+ {"key":"scene.farewell.promise.text","text":"Alors à demain.","status":"reviewed","revision":"640cd52d39829bea"},
+ {"key":"scene.harbour.lantern.text","text":"Laissez la lanterne allumée.","status":"reviewed","revision":"9b90a88688ea0ce4"},
+ {"key":"scene.harbour.name.text","text":"Comment vous appelez-vous ?","status":"reviewed","revision":"2be7a9ba5d444d17"},
+ {"key":"scene.harbour.welcome.text","text":"Bienvenue, {visitor}.","status":"reviewed","revision":"977c10752b268a72"}
+]}

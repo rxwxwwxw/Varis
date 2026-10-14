@@ -68,6 +68,7 @@ struct CheckOptions {
     bool noLoad;
     bool analyze;
     string locale; // `--locale L` or `all`: also check the translations
+    string require; // `--require reviewed` or `draft`
     bool listSymbols; // `--symbols`: print the symbols no declaration names, as a `symbols` list
     int depth = 3;
     int nodes = 100;
@@ -167,6 +168,30 @@ int checkProject(LuaState state, string[] files, CheckOptions options) {
         foreach (tag; tags) {
             LocaleCoverage coverage;
             problems ~= checkLocale(source, tag, coverage);
+
+            string req = options.require;
+            double minCov = 1.0;
+            bool enforce = options.require.length > 0;
+            if (auto pol = tag in manifest.localePolicies) {
+                enforce = true;
+                minCov = pol.minCoverage;
+                if (!options.require.length)
+                    req = pol.requireStatus;
+            }
+            if (enforce && coverage.total > 0) {
+                double currentCov = 0.0;
+                if (req == "draft")
+                    currentCov = cast(double)(coverage.reviewed + coverage.draft) / cast(double) coverage.total;
+                else
+                    currentCov = cast(double) coverage.reviewed / cast(double) coverage.total;
+                if (currentCov < minCov - 0.000001) {
+                    problems ~= makeDiagnostic("error", "locale-policy", "l10n/" ~ tag ~ ".json", 0, 0, 0, 0,
+                            tag ~ ": release policy requires " ~ (req == "draft" ? "draft" : "reviewed") ~
+                            " coverage >= " ~ jsonNumber(cast(long)(
+                                minCov * 100)) ~ "% (current: " ~
+                            jsonNumber(cast(long)(currentCov * 100)) ~ "%)");
+                }
+            }
         }
     }
     sortDiagnostics(problems);

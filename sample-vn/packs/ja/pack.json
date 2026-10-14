@@ -1,0 +1,7 @@
+{"format":1,"package":"harbour","locale":"ja","source_language":"en","charset":"iorstv{}、。《》あいえおかくけさしすそただつてでとなにのはまみりれミラ何前名日明港灯？｜","messages":{
+ "character.mira.name":"ミラ",
+ "scene.farewell.promise.text":"それでは、また｜明日《あした》。",
+ "scene.harbour.lantern.text":"｜港《みなと》の灯りはつけたままにしておいてください。",
+ "scene.harbour.name.text":"お名前は何ですか？",
+ "scene.harbour.welcome.text":"おかえりなさい、{visitor}。"
+}}

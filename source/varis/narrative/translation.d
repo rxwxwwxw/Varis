@@ -49,6 +49,7 @@ private struct TNode {
 
     Kind kind;
     string text; // literal text, placeholder name, condition source, or the plural/select parameter
+    string format; // optional format/particle specification (e.g. "은/는")
     TNode[] yes;
     TNode[] no; // else branch, `{#other}` or `{#default}`
     TNode[][] options; // variant options, or the plural/select branches
@@ -475,11 +476,24 @@ private struct Parser {
                 node.kind = TNode.Kind.literal;
                 node.text = "{" ~ token ~ "}";
             } else {
-                if (!isIdentifier(token) && !(token.length > 1 && token[0] == '$' && isIdentifier(token[1 .. $])))
+                string param = token;
+                string formatter;
+                size_t colon = size_t.max;
+                foreach (i, char c; token)
+                    if (c == ':') {
+                        colon = i;
+                        break;
+                    }
+                if (colon != size_t.max) {
+                    param = token[0 .. colon];
+                    formatter = token[colon + 1 .. $];
+                }
+                if (!isIdentifier(param) && !(param.length > 1 && param[0] == '$' && isIdentifier(param[1 .. $])))
                     return fail("unknown tag {" ~ token ~ "}");
                 node.kind = TNode.Kind.placeholder;
-                node.text = token;
-                result.placeholders ~= token;
+                node.text = param;
+                node.format = formatter;
+                result.placeholders ~= param;
             }
             list ~= node;
         }
@@ -555,10 +569,17 @@ bool renderTranslation(TranslationTemplate template_, LuaValue[string] bindings,
                 text ~= node.text;
                 break;
             case TNode.Kind.placeholder:
+                string val;
                 if (node.text.length && node.text[0] == '$')
-                    text ~= display(trace.vars.get(node.text, luaNil()));
+                    val = display(trace.vars.get(node.text, luaNil()));
                 else
-                    text ~= display(bindings.get(node.text, luaNil()));
+                    val = display(bindings.get(node.text, luaNil()));
+                text ~= val;
+                if (node.format.length) {
+                    import varis.narrative.text : koreanParticle;
+
+                    text ~= koreanParticle(val, node.format);
+                }
                 break;
             case TNode.Kind.conditional:
                 if (auto known = node.text in trace.conditions)

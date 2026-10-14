@@ -1,0 +1,7 @@
+{"format":1,"package":"harbour","language":"en","messages":[
+ {"key":"character.mira.name","text":"Mira","revision":"da5bf1a2a79adec6","owner":"character mira","field":"name","file":"content.varis"},
+ {"key":"scene.farewell.promise.text","text":"Then I will see you tomorrow.","revision":"640cd52d39829bea","owner":"scene farewell","field":"text","file":"content.varis"},
+ {"key":"scene.harbour.name.text","text":"What is your name?","revision":"2be7a9ba5d444d17","owner":"scene harbour","field":"text","file":"content.varis"},
+ {"key":"scene.harbour.welcome.text","text":"Welcome back, {visitor}.","revision":"977c10752b268a72","owner":"scene harbour","field":"text","file":"content.varis","arguments":["visitor"]},
+ {"key":"scene.harbour.lantern.text","text":"Leave the lantern burning.","revision":"9b90a88688ea0ce4","owner":"scene harbour","field":"text","file":"content.varis"}
+]}

@@ -100,7 +100,7 @@ struct Theme {
     float pad = 12, gap = 8, rowPad = 7, borderWidth = 1, scrollbar = 5;
     float compactWidth = 900, compactHeight = 560, wideWidth = 1500, wideHeight = 820;
 
-    private static uint colour(string text, uint fallback) {
+    static uint colour(string text, uint fallback) {
         if (text.length < 7 || text[0] != '#')
             return fallback;
         uint value;
@@ -254,9 +254,72 @@ final class Ui {
         }
     }
 
+    bool hasRuby(string text) {
+        if (text.length < 5)
+            return false;
+        bool hasOpen = false;
+        foreach (i; 0 .. text.length) {
+            if (cast(ubyte) text[i] == 0xE3 && i + 2 < text.length && cast(ubyte) text[i + 1] == 0x80) {
+                if (cast(ubyte) text[i + 2] == 0x8A)
+                    hasOpen = true;
+                else if (cast(ubyte) text[i + 2] == 0x8B && hasOpen)
+                    return true;
+            }
+        }
+        return false;
+    }
+
+    string wrapText(string text, FontRole role, float wrap) {
+        if (wrap <= 0 || !text.length)
+            return text;
+        auto initial = measure(text, role, 0);
+        if (initial.w <= wrap)
+            return text;
+
+        import varis.narrative.text : lineBreakOpportunities;
+
+        auto opps = lineBreakOpportunities(text);
+        if (opps.length == 0)
+            return text;
+
+        string result = "";
+        size_t lineStart = 0;
+        size_t lastBreak = 0;
+
+        foreach (cut; opps) {
+            string currentLine = text[lineStart .. cut];
+            if (measure(currentLine, role, 0).w > wrap) {
+                if (lastBreak > lineStart) {
+                    result ~= text[lineStart .. lastBreak] ~ "\n";
+                    lineStart = lastBreak;
+                    if (lineStart < text.length && text[lineStart] == ' ')
+                        lineStart++;
+                } else {
+                    result ~= text[lineStart .. cut] ~ "\n";
+                    lineStart = cut;
+                    if (lineStart < text.length && text[lineStart] == ' ')
+                        lineStart++;
+                }
+            }
+            lastBreak = cut;
+        }
+        if (lineStart < text.length) {
+            string rem = text[lineStart .. $];
+            if (measure(rem, role, 0).w > wrap && lastBreak > lineStart) {
+                result ~= text[lineStart .. lastBreak] ~ "\n";
+                result ~= text[lastBreak .. $];
+            } else {
+                result ~= rem;
+            }
+        }
+        return result;
+    }
+
     private void* texture(string text, FontRole role, float wrap) {
         if (!text.length)
             return null;
+        if (wrap > 0)
+            text = wrapText(text, role, wrap);
         auto px = fontPx(role);
         auto key = format("%d|%d|%d|", cast(int)(px * 4), cast(int) wrap, role == FontRole.heading || role == FontRole
                 .title) ~
@@ -277,8 +340,53 @@ final class Ui {
         return t;
     }
 
+    Size measureRuby(string text, FontRole role, float wrap = 0) {
+        import varis.narrative.text : rubySpans;
+
+        auto spans = rubySpans(text);
+        float totalW = 0;
+        float baseH = fontPx(role) * 1.2f;
+        float rubyH = fontPx(FontRole.small) * 1.0f;
+        foreach (ref s; spans) {
+            auto baseW = measure(s.text, role, 0).w;
+            if (s.reading.length) {
+                auto rubyW = measure(s.reading, FontRole.small, 0).w;
+                totalW += max(baseW, rubyW);
+            } else {
+                totalW += baseW;
+            }
+        }
+        return Size(totalW, baseH + rubyH * 0.8f);
+    }
+
+    void drawRuby(string text, FontRole role, float x, float y, float wrap, uint colour) {
+        import varis.narrative.text : rubySpans;
+
+        auto spans = rubySpans(text);
+        float curX = x;
+        auto rubyOffset = fontPx(FontRole.small) * 0.85f;
+
+        foreach (ref s; spans) {
+            auto baseSize = measure(s.text, role, 0);
+            if (s.reading.length) {
+                auto rubySize = measure(s.reading, FontRole.small, 0);
+                float spanW = max(baseSize.w, rubySize.w);
+                float rubyX = curX + (spanW - rubySize.w) / 2;
+                float baseX = curX + (spanW - baseSize.w) / 2;
+                drawText(s.reading, FontRole.small, rubyX, y, 0, colour);
+                drawText(s.text, role, baseX, y + rubyOffset, 0, colour);
+                curX += spanW;
+            } else {
+                drawText(s.text, role, curX, y + rubyOffset, 0, colour);
+                curX += baseSize.w;
+            }
+        }
+    }
+
     /// The size text needs: wrapped at `wrap` pixels when `wrap` > 0, else only at newlines.
     Size measure(string text, FontRole role, float wrap = 0) {
+        if (hasRuby(text))
+            return measureRuby(text, role, wrap);
         auto t = texture(text, role, wrap);
         if (t is null)
             return Size(0, fontPx(role) * 1.2f);
@@ -288,6 +396,10 @@ final class Ui {
     }
 
     void drawText(string text, FontRole role, float x, float y, float wrap, uint colour) {
+        if (hasRuby(text)) {
+            drawRuby(text, role, x, y, wrap, colour);
+            return;
+        }
         auto t = texture(text, role, wrap);
         if (t !is null)
             v_draw(t, x, y, 0, 0, 2, colour);

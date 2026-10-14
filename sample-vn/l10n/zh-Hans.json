@@ -1,0 +1,7 @@
+{"format":1,"package":"harbour","locale":"zh-Hans","entries":[
+ {"key":"character.mira.name","text":"米拉","status":"reviewed","revision":"da5bf1a2a79adec6"},
+ {"key":"scene.farewell.promise.text","text":"那么明天见。","status":"reviewed","revision":"640cd52d39829bea"},
+ {"key":"scene.harbour.lantern.text","text":"让提灯继续亮着吧。","status":"reviewed","revision":"9b90a88688ea0ce4"},
+ {"key":"scene.harbour.name.text","text":"你叫什么名字？","status":"reviewed","revision":"2be7a9ba5d444d17"},
+ {"key":"scene.harbour.welcome.text","text":"欢迎回来，{visitor}。","status":"reviewed","revision":"977c10752b268a72"}
+]}

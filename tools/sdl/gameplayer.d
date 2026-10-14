@@ -170,6 +170,13 @@ private final class StageWidget : Widget {
                     auto art = player.characterImage(player.sprites, c.id, c.attributes);
                     ui.image(art, Rect(rect.x + slot.x * rect.w, rect.y + rect.h * 0.04f, slot.width * rect.w, rect.h * 0.96f), 1);
                 }
+        foreach (ref pic; player.activePictures) {
+            if (pic.texture !is null && pic.alpha > 0) {
+                uint tint = 0xffffff00 | cast(uint)(255 * pic.alpha);
+                ui.image(pic.texture, Rect(rect.x + pic.x * rect.w, rect.y + pic.y * rect.h, pic.width * rect.w, pic
+                        .height * rect.h), pic.fit, tint);
+            }
+        }
         ui.popClip();
         player.drawToasts(ui, rect);
     }
@@ -256,7 +263,7 @@ private final class MapView : Widget {
 class GamePlayer {
     GameHost host;
     Ui ui;
-    Image[] backgrounds, sprites, portraits;
+    Image[] backgrounds, sprites, portraits, pictures;
     Slot[] slots;
     Sound[] sounds;
     Channel[] channels;
@@ -280,10 +287,51 @@ class GamePlayer {
     long seed;
     int volume = 8, textScaleIndex = 2, layoutIndex;
     bool fullscreen, failed;
-    string fontPath, headingFontPath;
+    string fontPath, headingFontPath, fallbackFontPath;
     void*[string] openFonts; // by file path, so a language switch never reopens a font
     int windowWidth = 1280, windowHeight = 720;
-    bool sceneOnly;
+    bool sceneOnly, smokeMode;
+
+    struct ActivePicture {
+        string id;
+        void* texture;
+        float x = 0, y = 0, width = 1, height = 1, alpha = 1.0f;
+        int fit = 0;
+    }
+
+    ActivePicture[] activePictures;
+
+    ulong effectStart, effectDuration;
+    string effectType;
+    uint effectColor = 0xffffffff;
+    float effectIntensity = 10.0f;
+
+    ulong transStart, transDuration;
+    string transType;
+    uint transColor = 0x000000ff;
+
+    string typewriterFullText;
+    string typewriterDisplay;
+    ulong typewriterStart;
+    size_t[] typewriterGraphemes;
+    bool typewriterActive;
+
+    string imeCandidate;
+
+    ulong pauseStart, pauseDuration;
+
+    bool isAnimating() const {
+        if (typewriterActive)
+            return true;
+        if (effectDuration > 0 && ui !is null && ui.now < effectStart + effectDuration)
+            return true;
+        if (transDuration > 0 && ui !is null && ui.now < transStart + transDuration)
+            return true;
+        if (pauseDuration > 0 && ui !is null && ui.now < pauseStart + pauseDuration)
+            return true;
+        return false;
+    }
+
     private Widget lastRoot;
     // the battle view (state that outlives a frame) and the smoke test's fixed step rate
     BattleViewState bview;
@@ -396,6 +444,33 @@ class GamePlayer {
             return fail("font " ~ font ~ ": " ~ fromStringz(v_error()).idup);
         if (headingFontPath.length)
             ui.fontHeading = openFont(headingFontPath);
+        fallbackFontPath = config.stringOr("fallback_font");
+        if (fallbackFontPath.length)
+            fallbackFontPath = path(fallbackFontPath);
+        else {
+            foreach (sysFont; [
+                "/System/Library/Fonts/PingFang.ttc",
+                "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+                "/System/Library/Fonts/Hiragino Sans GB.ttc",
+                "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+                "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+                "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+                "C:/Windows/Fonts/msyh.ttc"
+            ]) {
+                if (exists(sysFont)) {
+                    fallbackFontPath = sysFont;
+                    break;
+                }
+            }
+        }
+        if (fallbackFontPath.length) {
+            if (auto fb = openFont(fallbackFontPath)) {
+                if (ui.fontBody)
+                    v_font_add_fallback(ui.fontBody, fb);
+                if (ui.fontHeading)
+                    v_font_add_fallback(ui.fontHeading, fb);
+            }
+        }
         savePath = path(config.stringOr("save", "quicksave.json"));
         autosavePath = path(config.stringOr("autosave", "autosave.json"));
         settingsPath = path(config.stringOr("settings", "settings.json"));
@@ -404,7 +479,7 @@ class GamePlayer {
             host.profileLoad(readText(profilePath)); // a bad file leaves the empty profile
         seed = config.integerOr("seed", 0);
         if (!images(config.get("backgrounds"), backgrounds) || !images(config.get("sprites"), sprites) ||
-                !images(config.get("portraits"), portraits))
+                !images(config.get("portraits"), portraits) || !images(config.get("pictures"), pictures))
             return false;
         // Slots are written in the 1280-unit design; they are kept as fractions of the stage.
         if (auto values = config.get("slots"))
@@ -522,6 +597,14 @@ class GamePlayer {
         if (auto f = openFont(body))
             ui.fontBody = f;
         ui.fontHeading = heading.length ? openFont(heading) : null;
+        if (fallbackFontPath.length) {
+            if (auto fb = openFont(fallbackFontPath)) {
+                if (ui.fontBody)
+                    v_font_add_fallback(ui.fontBody, fb);
+                if (ui.fontHeading)
+                    v_font_add_fallback(ui.fontHeading, fb);
+            }
+        }
         ui.release();
     }
 
@@ -573,8 +656,24 @@ class GamePlayer {
     /// An unmapped background, slot, sprite or audio channel is a diagnostic, not a blank screen.
     bool validate() {
         auto v = host.view.beat;
-        if (v.kind == "picture" || v.kind == "screen")
-            return fail("SDL player does not yet support beat kind: " ~ v.kind);
+        if (v.kind == "picture") {
+            auto b = v.rawBeat;
+            auto id = nameOf(field(b, "id"));
+            auto action = nameOf(field(b, "action"));
+            if (action != "hide") {
+                auto file = nameOf(field(b, "file"));
+                bool hasPic = false;
+                foreach (ref p; pictures)
+                    if (p.id == id)
+                        hasPic = true;
+                if (!hasPic && file.length) {
+                    if (exists(path(file)))
+                        hasPic = true;
+                }
+                if (!hasPic && id.length && !file.length)
+                    return fail("unmapped picture: " ~ id);
+            }
+        }
         bool hasBackground = !v.background.length;
         foreach (ref image; backgrounds)
             if (image.id == v.background)
@@ -664,6 +763,111 @@ class GamePlayer {
         return afterBoundary();
     }
 
+    private float numVal(LuaValue v, float fallback = 0.0f) {
+        if (v.isFloat)
+            return cast(float) v.asFloat;
+        if (v.isInteger)
+            return cast(float) v.asInteger;
+        return fallback;
+    }
+
+    void applyMediaBeat(ref SceneView view) {
+        auto kind = view.kind;
+        auto b = view.rawBeat;
+        if (kind == "picture") {
+            auto id = nameOf(field(b, "id"));
+            auto action = nameOf(field(b, "action"));
+            if (action == "hide") {
+                if (id.length) {
+                    ActivePicture[] kept;
+                    foreach (ref p; activePictures)
+                        if (p.id != id)
+                            kept ~= p;
+                    activePictures = kept;
+                } else
+                    activePictures = null;
+            } else {
+                void* tex;
+                foreach (ref p; pictures)
+                    if (p.id == id)
+                        tex = p.texture;
+                auto file = nameOf(field(b, "file"));
+                if (!tex && file.length)
+                    tex = v_image(path(file).toStringz);
+                if (tex) {
+                    ActivePicture pic;
+                    pic.id = id;
+                    pic.texture = tex;
+                    auto px = field(b, "x");
+                    auto py = field(b, "y");
+                    auto pw = field(b, "width");
+                    auto ph = field(b, "height");
+                    auto pa = field(b, "alpha");
+                    pic.x = numVal(px, 0.0f);
+                    pic.y = numVal(py, 0.0f);
+                    pic.width = numVal(pw, 1.0f);
+                    pic.height = numVal(ph, 1.0f);
+                    pic.alpha = numVal(pa, 1.0f);
+                    bool found;
+                    foreach (ref existing; activePictures)
+                        if (existing.id == id) {
+                            existing = pic;
+                            found = true;
+                            break;
+                        }
+                    if (!found)
+                        activePictures ~= pic;
+                }
+            }
+        } else if (kind == "screen") {
+            if (smokeMode)
+                return;
+            auto eff = nameOf(field(b, "effect"));
+            effectType = eff.length ? eff : "flash";
+            auto dur = field(b, "duration");
+            effectDuration = dur.isInteger ? cast(ulong) dur.asInteger : 400;
+            auto col = field(b, "color");
+            if (col.isInteger)
+                effectColor = cast(uint) col.asInteger;
+            else if (col.isString)
+                effectColor = Theme.colour(col.asString, 0xffffffff);
+            else
+                effectColor = effectType == "flash" ? 0xffffffff : 0x88000044;
+            auto intens = field(b, "intensity");
+            effectIntensity = numVal(intens, 10.0f);
+            effectStart = v_ticks();
+        } else if (kind == "transition") {
+            if (smokeMode)
+                return;
+            auto tt = nameOf(field(b, "type"));
+            transType = tt.length ? tt : "fade";
+            auto dur = field(b, "duration");
+            transDuration = dur.isInteger ? cast(ulong) dur.asInteger : 300;
+            auto col = field(b, "color");
+            if (col.isInteger)
+                transColor = cast(uint) col.asInteger;
+            else if (col.isString)
+                transColor = Theme.colour(col.asString, 0x000000ff);
+            else
+                transColor = 0x000000ff;
+            transStart = v_ticks();
+        } else if (kind == "pause") {
+            if (smokeMode)
+                return;
+            auto dur = field(b, "duration");
+            pauseDuration = dur.isInteger ? cast(ulong) dur.asInteger : (dur.isFloat ? cast(ulong) dur.asFloat : 300);
+            pauseStart = v_ticks();
+        }
+    }
+
+    void stopVoice() {
+        foreach (ref c; channels)
+            if (c.id == "voice") {
+                v_play(c.track, null, 0);
+                c.playing = null;
+            }
+    }
+
     /// After every boundary: acknowledge media beats, rebuild rows, queue toasts, sync audio.
     bool afterBoundary() {
         for (size_t guard; guard < 200; ++guard) {
@@ -672,11 +876,16 @@ class GamePlayer {
                 break;
             auto kind = v.beat.kind;
             bool media = kind == "background" || kind == "show" || kind == "hide" || kind == "audio" ||
-                kind == "transition" || kind == "pause";
+                kind == "transition" || kind == "pause" || kind == "picture" || kind == "screen";
             if (!media)
                 break;
             if (!validate() || !syncAudio())
                 return false;
+            if (kind == "pause" && !smokeMode) {
+                applyMediaBeat(v.beat);
+                break;
+            }
+            applyMediaBeat(v.beat);
             if (!host.advance())
                 return fail(host.error);
         }
@@ -757,6 +966,7 @@ class GamePlayer {
     }
 
     bool advance(LuaValue value = LuaValue.init) {
+        stopVoice();
         if (!host.advance(value))
             return fail(host.error);
         return afterBoundary();
@@ -1104,7 +1314,11 @@ class GamePlayer {
         words.gap = 4;
         if (v.speaker.length)
             words.add(text(v.speaker, FontRole.heading, ui.theme.accent, Overflow.ellipsis));
-        string body = v.kind == "input" ? v.text ~ "\n> " ~ input ~ "_" : v.text;
+        string body;
+        if (v.kind == "input")
+            body = v.text ~ "\n> " ~ input ~ (imeCandidate.length ? " [" ~ imeCandidate ~ "]" : "_");
+        else
+            body = typewriterDisplay.length ? typewriterDisplay : v.text;
         auto message = text(body, FontRole.body, ui.theme.text, Overflow.scroll);
         message.id = "dialogue";
         words.add(message, 1);
@@ -1281,10 +1495,9 @@ class GamePlayer {
         case Overlay.history: {
                 auto body = new Box(true);
                 body.gap = 8;
-                auto start = history.length > 20 ? history.length - 20 : 0;
-                foreach (line; history[start .. $])
+                foreach (line; history)
                     body.add(text(line, FontRole.body));
-                modal = new Modal("Recent lines", new ScrollBox(body), 820, 640);
+                modal = new Modal("History", new ScrollBox(body), 880, 640);
                 break;
             }
         }
@@ -1410,6 +1623,40 @@ class GamePlayer {
         return layers;
     }
 
+    void updateTypewriter() {
+        if (smokeMode) {
+            typewriterActive = false;
+            typewriterDisplay = "";
+            return;
+        }
+        auto v = host.view;
+        if (!v.inScene || (v.beat.kind != "say" && v.beat.kind != "narration")) {
+            typewriterActive = false;
+            typewriterDisplay = "";
+            return;
+        }
+        if (v.beat.text != typewriterFullText) {
+            typewriterFullText = v.beat.text;
+            import varis.narrative.text : graphemeBoundaries;
+
+            typewriterGraphemes = graphemeBoundaries(typewriterFullText);
+            typewriterStart = v_ticks();
+            typewriterActive = true;
+        }
+        if (typewriterActive && typewriterGraphemes.length > 1) {
+            auto elapsed = v_ticks() > typewriterStart ? v_ticks() - typewriterStart : 0;
+            size_t count = cast(size_t)(elapsed / 25);
+            if (count >= typewriterGraphemes.length - 1) {
+                typewriterDisplay = typewriterFullText;
+                typewriterActive = false;
+            } else {
+                typewriterDisplay = typewriterFullText[0 .. typewriterGraphemes[count]];
+            }
+        } else {
+            typewriterDisplay = typewriterFullText;
+        }
+    }
+
     /// One frame: build the tree for the current state, lay it out in the window, draw it.
     void frame() {
         v_output_size(&ui.width, &ui.height);
@@ -1420,11 +1667,61 @@ class GamePlayer {
             ui.autoFit = max(0.75f, min(1.25f, min(points.w / 1280.0f, points.h / 720.0f)));
         }
         updateBattle();
+        if (!smokeMode && pauseDuration > 0) {
+            if (ui.now >= pauseStart + pauseDuration) {
+                pauseDuration = 0;
+                advance();
+            }
+        }
+        updateTypewriter();
+
+        float shakeX = 0, shakeY = 0;
+        if (!smokeMode && effectDuration > 0 && effectType == "shake") {
+            auto elapsed = ui.now > effectStart ? ui.now - effectStart : 0;
+            if (elapsed < effectDuration) {
+                float progress = 1.0f - cast(float) elapsed / cast(float) effectDuration;
+                float amp = effectIntensity * progress;
+                shakeX = (cast(int)(elapsed * 37) % 7 - 3) * (amp / 3.0f);
+                shakeY = (cast(int)(elapsed * 53) % 7 - 3) * (amp / 3.0f);
+            }
+        }
+
         auto rootWidget = build();
         layout(ui, rootWidget);
         v_begin(ui.theme.backdrop);
+        if (shakeX != 0 || shakeY != 0)
+            rootWidget.arrange(ui, Rect(shakeX, shakeY, ui.width, ui.height));
         rootWidget.draw(ui);
         lastRoot = rootWidget;
+
+        if (!smokeMode && effectDuration > 0 && (effectType == "flash" || effectType == "tint")) {
+            auto elapsed = ui.now > effectStart ? ui.now - effectStart : 0;
+            if (elapsed < effectDuration) {
+                float progress = 1.0f - cast(float) elapsed / cast(float) effectDuration;
+                uint baseAlpha = (effectColor & 0xff);
+                if (baseAlpha == 0)
+                    baseAlpha = 255;
+                uint alpha = cast(uint)(baseAlpha * progress);
+                ui.fill(Rect(0, 0, ui.width, ui.height), (effectColor & 0xffffff00) | (alpha & 0xff));
+            }
+        }
+
+        if (!smokeMode && transDuration > 0) {
+            auto elapsed = ui.now > transStart ? ui.now - transStart : 0;
+            if (elapsed < transDuration) {
+                float progress = cast(float) elapsed / cast(float) transDuration;
+                if (transType == "slide") {
+                    float offset = (1.0f - progress) * ui.width;
+                    ui.fill(Rect(ui.width - offset, 0, offset, ui.height), transColor);
+                } else if (transType == "wipe") {
+                    float offset = (1.0f - progress) * ui.height;
+                    ui.fill(Rect(0, ui.height - offset, ui.width, offset), transColor);
+                } else {
+                    uint alpha = cast(uint)(255 * (1.0f - progress));
+                    ui.fill(Rect(0, 0, ui.width, ui.height), (transColor & 0xffffff00) | (alpha & 0xff));
+                }
+            }
+        }
     }
 
     // ---- battle --------------------------------------------------------------------
@@ -2155,13 +2452,32 @@ class GamePlayer {
     bool sceneEvent(int type, int key, string typed) {
         auto v = host.view;
         auto kind = v.beat.kind;
+        if (!smokeMode && pauseDuration > 0 && (type == 2 || type == 5)) {
+            pauseDuration = 0;
+            return advance() || true;
+        }
+        if (!smokeMode && transDuration > 0 && (type == 2 || type == 5)) {
+            transDuration = 0;
+            return true;
+        }
+        if (typewriterActive && (type == 2 || type == 5)) {
+            typewriterDisplay = typewriterFullText;
+            typewriterActive = false;
+            return true;
+        }
         if (kind == "input") {
+            if (type == 11) {
+                imeCandidate = typed;
+                return true;
+            }
             if (type == 4) {
+                imeCandidate = "";
                 if (input.length + typed.length <= 64)
                     input ~= typed;
                 return true;
             }
             if (type == 3 && input.length) {
+                imeCandidate = "";
                 auto last = input.length - 1;
                 while (last && (input[last] & 0xc0) == 0x80)
                     --last;
@@ -2171,8 +2487,10 @@ class GamePlayer {
             // Space arrives as a key (advance) and as text; only the text types the space.
             if (type == 2 && key == ' ')
                 return true;
-            if (type == 2 && input.length)
+            if (type == 2 && input.length) {
+                imeCandidate = "";
                 return advance(LuaValue(input)) || true;
+            }
             return true;
         }
         if (kind == "menu") {
@@ -2203,7 +2521,7 @@ class GamePlayer {
             v_channel_free(c.track);
         foreach (ref a; sounds)
             v_sound_free(a.sound);
-        foreach (list; [backgrounds, sprites, portraits])
+        foreach (list; [backgrounds, sprites, portraits, pictures])
             foreach (ref image; list)
                 v_free(image.texture);
         v_close();
@@ -2231,20 +2549,22 @@ int runGame(string manifest, string screenshot) {
         player.close();
     if (!player.load(manifest, smoke, forcedWidth, forcedHeight))
         return 1;
-    if (smoke)
+    if (smoke) {
+        player.smokeMode = true;
         return smokeGame(player, screenshot);
+    }
     player.mode = player.sceneOnly ? Mode.play : Mode.title;
     if (player.sceneOnly && !player.newGame())
         return 1;
     bool redraw = true;
     for (;;) {
         // a build phase, a pause or a result changes nothing by itself: draw only after an event
-        if (redraw || !player.battleIdle()) {
+        if (redraw || !player.battleIdle() || player.isAnimating()) {
             player.frame();
             v_end();
             redraw = false;
             // the frame is on screen and nothing is waiting: the cheapest moment for a pause
-            if (!player.host.inBattle)
+            if (!player.host.inBattle && !player.isAnimating())
                 player.host.idle();
         }
         int key;
@@ -2477,7 +2797,8 @@ private int smokeGame(GamePlayer player, string screenshot) {
         if (v.inScene) {
             auto kind = v.beat.kind;
             if (kind == "input") {
-                if (!player.event(4, 0, 0, 0, "Rowan♥") || !player.event(3, 0, 0, 0, "") || !player.event(2, 13, 0, 0, ""))
+                if (!player.event(11, 0, 0, 0, "ro") || !player.event(4, 0, 0, 0, "Rowan♥") || !player.event(3, 0, 0, 0, "") || !player
+                        .event(2, 13, 0, 0, ""))
                     return 1;
             } else if (kind == "menu") {
                 if (!player.event(2, 13, 0, 0, ""))

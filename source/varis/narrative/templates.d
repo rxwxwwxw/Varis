@@ -21,7 +21,7 @@ import varis.logic.model : RelTuple;
 import varis.narrative.translation : RenderTrace, normalizeCondition, variantArguments;
 import varis.narrative.plural : pluralCategory, isPluralCategory;
 import varis.exception : LuaException;
-import std.string : strip, startsWith, split;
+import std.string : strip, startsWith, split, indexOf;
 import std.algorithm : canFind;
 import std.conv : to;
 import std.math : isFinite;
@@ -90,6 +90,7 @@ class VariantGroup {
 private class TemplateNode {
     string literal;
     string parameter;
+    string formatter;
     LuaValue condition;
     string conditionSource; // normalized `query ...` or `lua ...` text, for render traces
     bool luaCondition;
@@ -388,10 +389,19 @@ class NarrativeTemplate {
                 variantGroups ~= group;
             } else {
                 // `{$name}` shows the story variable `name` (narrative.var / the `var` statement).
-                bool variable = token.length > 1 && token[0] == '$';
-                if (!variable && !parameters.canFind(token))
+                // Placeholders may include a formatter, such as Korean particle forms `{visitor:은/는}`.
+                string paramName = token;
+                string formatter;
+                auto colon = token.indexOf(':');
+                if (colon >= 0) {
+                    paramName = token[0 .. colon];
+                    formatter = token[colon + 1 .. $];
+                }
+                bool variable = paramName.length > 1 && paramName[0] == '$';
+                if (!variable && !parameters.canFind(paramName))
                     throw new LuaException("unknown narrative template placeholder '" ~ token ~ "'");
-                node.parameter = token;
+                node.parameter = paramName;
+                node.formatter = formatter;
             }
             result ~= node;
         }
@@ -425,9 +435,22 @@ class NarrativeTemplate {
                     }
                     if (trace !is null)
                         trace.vars[node.parameter] = value;
-                    output ~= display(value);
-                } else if (node.parameter.length)
-                    output ~= display(bindings.get(node.parameter, luaNil()));
+                    auto rendered = display(value);
+                    output ~= rendered;
+                    if (node.formatter.length) {
+                        import varis.narrative.text : koreanParticle;
+
+                        output ~= koreanParticle(rendered, node.formatter);
+                    }
+                } else if (node.parameter.length) {
+                    auto rendered = display(bindings.get(node.parameter, luaNil()));
+                    output ~= rendered;
+                    if (node.formatter.length) {
+                        import varis.narrative.text : koreanParticle;
+
+                        output ~= koreanParticle(rendered, node.formatter);
+                    }
+                }
                 if (isFunction(node.condition)) {
                     LuaValue[] arguments = [wrapWorld(snapshot)];
                     foreach (name; parameters)

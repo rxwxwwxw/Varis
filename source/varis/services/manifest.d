@@ -41,7 +41,13 @@ struct Manifest {
     string[] tests; // file patterns of author tests
     string[] symbols; // declared symbols (entities, flags, event kinds); opt-in strictness
     bool declaresSymbols; // the manifest has a `symbols` list
+    LocalePolicy[string] localePolicies; // per-locale minimum coverage and requirements
     Diagnostic[] problems;
+}
+
+struct LocalePolicy {
+    double minCoverage = 1.0;
+    string requireStatus = "reviewed"; // "reviewed" or "draft"
 }
 
 private struct StringList {
@@ -120,6 +126,44 @@ Manifest loadManifest(string directory) {
         auto key = as!LiteralStringExpr(field.key);
         if (key is null) {
             manifest.record("error", "manifest", field.value, "manifest entries must be `name = value`");
+            continue;
+        }
+        if (key.value == "locale_policy") {
+            if (auto obj = as!TableConstructorExpr(field.value)) {
+                foreach (f; obj.fields) {
+                    string loc;
+                    if (auto keyStr = as!LiteralStringExpr(f.key))
+                        loc = keyStr.value;
+                    if (!loc.length)
+                        continue;
+                    LocalePolicy pol;
+                    if (auto flt = as!LiteralFloatExpr(f.value)) {
+                        pol.minCoverage = flt.value;
+                    } else if (auto i = as!LiteralIntExpr(f.value)) {
+                        pol.minCoverage = cast(double) i.value;
+                    } else if (auto tbl = as!TableConstructorExpr(f.value)) {
+                        foreach (sub; tbl.fields) {
+                            if (auto subKey = as!LiteralStringExpr(sub.key)) {
+                                if (subKey.value == "min_coverage") {
+                                    if (auto subFlt = as!LiteralFloatExpr(sub.value))
+                                        pol.minCoverage = subFlt.value;
+                                    else if (auto subI = as!LiteralIntExpr(sub.value))
+                                        pol.minCoverage = cast(double) subI.value;
+                                } else if (subKey.value == "require") {
+                                    if (auto subStr = as!LiteralStringExpr(sub.value))
+                                        pol.requireStatus = subStr.value;
+                                }
+                            }
+                        }
+                    } else {
+                        manifest.record("error", "manifest", f.value, "manifest `locale_policy` entries must be a minimum coverage number or a table with `min_coverage` and `require`");
+                        continue;
+                    }
+                    manifest.localePolicies[loc] = pol;
+                }
+            } else {
+                manifest.record("error", "manifest", field.value, "manifest field `locale_policy` must be a table");
+            }
             continue;
         }
         auto list = literalStrings(field.value);

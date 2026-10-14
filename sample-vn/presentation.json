@@ -15,5 +15,13 @@
   ],
   "slots": [{"id": "left", "x": 100, "y": 0, "width": 400, "height": 680}],
   "audio": [{"id": "evening_theme", "file": "assets/evening.wav"}],
-  "channels": [{"id": "music", "loop": 1}]
+  "channels": [{"id": "music", "loop": 1}],
+  "languages": [
+    {"tag": "", "name": "English"},
+    {"tag": "ja", "name": "日本語"},
+    {"tag": "ko", "name": "한국어"},
+    {"tag": "zh-Hans", "name": "简体中文"},
+    {"tag": "zh-Hant", "name": "繁體中文"},
+    {"tag": "fr", "name": "Français"}
+  ]
 }

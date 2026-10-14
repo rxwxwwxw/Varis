@@ -371,6 +371,7 @@ LUA";
                 next.beat.character = nameOf(field(beat, "character"));
                 next.beat.speaker = translated("character." ~ next.beat.character ~ ".name",
                         nameOf(field(field(beat, "speaker"), "name")));
+                next.beat.rawBeat = beat;
                 foreach (choice; sequence(field(beat, "choices")))
                     next.beat.choices ~= SceneChoice(field(choice, "id"), nameOf(field(choice, "text")));
             } else {

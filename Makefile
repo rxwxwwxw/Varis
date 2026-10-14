@@ -50,7 +50,7 @@ SRC_FILES = source/varis/package.d \
             source/varis/lib/narrative.d source/varis/lib/quality.d \
             source/varis/lib/logic.d \
             source/varis/narrative/vmops.d source/varis/workbench/page.d source/varis/workbench/server.d source/varis/workbench/inspect.d \
-            source/varis/services/check.d source/varis/services/diagnostic.d source/varis/services/manifest.d source/varis/services/index.d source/varis/services/checks.d source/varis/services/tier.d source/varis/services/lang.d source/varis/services/lsp.d source/varis/services/play.d source/varis/services/loadpass.d source/varis/services/presentation.d source/varis/services/gamehost.d source/varis/services/json.d source/varis/services/catalog.d source/varis/services/xliff.d source/varis/services/l10n.d source/varis/services/fontcheck.d \
+            source/varis/services/check.d source/varis/services/diagnostic.d source/varis/services/manifest.d source/varis/services/index.d source/varis/services/checks.d source/varis/services/tier.d source/varis/services/lang.d source/varis/services/lsp.d source/varis/services/play.d source/varis/services/loadpass.d source/varis/services/presentation.d source/varis/services/gamehost.d source/varis/services/json.d source/varis/services/catalog.d source/varis/services/xliff.d source/varis/services/l10n.d source/varis/services/fontcheck.d source/varis/services/fontsubset.d \
             source/varis/game/hex.d source/varis/game/terrain.d source/varis/game/fog.d source/varis/game/route.d \
             source/varis/game/kinds.d source/varis/game/types.d source/varis/game/battle.d \
             source/varis/lib/battle.d

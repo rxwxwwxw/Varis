@@ -1,0 +1,16 @@
+-- The project manifest of Harbour Window. It is read, never executed.
+return {
+    id       = "harbour",
+    language = "en",
+    entry    = "content",
+    content  = { "content.varis" },
+    scripts  = { "main.varis" },
+    locales  = { "zh-Hans", "zh-Hant", "ja", "ko", "fr" },
+    locale_policy = {
+        ja = { min_coverage = 1.0, require = "reviewed" },
+        ko = { min_coverage = 1.0, require = "reviewed" },
+        ["zh-Hans"] = { min_coverage = 1.0, require = "reviewed" },
+        ["zh-Hant"] = { min_coverage = 1.0, require = "reviewed" },
+        fr = { min_coverage = 1.0, require = "reviewed" },
+    },
+}

@@ -613,8 +613,14 @@ class Session : TransactionParticipant {
             beat = replaceField(beat, "choices", immutableSequence(labelled));
         }
         auto character = registry.character(nameOf(field(beat, "character")));
-        if (character !is null)
-            beat = replaceField(beat, "speaker", character.fields);
+        if (character !is null) {
+            auto speakerFields = character.fields;
+            if (target.length) {
+                if (auto translated = registry.translation(target, "character." ~ character.id ~ ".name"))
+                    speakerFields = replaceField(speakerFields, "name", LuaValue(translated.literalText));
+            }
+            beat = replaceField(beat, "speaker", speakerFields);
+        }
         LuaValue[string] fields = [
             "turn": LuaValue(cast(long) turn), "scene": state.getSymbol(frame.id),
             "beat_index": LuaValue(cast(long) frame.pc + 1), "locals": frame.locals,

@@ -1,4 +1,9 @@
 -- Harbour Window: a linear visual novel, with engine-owned stage state.
+for _, tag in ipairs {"zh-Hans", "zh-Hant", "ja", "ko", "fr"} do
+    pcall(narrative.load_pack, (__varis_root or "sample-vn") .. "/packs/" .. tag)
+    pcall(narrative.load_pack, "packs/" .. tag)
+end
+
 character mira {
     name = "Mira", tag = :mira,
     attributes = { expression = {:quiet, :smile}, outfit = {:coat} },
